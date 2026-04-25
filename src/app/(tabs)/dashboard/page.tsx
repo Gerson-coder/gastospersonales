@@ -353,8 +353,8 @@ export default function DashboardPage() {
   const recent = TRANSACTIONS.slice(0, 5);
 
   return (
-    <div className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[1200px] md:px-12 md:py-10">
+    <div className="relative min-h-dvh bg-background text-foreground">
+      <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
         {/* Header */}
         <header className="flex items-center justify-between px-5 pt-3 md:px-0 md:pt-0">
           <div>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
         </header>
 
         {/* Hero balance */}
-        <Card className="relative mx-4 mt-5 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8">
+        <Card className="relative mx-4 mt-5 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8 md:p-8">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -443,10 +443,10 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        {/* Desktop grid wrapper */}
-        <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-5">
+        {/* Desktop grid wrapper: Donut + Sparkline side by side on md+ */}
+        <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
           {/* Spark area */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-4 md:mx-0 md:mt-0 md:col-span-2">
+          <Card className="mx-4 mt-4 rounded-2xl border-border p-4 md:mx-0 md:mt-0 md:p-6">
             <div className="flex items-baseline justify-between px-1 pb-2">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Día a día
@@ -466,7 +466,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Donut */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0">
+          <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6 md:max-w-md">
             <div className="mb-3 flex items-baseline justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Distribución
@@ -485,7 +485,7 @@ export default function DashboardPage() {
                 currency={currency}
                 size={150}
               />
-              <div className="flex-1 space-y-1.5 text-xs">
+              <div className="flex-1 space-y-1.5 text-xs md:grid md:grid-cols-2 md:gap-x-4 md:gap-y-1.5 md:space-y-0">
                 {TOP_CATEGORIES.map((s) => (
                   <div key={s.id} className="flex items-center justify-between">
                     <span className="inline-flex items-center gap-2">
@@ -504,7 +504,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Recent transactions */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0">
+          <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2">
             <div className="flex items-baseline justify-between px-4 pb-1.5 pt-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Últimas transacciones
@@ -527,22 +527,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* FAB cluster */}
-      <button
-        type="button"
-        aria-label="Escanear factura con la cámara"
-        className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-[18px] z-20 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Camera size={20} aria-hidden="true" />
-      </button>
-      <Button
-        aria-label="Registrar nuevo movimiento"
-        className="fixed bottom-[calc(22px+env(safe-area-inset-bottom))] right-[18px] z-20 h-[60px] rounded-full px-6 text-base font-bold transition-transform active:scale-95"
-        style={{ boxShadow: "var(--shadow-fab)" }}
-      >
-        <Plus size={22} strokeWidth={2.5} className="mr-1" aria-hidden="true" />
-        Registrar
-      </Button>
+      {/* FAB cluster — mobile only (sidebar provides desktop primary action) */}
+      <div className="md:hidden">
+        <button
+          type="button"
+          aria-label="Escanear factura con la cámara"
+          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-[18px] z-20 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Camera size={20} aria-hidden="true" />
+        </button>
+        <Button
+          aria-label="Registrar nuevo movimiento"
+          className="fixed bottom-[calc(22px+env(safe-area-inset-bottom))] right-[18px] z-20 h-[60px] rounded-full px-6 text-base font-bold transition-transform active:scale-95"
+          style={{ boxShadow: "var(--shadow-fab)" }}
+        >
+          <Plus size={22} strokeWidth={2.5} className="mr-1" aria-hidden="true" />
+          Registrar
+        </Button>
+      </div>
     </div>
   );
 }

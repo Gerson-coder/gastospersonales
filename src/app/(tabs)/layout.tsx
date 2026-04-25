@@ -1,12 +1,15 @@
+import { Sidebar } from "@/components/lumi/Sidebar";
 import { TabBar } from "@/components/lumi/TabBar";
 
 // Layout for the tabbed app surface (post-login).
-// All routes under (tabs)/* render with the bottom TabBar mounted.
-// /login is intentionally OUTSIDE this group so it has no bar.
+// Mobile (< md): bottom TabBar mounted; main reserves pb-24 for it.
+// Desktop (md+): fixed left Sidebar; main reserves pl-64 + pb-8 instead.
+// /login is intentionally OUTSIDE this group so it has neither.
 export default function TabsLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
-      <main className="flex-1 pb-24">{children}</main>
+      <Sidebar />
+      <main className="flex-1 pb-24 md:pb-8 md:pl-64">{children}</main>
       <TabBar />
     </div>
   );

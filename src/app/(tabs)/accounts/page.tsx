@@ -206,19 +206,19 @@ export default function SettingsPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] px-5 pt-6 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
         <header>
           <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Tu cuenta
           </p>
-          <h1 className="mt-1 text-[22px] font-bold md:text-3xl">Ajustes</h1>
+          <h1 className="mt-1 text-2xl font-bold md:text-3xl">Ajustes</h1>
         </header>
 
         {/* Profile */}
         <SettingsSection title="Perfil" headingId="settings-profile">
           <Card className="rounded-2xl border-border p-5">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
               <div
                 aria-hidden="true"
                 className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-lg font-bold"
@@ -352,7 +352,7 @@ export default function SettingsPage() {
                 value={prefs.currency}
                 onValueChange={handleCurrencyChange}
                 aria-label="Moneda principal"
-                className="mt-3 grid gap-2"
+                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
               >
                 <PrefRadio value="PEN" label="PEN · Sol peruano" hint="S/" />
                 <PrefRadio value="USD" label="USD · Dólar" hint="$" />
@@ -371,7 +371,7 @@ export default function SettingsPage() {
                 value={prefs.theme}
                 onValueChange={handleThemeChange}
                 aria-label="Tema de la aplicación"
-                className="mt-3 grid gap-2"
+                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
               >
                 <PrefRadio value="system" label="Sistema" />
                 <PrefRadio value="light" label="Claro" />
@@ -383,25 +383,29 @@ export default function SettingsPage() {
 
             {/* Locale + Timezone (read-only) */}
             <dl className="grid gap-3">
-              <div className="flex items-center gap-3">
-                <Globe
-                  size={16}
-                  className="text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <dt className="text-[13px] font-semibold">Idioma</dt>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums">
+              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
+                <div className="flex items-center gap-3">
+                  <Globe
+                    size={16}
+                    className="text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <dt className="text-[13px] font-semibold">Idioma</dt>
+                </div>
+                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
                   es-PE
                 </dd>
               </div>
-              <div className="flex items-center gap-3">
-                <Clock
-                  size={16}
-                  className="text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <dt className="text-[13px] font-semibold">Zona horaria</dt>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums">
+              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
+                <div className="flex items-center gap-3">
+                  <Clock
+                    size={16}
+                    className="text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <dt className="text-[13px] font-semibold">Zona horaria</dt>
+                </div>
+                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
                   America/Lima
                 </dd>
               </div>
@@ -473,7 +477,7 @@ export default function SettingsPage() {
             type="button"
             variant="destructive"
             onClick={handleSignOut}
-            className="h-12 w-full rounded-xl text-[14px] font-semibold"
+            className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
           >
             <LogOut size={16} aria-hidden="true" />
             <span className="ml-1">Cerrar sesión</span>

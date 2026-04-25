@@ -78,6 +78,8 @@ export function TabBar({
         "fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background",
         // Safe-area inset for iOS home indicator.
         "pb-[env(safe-area-inset-bottom)]",
+        // Desktop swaps to Sidebar — hide the mobile bar at md+.
+        "md:hidden",
         className,
       )}
     >

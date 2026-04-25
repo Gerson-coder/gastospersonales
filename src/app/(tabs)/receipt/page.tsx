@@ -421,10 +421,10 @@ export default function ReceiptPage() {
   };
 
   return (
-    <div className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[640px] md:px-8 md:py-8">
+    <div className="relative min-h-dvh bg-background pb-32 text-foreground md:pb-0">
+      <div className="mx-auto w-full max-w-2xl md:px-8 md:py-8">
         {/* Receipt photo — tap to zoom */}
-        <div className="relative">
+        <div className="relative md:rounded-3xl md:border md:border-border md:overflow-hidden md:shadow-card">
           <button
             type="button"
             onClick={() => setIsZoomOpen(true)}
@@ -521,7 +521,7 @@ export default function ReceiptPage() {
           <Separator className="my-5" />
 
           {/* Fecha */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 md:max-w-xs">
             <Label htmlFor="receipt-date">Fecha</Label>
             <Input
               id="receipt-date"
@@ -600,7 +600,7 @@ export default function ReceiptPage() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={3}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-[120px]"
               placeholder="ej. Salida con Sofi"
             />
           </div>
@@ -638,10 +638,10 @@ export default function ReceiptPage() {
 
       {/* Sticky action row */}
       <div
-        className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-md"
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-md md:relative md:inset-auto md:bottom-auto md:z-auto md:mx-auto md:mt-8 md:max-w-2xl md:border-0 md:bg-transparent md:px-8 md:py-0 md:backdrop-blur-none"
         style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}
       >
-        <div className="mx-auto flex w-full max-w-[640px] gap-2">
+        <div className="mx-auto flex w-full max-w-[640px] gap-2 md:max-w-none">
           <Button
             type="button"
             variant="ghost"

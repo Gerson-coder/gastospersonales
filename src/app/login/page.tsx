@@ -60,10 +60,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-dvh flex-col bg-background text-foreground">
-      <div className="mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:pt-20">
+    <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
+      <div className="mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
         {/* Brand mark */}
-        <div className="mb-12 md:mb-16">
+        <div className="mb-12 md:mb-8">
           <Image
             src="/brand/lumi-wordmark.svg"
             alt="Lumi"
@@ -81,7 +81,7 @@ export default function LoginPage() {
           >
             <h1
               id="login-heading"
-              className="font-display text-[40px] italic leading-[1.05] tracking-tight md:text-5xl"
+              className="font-display text-[40px] italic leading-[1.05] tracking-tight md:text-4xl"
             >
               Tu plata,
               <br />
@@ -221,14 +221,14 @@ export default function LoginPage() {
           >
             <a
               href="#"
-              className="hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+              className="rounded-sm hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Términos
             </a>
             <span aria-hidden="true">·</span>
             <a
               href="#"
-              className="hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+              className="rounded-sm hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Privacidad
             </a>

@@ -341,7 +341,7 @@ export default function CapturePage() {
     : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)} en ${category.label}, cuenta ${account.label}`;
 
   return (
-    <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground">
+    <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
       <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col">
         {/* Header */}
         <header className="flex items-center justify-between px-4 pt-3">
@@ -404,7 +404,7 @@ export default function CapturePage() {
         </header>
 
         {/* Amount display */}
-        <section className="px-6 pt-6 text-center" aria-live="polite">
+        <section className="px-6 pt-6 text-center md:px-8 md:pt-8" aria-live="polite">
           <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             {kind === "income" ? "Cuánto entró" : "Cuánto gastaste"}
           </div>
