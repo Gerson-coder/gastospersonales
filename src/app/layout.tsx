@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -30,7 +30,6 @@ export const metadata: Metadata = {
   description:
     "Tu plata, clara. Captura gastos con foto, entendé en qué se te va el sueldo, sin complicaciones.",
   manifest: "/manifest.json",
-  themeColor: "#10b981",
   appleWebApp: {
     capable: true,
     title: "Lumi",
@@ -40,6 +39,13 @@ export const metadata: Metadata = {
     icon: "/icons/icon-512.png",
     apple: "/icons/apple-touch-icon.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#10b981",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

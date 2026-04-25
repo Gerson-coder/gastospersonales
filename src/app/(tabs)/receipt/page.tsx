@@ -368,7 +368,18 @@ function FailedState({ onRetry }: { onRetry: () => void }) {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
+// useSearchParams() forces client-side bailout during static prerender — wrap
+// in <Suspense> so the build can statically prerender the surrounding shell
+// and only the search-param-dependent content streams.
 export default function ReceiptPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ReceiptContent />
+    </React.Suspense>
+  );
+}
+
+function ReceiptContent() {
   const params = useSearchParams();
   // ?status=loading | failed lets design-review preview the alternate states.
   const queryStatus = params?.get("status");

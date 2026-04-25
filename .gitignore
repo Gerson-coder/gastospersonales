@@ -48,5 +48,9 @@ next-env.d.ts
 # Local temp files
 temp/
 
+# Serwist generated service worker (built from src/app/sw.ts)
+public/sw.js
+public/swe-worker-*.js
+
 # Design system reference (not source code — kept locally for visual reference)
 Lumi Design System/
