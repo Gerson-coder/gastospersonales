@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Local temp files
 temp/
+
+# Design system reference (not source code — kept locally for visual reference)
+Lumi Design System/
