@@ -28,6 +28,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "public/sw.js",
+    "Lumi Design System/**",
+    "scripts/generate-pwa-icons.cjs",
   ]),
   {
     files: ["**/*.ts", "**/*.tsx"],
