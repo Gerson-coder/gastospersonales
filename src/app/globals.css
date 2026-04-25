@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Fonts (Plus Jakarta Sans, Instrument Serif, JetBrains Mono) are loaded
+   via next/font/google in src/app/layout.tsx — this avoids render-blocking
+   CSS @import and keeps the FOUT story under Next's control. */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -16,9 +18,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  --font-sans:    "Plus Jakarta Sans", "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
-  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-sans:    var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    var(--font-jetbrains-mono), ui-monospace, monospace;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
   --font-heading: var(--font-display);
 
   --color-sidebar-ring: var(--sidebar-ring);
