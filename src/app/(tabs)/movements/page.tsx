@@ -25,6 +25,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Search,
   Plus,
@@ -40,9 +41,6 @@ import {
   Circle,
   ArrowLeft,
   X,
-  TrendingUp,
-  TrendingDown,
-  Minus,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -479,245 +477,6 @@ function TransactionRow({ t }: { t: Transaction }) {
   );
 }
 
-// --- Hero summary (this month) --------------------------------------------
-// Mock month-over-month deltas. Real values land with Supabase + FX (Batch B/C).
-// Convention: positive `delta` = "good" for the user's wallet (gasto bajó, ingreso
-// subió, ahorro mayor). The chip color follows that semantic, not the raw sign.
-const MOCK_DELTAS = {
-  spent: { pct: -12, label: "vs marzo" },
-  income: { pct: 18, label: "vs marzo" },
-  net: { pct: 24, label: "vs marzo" },
-} as const;
-
-/**
- * Compact, single-line delta chip used by the hero. Icon + percentage only;
- * the comparison label ("comparado con marzo") lives once in the eyebrow so
- * the chip never wraps inside narrow cells.
- *
- * `tone` is semantic, not raw sign: "positive" = good news for the user
- * (gasto bajó, ingreso subió, ahorro positivo) → emerald; "negative" = bad
- * news → red; "neutral" → muted.
- */
-function DeltaChip({
-  pct,
-  tone,
-}: {
-  pct: number;
-  tone: "positive" | "negative" | "neutral";
-}) {
-  const Icon = pct === 0 ? Minus : pct > 0 ? TrendingUp : TrendingDown;
-  const palette =
-    tone === "positive"
-      ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : tone === "negative"
-        ? "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]"
-        : "bg-muted text-muted-foreground";
-  // Always show absolute %; the icon carries the direction.
-  const display = `${Math.abs(pct)}%`;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums whitespace-nowrap",
-        palette,
-      )}
-    >
-      <Icon size={12} aria-hidden="true" strokeWidth={2.5} />
-      {display}
-    </span>
-  );
-}
-
-/**
- * Secondary KPI cell (Gasto / Ingreso). Rendered as a real <button> so the
- * card itself becomes a filter UI: tap → toggle the matching filter chip on
- * the page. Active state mirrors aria-pressed for screen readers AND uses a
- * subtle bg + inset ring so the active filter is obvious without shouting.
- */
-function HeroKpiButton({
-  label,
-  amount,
-  forceSign,
-  variant,
-  pct,
-  ariaLabel,
-  pressed,
-  onClick,
-}: {
-  label: string;
-  amount: number;
-  forceSign: "+" | "−";
-  variant: "expense" | "income";
-  pct: number;
-  ariaLabel: string;
-  pressed: boolean;
-  onClick: () => void;
-}) {
-  const numberColor =
-    variant === "income"
-      ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : "text-foreground";
-  const dotColor =
-    variant === "income" ? "bg-[oklch(0.65_0.16_162)]" : "bg-foreground/40";
-  // Semantic tone: gasto bajó (pct < 0) = positive; ingreso subió (pct > 0) = positive.
-  const tone: "positive" | "negative" =
-    variant === "expense"
-      ? pct <= 0
-        ? "positive"
-        : "negative"
-      : pct >= 0
-        ? "positive"
-        : "negative";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={pressed}
-      aria-label={ariaLabel}
-      className={cn(
-        // 44px+ tap target, full-cell, left-aligned content. Subtle interactive
-        // surface — restraint over flash. Active state uses an inset ring + bg
-        // lift so it reads as "selected" without competing with the hero.
-        "flex min-h-[64px] w-full flex-col items-start gap-1.5 rounded-xl px-3.5 py-3 text-left",
-        "transition-colors duration-150 ease-out",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        pressed
-          ? "bg-foreground/[0.06] ring-1 ring-inset ring-foreground/15"
-          : "hover:bg-muted/60",
-      )}
-    >
-      <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <span
-          aria-hidden="true"
-          className={cn("inline-block h-1.5 w-1.5 rounded-full", dotColor)}
-        />
-        {label}
-      </span>
-      <span
-        className={cn(
-          "font-display italic leading-none tracking-tight text-[22px] md:text-[26px] tabular-nums whitespace-nowrap",
-          numberColor,
-          pressed && "font-semibold",
-        )}
-        style={{ fontFeatureSettings: '"tnum","lnum"' }}
-      >
-        {forceSign} {formatMoney(amount, "PEN")}
-      </span>
-      <DeltaChip pct={pct} tone={tone} />
-    </button>
-  );
-}
-
-function MonthSummary({
-  spent,
-  income,
-  net,
-  filter,
-  onFilterChange,
-}: {
-  spent: number;
-  income: number;
-  net: number;
-  filter: Filter;
-  onFilterChange: (next: Filter) => void;
-}) {
-  const netPositive = net >= 0;
-  const netTone: "positive" | "negative" = netPositive ? "positive" : "negative";
-  const netColor = netPositive
-    ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-    : "text-destructive";
-
-  // Tap-to-filter: tapping the active cell again returns to "todo" so the card
-  // is a true toggle, not a one-way switch. Both the cells here and the chip
-  // group below the card read/write the same `filter` state on the page.
-  const toggle = (next: Filter) => {
-    onFilterChange(filter === next ? "todo" : next);
-  };
-
-  return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-6 md:p-10">
-      {/* Eyebrow — also carries the comparison ("comparado con marzo") so the
-          delta chips below stay compact (icon + %) and never line-wrap. */}
-      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
-          Este mes · abril
-        </span>
-        <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/80">
-          comparado con marzo
-        </span>
-      </div>
-
-      {/* HERO: NETO. The single most important number — "how am I doing this
-          month?". Centered, oversized, font-display italic. Renders as <dl>
-          for semantic structure (label + value pair, not a control). */}
-      <dl className="mt-6 flex flex-col items-center text-center md:mt-8">
-        <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "inline-block h-1.5 w-1.5 rounded-full",
-              netPositive ? "bg-[oklch(0.65_0.16_162)]" : "bg-destructive",
-            )}
-          />
-          Neto
-        </dt>
-        <dd
-          className={cn(
-            "mt-2 font-display italic leading-[0.95] tracking-tight tabular-nums whitespace-nowrap",
-            "text-[40px] md:text-[56px]",
-            netColor,
-          )}
-          style={{ fontFeatureSettings: '"tnum","lnum"' }}
-        >
-          {netPositive ? "+" : "−"} {formatMoney(Math.abs(net), "PEN")}
-        </dd>
-        <div className="mt-3">
-          <DeltaChip pct={MOCK_DELTAS.net.pct} tone={netTone} />
-        </div>
-      </dl>
-
-      {/* Thin separator — restraint, not a heavy divider. */}
-      <div
-        aria-hidden="true"
-        className="mx-auto my-6 h-px w-full max-w-xs bg-border md:my-8"
-      />
-
-      {/* Secondary KPIs — only TWO cells now (no more cramped 3-col), so the
-          numbers + delta chips never wrap. Each cell is a tappable filter. */}
-      <div className="grid grid-cols-2 gap-2 md:gap-4">
-        <HeroKpiButton
-          label="Gasto"
-          amount={spent}
-          forceSign="−"
-          variant="expense"
-          pct={MOCK_DELTAS.spent.pct}
-          ariaLabel={
-            filter === "gastos"
-              ? "Quitar filtro de gastos"
-              : "Filtrar por gastos"
-          }
-          pressed={filter === "gastos"}
-          onClick={() => toggle("gastos")}
-        />
-        <HeroKpiButton
-          label="Ingreso"
-          amount={income}
-          forceSign="+"
-          variant="income"
-          pct={MOCK_DELTAS.income.pct}
-          ariaLabel={
-            filter === "ingresos"
-              ? "Quitar filtro de ingresos"
-              : "Filtrar por ingresos"
-          }
-          pressed={filter === "ingresos"}
-          onClick={() => toggle("ingresos")}
-        />
-      </div>
-    </Card>
-  );
-}
-
 // --- Filter chips ---------------------------------------------------------
 const FILTERS: ReadonlyArray<{ id: Filter; label: string }> = [
   { id: "todo", label: "Todo" },
@@ -768,8 +527,32 @@ function FilterChips({
 }
 
 // --- Page -----------------------------------------------------------------
+// useSearchParams() forces client-side bailout during static prerender — wrap
+// in <Suspense> so the build can statically prerender the surrounding shell
+// and only the search-param-dependent content streams. Mirrors the pattern
+// used by /receipt.
 export default function MovementsPage() {
-  const [filter, setFilter] = React.useState<Filter>("todo");
+  return (
+    <React.Suspense fallback={null}>
+      <MovementsContent />
+    </React.Suspense>
+  );
+}
+
+function MovementsContent() {
+  // Initial filter is read from the URL ?filter= param so that
+  // /movements?filter=gastos and ?filter=ingresos arrive with the chip
+  // pre-selected. After mount, the chip group fully owns the state — we
+  // do NOT keep it in sync with URL changes (no two-way binding) so the
+  // user can freely change filters without polluting history.
+  const params = useSearchParams();
+  const initialFilter: Filter = (() => {
+    const f = params?.get("filter");
+    if (f === "gastos") return "gastos";
+    if (f === "ingresos") return "ingresos";
+    return "todo";
+  })();
+  const [filter, setFilter] = React.useState<Filter>(initialFilter);
   // Search state — `isSearching` toggles the inline-expand header swap;
   // `query` is the live text. Both reset on close.
   const [isSearching, setIsSearching] = React.useState(false);
@@ -818,20 +601,6 @@ export default function MovementsPage() {
   const trimmedQuery = query.trim();
   const hasActiveQuery = trimmedQuery.length > 0;
   const noResults = hasActiveQuery && groups.length === 0;
-
-  // Month summary uses the FULL dataset, not the filtered view — the hero is
-  // about the month, not the filter. Numbers are PEN-only in mock; the few
-  // USD rows are intentionally excluded from PEN totals.
-  const { spent, income, net } = React.useMemo(() => {
-    let s = 0;
-    let i = 0;
-    for (const t of TRANSACTIONS) {
-      if (t.currency !== "PEN") continue;
-      if (t.kind === "expense") s += t.amount;
-      else i += t.amount;
-    }
-    return { spent: s, income: i, net: i - s };
-  }, []);
 
   // "Empty" splits two cases:
   //   - dataset truly empty (no chip filter active, no query) → onboarding
@@ -911,21 +680,9 @@ export default function MovementsPage() {
           />
         )}
 
-        {/* Month summary hero — intentionally based on the FULL dataset, not
-            the filtered/searched view. The hero is a month-level summary, not
-            a search summary. The hero's secondary cells (Gasto / Ingreso)
-            also act as filter controls — they read/write the same `filter`
-            state used by the chip group below, so both UIs stay in sync. */}
-        <MonthSummary
-          spent={spent}
-          income={income}
-          net={net}
-          filter={filter}
-          onFilterChange={setFilter}
-        />
-
-        {/* Filter chips */}
-        <div className="px-4 pb-3 pt-6 md:px-0 md:pt-8">
+        {/* Filter chips — Movements is now header → chips → list. The
+            month-level hero summary lives on /dashboard. */}
+        <div className="px-4 pb-3 pt-4 md:px-0 md:pt-6">
           <FilterChips value={filter} onChange={setFilter} />
         </div>
 

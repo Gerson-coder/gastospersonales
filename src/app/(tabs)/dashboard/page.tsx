@@ -10,6 +10,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   Camera,
   UtensilsCrossed,
@@ -22,11 +23,10 @@ import {
   GraduationCap,
   Briefcase,
   Circle,
-  TrendingDown,
-  TrendingUp,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import { MonthSummaryCard } from "@/components/lumi/MonthSummaryCard";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 
@@ -213,78 +213,6 @@ function MoneyDisplay({
       {sign}
       {formatMoney(Math.abs(amount), currency)}
     </span>
-  );
-}
-
-// ─── Hero KPI primitives ───────────────────────────────────────────────────
-// Small inline chip used under each KPI to communicate month-over-month
-// change. Semantic mapping: for EXPENSE, lower is better (negative delta →
-// positive tone); for INCOME, higher is better (positive delta → positive
-// tone). The `kind` prop encodes that domain knowledge so callers don't
-// have to think about it.
-function DeltaChip({
-  pct,
-  kind,
-  comparison = "vs marzo",
-}: {
-  pct: number;
-  kind: "expense" | "income";
-  comparison?: string;
-}) {
-  // "Good for the user" check: expenses shrinking, income growing.
-  const isGood = kind === "expense" ? pct < 0 : pct > 0;
-  const Icon = pct < 0 ? TrendingDown : TrendingUp;
-  const toneClass = isGood
-    ? "bg-[oklch(0.72_0.18_162/0.12)] text-[oklch(0.42_0.16_162)] dark:bg-[oklch(0.72_0.18_162/0.18)] dark:text-[oklch(0.86_0.14_162)]"
-    : "bg-destructive/10 text-destructive dark:bg-destructive/20";
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold tabular-nums ${toneClass}`}
-    >
-      <Icon size={11} aria-hidden="true" strokeWidth={2.5} />
-      <span>
-        {Math.abs(pct * 100).toFixed(0)}%
-      </span>
-      <span className="font-medium opacity-70">{comparison}</span>
-    </span>
-  );
-}
-
-// One column of the hero KPI row — label, money, delta chip. Internal
-// vertical rhythm is calibrated so the chip sits one breath below the
-// number, not glued to it.
-function KpiBlock({
-  label,
-  amount,
-  currency,
-  deltaPct,
-  kind,
-}: {
-  label: string;
-  amount: number;
-  currency: Currency;
-  deltaPct: number;
-  kind: "expense" | "income";
-}) {
-  const isIncome = kind === "income";
-  return (
-    <div className="min-w-0">
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
-        {label}
-      </div>
-      <div className="mt-2.5">
-        <MoneyDisplay
-          amount={amount}
-          currency={currency}
-          size="md"
-          tone={isIncome ? "positive" : "default"}
-          showSign={isIncome}
-        />
-      </div>
-      <div className="mt-3">
-        <DeltaChip pct={deltaPct} kind={kind} />
-      </div>
-    </div>
   );
 }
 
@@ -572,14 +500,31 @@ export default function DashboardPage() {
     }
   }, [currency, currencyHydrated]);
 
+  const router = useRouter();
   const { name, hydrated } = useUserName();
-  const balance = 4820.1;
-  const spent = 2180.4;
-  const income = 4200.0;
-  // Spend delta vs previous month: negative means we spent LESS (good).
-  const spentDelta = -0.08;
-  // Income delta vs previous month: positive means earned MORE (good).
-  const incomeDelta = 0.12;
+  // Compute month totals from the (mock) transactions so the hero card and the
+  // Distribución copy stay in sync. Real impl will swap TRANSACTIONS for
+  // Supabase data once Batch B/C lands.
+  const spent = React.useMemo(
+    () =>
+      TRANSACTIONS.filter((t) => t.kind === "expense").reduce(
+        (s, t) => s + t.amount,
+        0,
+      ),
+    [],
+  );
+  const income = React.useMemo(
+    () =>
+      TRANSACTIONS.filter((t) => t.kind === "income").reduce(
+        (s, t) => s + t.amount,
+        0,
+      ),
+    [],
+  );
+  // Mock month-over-month deltas (mirrors values used in Movements). Real
+  // values land with Supabase + FX. Convention: fractional, e.g. -0.12 = -12%.
+  const spentDelta = -0.12;
+  const incomeDelta = 0.18;
   const recent = TRANSACTIONS.slice(0, 5);
   const weekTotal = WEEK_SPEND.reduce((a, d) => a + d.value, 0);
 
@@ -599,57 +544,28 @@ export default function DashboardPage() {
           onCurrencyToggle={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
         />
 
-        {/* Hero balance */}
-        <Card className="relative mx-4 mt-6 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8 md:p-10">
-          {/* Subtle emerald aurora — anchors brand without screaming. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(ellipse at 80% 0%, oklch(0.72 0.18 162 / 0.10) 0%, transparent 60%)",
-            }}
-          />
-          <div className="relative">
-            {/* Primary label — neutral dot keeps hierarchy without screaming brand */}
-            <div className="flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 rounded-full bg-foreground/40"
-              />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/80">
-                Disponible · abril
-              </span>
-            </div>
-
-            {/* Hero amount — dominant element, isolated with generous breathing */}
-            <div className="mt-4">
-              <MoneyDisplay amount={balance} currency={currency} size="hero" />
-            </div>
-
-            {/* KPI row — equal columns, hairline divider, supporting role */}
-            <div className="mt-10 grid grid-cols-[1fr_1px_1fr] items-stretch gap-5 md:mt-12 md:gap-8">
-              <KpiBlock
-                label="Gastado"
-                amount={spent}
-                currency={currency}
-                deltaPct={spentDelta}
-                kind="expense"
-              />
-              <div
-                className="bg-border/60"
-                aria-hidden="true"
-              />
-              <KpiBlock
-                label="Ingresos"
-                amount={income}
-                currency={currency}
-                deltaPct={incomeDelta}
-                kind="income"
-              />
-            </div>
-          </div>
-        </Card>
+        {/* Hero — vertical "Este mes · abril" summary card. Tapping a KPI
+            cell navigates to /movements with the matching filter pre-applied
+            (Movements reads ?filter= from the URL on mount). Dashboard does
+            not track filter state, so we omit `filter` and just route. */}
+        <MonthSummaryCard
+          eyebrow="Este mes · abril"
+          comparison="comparado con marzo"
+          spent={spent}
+          income={income}
+          currency={currency}
+          spentDelta={spentDelta}
+          incomeDelta={incomeDelta}
+          onFilterChange={(next) => {
+            if (next === "all") {
+              router.push("/movements");
+            } else if (next === "expense") {
+              router.push("/movements?filter=gastos");
+            } else {
+              router.push("/movements?filter=ingresos");
+            }
+          }}
+        />
 
         {/* Desktop grid wrapper: Weekly bars + Donut side by side on md+ */}
         <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
