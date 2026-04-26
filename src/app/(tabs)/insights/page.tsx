@@ -336,7 +336,7 @@ function MonthBars({ months, currency }: { months: MonthBucket[]; currency: Curr
       viewBox={`0 0 ${w} ${h}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="Comparativa mensual de gastos — tocá un mes para ver el monto"
+      aria-label="Comparativa mensual de gastos — toca un mes para ver el monto"
     >
       <defs>
         <linearGradient id="lumi-insights-month-current" x1="0" x2="0" y1="0" y2="1">
@@ -1003,8 +1003,8 @@ function EmptyInsightsCard({ currency }: { currency: Currency }) {
           Aún no hay datos para analizar
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-          Sin movimientos en {currency} para mostrar comparativas. Registrá tu
-          primer movimiento y volvé acá.
+          Sin movimientos en {currency} para mostrar comparativas. Registra tu
+          primer movimiento y vuelve aquí.
         </p>
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
           <Link
@@ -1196,7 +1196,7 @@ export default function InsightsPage() {
           : `Este mes gastaste ${pct}% más que en ${prevBucket.label}`,
         body: less
           ? "Mantené el ritmo en las próximas semanas."
-          : "Revisá las categorías que más subieron.",
+          : "Revisa las categorías que más subieron.",
         tone: less ? "positive" : "negative",
         Icon: Sparkles,
       });

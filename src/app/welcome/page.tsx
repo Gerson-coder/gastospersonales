@@ -55,17 +55,17 @@ const ORIENTATION_CARDS: readonly OrientationCard[] = [
   {
     icon: Sparkles,
     title: "Capturar",
-    description: "Registrá un gasto en 3 toques.",
+    description: "Registra un gasto en 3 toques.",
   },
   {
     icon: Tag,
     title: "Categorías",
-    description: "Personalizá las categorías a tu vida.",
+    description: "Personaliza las categorías a tu vida.",
   },
   {
     icon: BarChart3,
     title: "Insights",
-    description: "Mirá a dónde se va tu plata.",
+    description: "Mira a dónde se va tu plata.",
   },
 ] as const;
 
@@ -284,7 +284,7 @@ function NameStep({
               id="welcome-name-hint"
               className="text-[12px] leading-relaxed text-muted-foreground"
             >
-              Podés cambiarlo después en Ajustes.
+              Puedes cambiarlo después en Ajustes.
             </p>
           )}
         </div>

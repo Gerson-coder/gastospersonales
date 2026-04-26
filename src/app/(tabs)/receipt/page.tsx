@@ -428,7 +428,7 @@ function FailedState({
       <div>
         <h1 className="font-display text-3xl italic leading-tight">No pude leer el ticket</h1>
         <p className="mt-2 max-w-[30ch] text-sm text-muted-foreground">
-          La imagen salió borrosa o no encontré los datos. Probá con buena luz y enfoque.
+          La imagen salió borrosa o no encontré los datos. Prueba con buena luz y enfoque.
         </p>
       </div>
       <div className="flex w-full flex-col gap-2">

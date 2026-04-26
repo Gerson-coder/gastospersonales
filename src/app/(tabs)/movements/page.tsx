@@ -814,7 +814,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
           No pudimos cargar tus movimientos.
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Revisá tu conexión y volvé a intentarlo.
+          Revisa tu conexión y vuelve a intentarlo.
         </p>
       </div>
       <Button
@@ -848,7 +848,7 @@ function NoSearchResults({ query }: { query: string }) {
           Sin resultados para «{query}»
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Probá con otra palabra.
+          Prueba con otra palabra.
         </p>
       </div>
     </div>
@@ -913,7 +913,7 @@ function EmptyState({ currency }: { currency: Currency }) {
       </div>
       <div>
         <h2 className="text-lg font-bold">
-          Todavía no tenés movimientos en {currency}.
+          Todavía no tienes movimientos en {currency}.
         </h2>
         <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
           Cuando registres tu primer gasto o ingreso, aparecerá aquí agrupado

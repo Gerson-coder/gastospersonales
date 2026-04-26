@@ -204,7 +204,7 @@ export default function AccountsPage() {
               <AccountsSkeleton />
             ) : accounts.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Todavía no tenés cuentas. Tocá <span className="font-semibold">Agregar cuenta</span> para crear una.
+                Todavía no tienes cuentas. Toca <span className="font-semibold">Agregar cuenta</span> para crear una.
               </div>
             ) : (
               <ul className="divide-y divide-border" role="list">
@@ -452,8 +452,8 @@ function AccountFormSheet({
   const title = mode === "create" ? "Nueva cuenta" : "Editar cuenta";
   const description =
     mode === "create"
-      ? "Dale un nombre, tipo y moneda."
-      : "Actualizá nombre, tipo o moneda. También podés archivarla.";
+      ? "Asigna un nombre, tipo y moneda."
+      : "Actualiza nombre, tipo o moneda. También puedes archivarla.";
 
   const errorId = "account-label-error";
 

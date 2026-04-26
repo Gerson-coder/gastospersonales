@@ -201,7 +201,7 @@ export async function createMerchant(draft: MerchantDraft): Promise<Merchant> {
     );
   }
   if (!draft.categoryId) {
-    throw new Error("Tenés que elegir una categoría para el comercio.");
+    throw new Error("Tienes que elegir una categoría para el comercio.");
   }
 
   const { data, error } = await supabase
@@ -217,12 +217,12 @@ export async function createMerchant(draft: MerchantDraft): Promise<Merchant> {
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       throw new Error(
-        "Ya tenés un comercio con ese nombre en esta categoría.",
+        "Ya tienes un comercio con ese nombre en esta categoría.",
       );
     }
     if (isMissingFeatureError(error.code)) {
       throw new Error(
-        "El feature de comercios no está disponible todavía. Pedile al admin que aplique las migraciones.",
+        "El feature de comercios no está disponible todavía. Pide al admin que aplique las migraciones.",
       );
     }
     throw new Error(error.message || "No pudimos crear el comercio.");
@@ -266,17 +266,17 @@ export async function updateMerchant(
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       throw new Error(
-        "Ya tenés un comercio con ese nombre en esta categoría.",
+        "Ya tienes un comercio con ese nombre en esta categoría.",
       );
     }
     // RLS returns no row when the update is not permitted — supabase-js
     // surfaces this as PGRST116 ("Results contain 0 rows"). Translate.
     if (error.code === "PGRST116") {
-      throw new Error("No podés editar los comercios del sistema.");
+      throw new Error("No puedes editar los comercios del sistema.");
     }
     if (isMissingFeatureError(error.code)) {
       throw new Error(
-        "El feature de comercios no está disponible todavía. Pedile al admin que aplique las migraciones.",
+        "El feature de comercios no está disponible todavía. Pide al admin que aplique las migraciones.",
       );
     }
     throw new Error(error.message || "No pudimos actualizar el comercio.");
@@ -301,11 +301,11 @@ export async function archiveMerchant(id: string): Promise<void> {
 
   if (error) {
     if (error.code === "PGRST116") {
-      throw new Error("No podés archivar los comercios del sistema.");
+      throw new Error("No puedes archivar los comercios del sistema.");
     }
     if (isMissingFeatureError(error.code)) {
       throw new Error(
-        "El feature de comercios no está disponible todavía. Pedile al admin que aplique las migraciones.",
+        "El feature de comercios no está disponible todavía. Pide al admin que aplique las migraciones.",
       );
     }
     throw new Error(error.message || "No pudimos archivar el comercio.");
@@ -313,6 +313,6 @@ export async function archiveMerchant(id: string): Promise<void> {
 
   if (!data) {
     // RLS quietly returned 0 rows — likely a system merchant.
-    throw new Error("No podés archivar los comercios del sistema.");
+    throw new Error("No puedes archivar los comercios del sistema.");
   }
 }

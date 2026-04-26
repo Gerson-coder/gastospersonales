@@ -177,7 +177,7 @@ export function toInsertPayload(
     throw new Error("Moneda inválida.");
   }
   if (!draft.accountId) {
-    throw new Error("Tenés que elegir una cuenta.");
+    throw new Error("Tienes que elegir una cuenta.");
   }
 
   const amountMinor = Math.round(draft.amount * 100);

@@ -778,7 +778,7 @@ function CategoriesCardLive() {
                 Tus categorías personalizadas aparecen acá.
               </p>
               <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
-                Agregá las que uses seguido para capturar más rápido.
+                Agrega las que uses seguido para capturar más rápido.
               </p>
               <button
                 type="button"
@@ -813,7 +813,7 @@ function CategoriesCardLive() {
           <CategoriesSkeleton />
         ) : items.length === 0 ? (
           <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-            No tenés categorías todavía.
+            No tienes categorías todavía.
           </p>
         ) : (
           <ul className="divide-y divide-border" role="list">

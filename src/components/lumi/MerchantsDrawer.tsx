@@ -171,7 +171,7 @@ export function MerchantsDrawer({
           <DrawerHeader>
             <DrawerTitle>Comercios de {categoryName}</DrawerTitle>
             <DrawerDescription id="merchants-drawer-desc">
-              Elegí dónde ocurrió este movimiento o creá uno nuevo.
+              Elige dónde ocurrió este movimiento o crea uno nuevo.
             </DrawerDescription>
           </DrawerHeader>
 
@@ -216,7 +216,7 @@ export function MerchantsDrawer({
             ) : isEmpty ? (
               <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
                 <p className="text-[13px] leading-snug text-muted-foreground">
-                  Todavía no hay comercios en esta categoría. Creá el primero.
+                  Todavía no hay comercios en esta categoría. Crea el primero.
                 </p>
                 <Button
                   type="button"

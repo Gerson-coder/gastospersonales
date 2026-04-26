@@ -32,6 +32,16 @@ A personal finance PWA for tracking expenses and income. Optimized for fast mobi
 - 2-space indentation
 - Mobile-first responsive design
 
+## Copy / i18n
+
+- All user-facing copy MUST be in **neutral Spanish (es)**, NOT Argentine voseo (es-AR).
+- Forbidden patterns: voseo verb conjugations (`tenés`, `querés`, `podés`, `sabés`, `sos`, `decís`, etc.), voseo imperatives ending in tonic syllable (`tocá`, `mirá`, `ingresá`, `andá`, `vení`, `creá`, `elegí`, `agregá`, `registrá`, `actualizá`, `completá`, `personalizá`, `volvé`, `probá`, `revisá`, `cambiá`, `pedile`, etc.), and the pronoun `vos`.
+- Use neutral equivalents instead: `tienes`, `quieres`, `puedes`, `sabes`, `eres`, `dices`, `toca`, `mira`, `ingresa`, `ve`, `ven`, `crea`, `elige`, `agrega`, `registra`, `actualiza`, `completa`, `personaliza`, `vuelve`, `prueba`, `revisa`, `cambia`, `pide`, `tú`.
+- Compound voseo phrases also forbidden: `vas a poder` → `podrás`; `tenés que` → `tienes que`; `dale un nombre` → `asigna un nombre`.
+- Applies to: JSX strings, toast/error messages, form labels and placeholders, `aria-label`s, thrown `Error` messages surfaced to the UI, email templates in `supabase/email-templates/`, and any user-visible markdown.
+- Does NOT apply to: code identifiers, JSDoc/inline comments, technical docs, commit messages.
+- When adding new copy, prefer infinitive or neutral-imperative forms ("Iniciar sesión", "Crear cuenta", "Confirmar correo"). When in doubt, run `rg -i '\b(tenés|podés|querés|tocá|creá|registrá|elegí|completá|cambiá|volvé|probá|revisá|actualizá|ingresá|agregá|personalizá|pedile)\b' src/` before committing — expected: zero matches.
+
 ## MVP Scope (v1)
 
 - Quick expense/income capture with category

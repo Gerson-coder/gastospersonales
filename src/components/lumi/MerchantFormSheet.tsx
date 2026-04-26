@@ -130,7 +130,7 @@ export function MerchantFormSheet(props: Props) {
   const description = readOnly
     ? "Los comercios del sistema están disponibles para todos."
     : isEdit
-      ? "Cambiá el nombre. La categoría no se puede mover desde acá."
+      ? "Cambia el nombre. La categoría no se puede mover desde acá."
       : props.mode === "create"
         ? `Nuevo comercio en ${props.categoryName}.`
         : "";
@@ -164,7 +164,7 @@ export function MerchantFormSheet(props: Props) {
 
           <p className="mt-3 text-[12px] leading-snug text-muted-foreground">
             Este comercio viene incluido con Lumi. No se puede editar ni
-            archivar — pero podés crear los tuyos para personalizar tus listas.
+            archivar — pero puedes crear los tuyos para personalizar tus listas.
           </p>
 
           <SheetFooter className="mt-4 flex-col-reverse gap-2 px-0 md:flex-row md:justify-end">

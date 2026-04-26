@@ -116,7 +116,7 @@ export async function createCategory(draft: CategoryDraft): Promise<Category> {
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      throw new Error("Ya tenés una categoría con ese nombre.");
+      throw new Error("Ya tienes una categoría con ese nombre.");
     }
     throw new Error(error.message || "No pudimos crear la categoría.");
   }
@@ -158,12 +158,12 @@ export async function updateCategory(
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      throw new Error("Ya tenés una categoría con ese nombre.");
+      throw new Error("Ya tienes una categoría con ese nombre.");
     }
     // RLS returns no row when the update is not permitted — supabase-js
     // surfaces this as PGRST116 ("Results contain 0 rows"). Translate.
     if (error.code === "PGRST116") {
-      throw new Error("No podés editar las categorías del sistema.");
+      throw new Error("No puedes editar las categorías del sistema.");
     }
     throw new Error(error.message || "No pudimos actualizar la categoría.");
   }
@@ -187,13 +187,13 @@ export async function archiveCategory(id: string): Promise<void> {
 
   if (error) {
     if (error.code === "PGRST116") {
-      throw new Error("No podés archivar las categorías del sistema.");
+      throw new Error("No puedes archivar las categorías del sistema.");
     }
     throw new Error(error.message || "No pudimos archivar la categoría.");
   }
 
   if (!data) {
     // RLS quietly returned 0 rows — likely a system category.
-    throw new Error("No podés archivar las categorías del sistema.");
+    throw new Error("No puedes archivar las categorías del sistema.");
   }
 }

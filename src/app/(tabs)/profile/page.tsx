@@ -294,7 +294,7 @@ export default function ProfilePage() {
             <SheetHeader className="px-0">
               <SheetTitle id="editname-title">Editar nombre</SheetTitle>
               <SheetDescription>
-                Así te llamamos en Lumi. Podés cambiarlo cuando quieras.
+                Así te llamamos en Lumi. Puedes cambiarlo cuando quieras.
               </SheetDescription>
             </SheetHeader>
             <div className="mt-2 px-0 pb-2">

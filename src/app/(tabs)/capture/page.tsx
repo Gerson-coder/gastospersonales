@@ -616,11 +616,11 @@ function CapturePageInner() {
     if (!online) {
       // Offline guard — Save is also disabled in the UI; this is the
       // belt-and-braces backup.
-      toast.error("Sin conexión — vas a poder guardar cuando vuelva la red.");
+      toast.error("Sin conexión — podrás guardar cuando vuelva la red.");
       return;
     }
     if (!categoryId || !accountId || amount <= 0) {
-      toast.error("Completá monto, categoría y cuenta para guardar.");
+      toast.error("Completa monto, categoría y cuenta para guardar.");
       return;
     }
 
@@ -833,7 +833,7 @@ function CapturePageInner() {
             aria-live="polite"
             className="mx-4 mt-3 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
           >
-            Sin conexión — vas a poder guardar cuando vuelva la red.
+            Sin conexión — podrás guardar cuando vuelva la red.
           </div>
         ) : null}
 
@@ -937,7 +937,7 @@ function CapturePageInner() {
               </>
             ) : (
               <span className="flex-1 text-[13px] font-medium text-muted-foreground">
-                Sin cuentas — creá una en /cuentas
+                Sin cuentas — crea una en /cuentas
               </span>
             )}
           </button>
@@ -1031,7 +1031,7 @@ function CapturePageInner() {
               : categories.length === 0
                 ? (
                     <p className="col-span-3 py-6 text-center text-[13px] text-muted-foreground">
-                      No tenés categorías todavía. Creá una en Ajustes.
+                      No tienes categorías todavía. Crea una en Ajustes.
                     </p>
                   )
                 : categories.map((c) => {

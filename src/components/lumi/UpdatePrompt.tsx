@@ -44,7 +44,7 @@ export function UpdatePrompt() {
           Nueva versión disponible
         </p>
         <p className="text-sm text-muted-foreground leading-tight">
-          Actualizá para ver las novedades.
+          Actualiza para ver las novedades.
         </p>
       </div>
       <Button size="sm" onClick={applyUpdate} className="h-9 shrink-0 px-3">

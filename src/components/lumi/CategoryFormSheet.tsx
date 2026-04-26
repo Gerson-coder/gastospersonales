@@ -136,8 +136,8 @@ export function CategoryFormSheet(props: Props) {
   const description = readOnly
     ? "Las categorías del sistema están disponibles para todos."
     : isEdit
-      ? "Cambiá el nombre o el ícono. El tipo no se puede modificar."
-      : "Elegí un nombre, un tipo y un ícono.";
+      ? "Cambia el nombre o el ícono. El tipo no se puede modificar."
+      : "Elige un nombre, un tipo y un ícono.";
 
   // Read-only info card for system categories — replaces the disabled form
   // with a single, calm presentation of the category + a Cerrar button.
@@ -175,7 +175,7 @@ export function CategoryFormSheet(props: Props) {
 
           <p className="mt-3 text-[12px] leading-snug text-muted-foreground">
             Esta categoría viene incluida con Lumi. No se puede editar ni
-            archivar — pero podés crear las tuyas para personalizar tus listas.
+            archivar — pero puedes crear las tuyas para personalizar tus listas.
           </p>
 
           <SheetFooter className="mt-4 flex-col-reverse gap-2 px-0 md:flex-row md:justify-end">

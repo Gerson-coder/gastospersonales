@@ -532,7 +532,7 @@ function WeeklyBars({
       viewBox={`0 0 ${w} ${height}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="Gasto de los últimos 7 días — tocá un día para ver el monto"
+      aria-label="Gasto de los últimos 7 días — toca un día para ver el monto"
     >
       <defs>
         <linearGradient id="lumi-dashboard-week-today" x1="0" x2="0" y1="0" y2="1">
@@ -736,10 +736,10 @@ function EmptyDashboardCard({ currency }: { currency: Currency }) {
           <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
         </span>
         <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
-          Todavía no tenés movimientos en {currency}
+          Todavía no tienes movimientos en {currency}
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-          Registrá un gasto o ingreso para ver acá tu evolución, tus
+          Registra un gasto o ingreso para ver aquí tu evolución, tus
           categorías y tus últimas transacciones.
         </p>
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
@@ -774,7 +774,7 @@ function DashboardErrorCard({ onRetry }: { onRetry: () => void }) {
             No pudimos cargar movimientos
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-            Revisá tu conexión y volvé a intentar.
+            Revisa tu conexión y vuelve a intentar.
           </p>
           <button
             type="button"
