@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title>Confirma tu cuenta de Lumi</title>
+    <!--[if mso]>
+      <style type="text/css">
+        table, td, div, h1, p { font-family: Arial, sans-serif !important; }
+      </style>
+    <![endif]-->
+  </head>
+  <body style="margin:0; padding:0; background-color:#f6f5f1; -webkit-text-size-adjust:100%;">
+    <!-- Hidden preheader: shows up in inbox preview pane -->
+    <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f6f5f1;">
+      Confirma tu correo para empezar a usar Lumi.
+    </div>
+
+    <!-- Outer wrapper -->
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f6f5f1;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+
+          <!-- Brand wordmark -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%;">
+            <tr>
+              <td align="center" style="padding:0 0 20px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size:22px; font-weight:700; letter-spacing:-0.01em; color:#1a3d33;">
+                Lumi
+              </td>
+            </tr>
+          </table>
+
+          <!-- Card -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:16px; border:1px solid #e7e5dc; box-shadow:0 1px 2px rgba(20,30,25,0.04);">
+            <tr>
+              <td style="padding:40px 32px 32px 32px; font-family: 'Helvetica Neue', Arial, sans-serif; color:#1c1c1a;">
+
+                <!-- Icon badge -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 24px auto;">
+                  <tr>
+                    <td align="center" valign="middle" width="56" height="56" style="background-color:#e6f4ed; border-radius:28px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:24px; font-weight:700; color:#1a8a5f; line-height:56px; text-align:center;">
+                      &#10004;
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Headline -->
+                <h1 style="margin:0 0 12px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size:28px; line-height:1.2; letter-spacing:-0.02em; color:#1c1c1a; text-align:center; font-weight:700;">
+                  Confirma tu cuenta
+                </h1>
+
+                <!-- Body copy -->
+                <p style="margin:0 0 28px 0; font-size:15px; line-height:1.55; color:#5b5b55; text-align:center;">
+                  Toca el botón para confirmar tu correo y empezar a usar Lumi.
+                </p>
+
+                <!-- CTA button -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+                  <tr>
+                    <td align="center" bgcolor="#15805a" style="border-radius:12px; background-color:#15805a;">
+                      <a
+                        href="{{ .ConfirmationURL }}"
+                        target="_blank"
+                        style="display:inline-block; padding:14px 32px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:15px; font-weight:600; line-height:1.2; color:#ffffff; text-decoration:none; border-radius:12px; background-color:#15805a; mso-padding-alt:0;"
+                      >
+                        Confirmar correo
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Fallback link -->
+                <p style="margin:28px 0 0 0; font-size:13px; line-height:1.55; color:#7a7a72; text-align:center;">
+                  Si el botón no funciona, copia y pega este enlace en tu navegador:
+                </p>
+                <p style="margin:8px 0 0 0; font-size:12px; line-height:1.5; color:#15805a; text-align:center; word-break:break-all;">
+                  <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#15805a; text-decoration:underline;">{{ .ConfirmationURL }}</a>
+                </p>
+
+                <!-- Divider -->
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:32px;">
+                  <tr>
+                    <td style="border-top:1px solid #ececdf; line-height:1px; font-size:1px; height:1px;">&nbsp;</td>
+                  </tr>
+                </table>
+
+                <!-- Security note -->
+                <p style="margin:24px 0 0 0; font-size:12px; line-height:1.6; color:#8a8a82; text-align:center;">
+                  Si no creaste esta cuenta, ignora este correo. No se activará nada hasta que abras el enlace.
+                </p>
+                <p style="margin:6px 0 0 0; font-size:12px; line-height:1.6; color:#8a8a82; text-align:center;">
+                  Por seguridad, este enlace vence en poco tiempo.
+                </p>
+
+              </td>
+            </tr>
+          </table>
+
+          <!-- Footer -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%;">
+            <tr>
+              <td align="center" style="padding:24px 16px 0 16px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; line-height:1.6; color:#9a9a90;">
+                Lumi &middot; Tus finanzas, tranquilas.<br />
+                Este correo fue enviado a {{ .Email }}.
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+
+<!--
+  USO:
+  1. Supabase Dashboard → Authentication → Email Templates → "Confirm signup"
+  2. Pegar este HTML en el campo de body
+  3. Verificar que las variables {{ .ConfirmationURL }} y {{ .Email }}
+     queden intactas — Supabase las reemplaza al enviar.
+  4. Save. Prueba creando una cuenta nueva y verifica recepción
+     en Gmail (web + iOS), Apple Mail y Outlook.
+
+  NOTAS:
+  - Color brand (#15805a) elegido para aproximar el primary oklch(0.53 0.17 162)
+    del proyecto (verde esmeralda Lumi).
+  - El fondo "#f6f5f1" replica el bg cálido warm-tinted del light mode.
+  - No hay imágenes externas a propósito: muchos clients bloquean por defecto.
+  - El icono de check usa entity HTML (&#10004;) para evitar inconsistencias
+    entre Outlook (que no renderiza emojis bien) y mobile.
+-->

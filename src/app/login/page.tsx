@@ -1,29 +1,37 @@
 /**
  * Login route — Lumi
  *
- * Two modes, branched at runtime by the presence of NEXT_PUBLIC_SUPABASE_URL
- * (Next inlines NEXT_PUBLIC_* at build time, so the check works in the
- * browser bundle):
+ * Two macro-modes, branched at runtime by the presence of NEXT_PUBLIC_SUPABASE_URL
+ * (Next inlines NEXT_PUBLIC_* at build time, so the check works in the browser
+ * bundle):
  *
- *   1. Envs PRESENT  → real Supabase magic-link OTP. Submitting the email
- *      calls `supabase.auth.signInWithOtp`, which mails a one-tap link that
- *      lands at `/auth/callback`. The callback exchanges the code for a
- *      session cookie and inspects `profiles.display_name` to decide whether
- *      to send the user to /welcome (first login) or /dashboard.
+ *   1. Envs PRESENT  → real Supabase email + password flow with five sub-modes:
+ *        - "signin"        → sign in with email + password
+ *        - "signup"        → create account (email + password + confirm)
+ *        - "signup-sent"   → "check your inbox to confirm"
+ *        - "forgot"        → request a password-reset email
+ *        - "forgot-sent"   → "check your inbox for the reset link"
  *
- *   2. Envs ABSENT   → name-only stub (offline preview / demo). The original
- *      onboarding: enter name → persist to localStorage under `lumi-user-name`
- *      → /dashboard. Lets `npm run dev` work without a Supabase project.
+ *      Magic-link is no longer the primary path. The /auth/callback route still
+ *      handles `?code=` exchanges (signup confirmation, password reset, and any
+ *      stray magic links Supabase might still issue via OTP).
  *
- * Both modes share the brand wordmark, the headline, the radial-glow hero
- * backdrop, and the legal footer.
+ *   2. Envs ABSENT   → name-only stub (offline preview / demo). Enter name,
+ *      persist to localStorage, jump to /dashboard. Lets `npm run dev` work
+ *      without a Supabase project.
+ *
+ * Layout: the form card is centered both vertically and horizontally inside
+ * a `min-h-[100dvh] flex items-center justify-center` shell so it sits in the
+ * middle of the viewport on every screen size. We use `100dvh` (dynamic
+ * viewport height) instead of `100vh` to avoid the mobile Chrome address-bar
+ * jump that pushes the card off-screen when the URL bar collapses/expands.
  */
 
 "use client";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, MailCheck } from "lucide-react";
+import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -34,8 +42,6 @@ import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
 
 // Runtime feature flag: do we have Supabase wired up?
-// Next.js inlines NEXT_PUBLIC_* at build time, so this constant is folded
-// into the browser bundle as a literal `true` or `false`.
 const SUPABASE_ENABLED =
   typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
@@ -43,18 +49,24 @@ const SUPABASE_ENABLED =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // Maps the `?error=` codes that /auth/callback may send back to user-facing
-// copy. Anything not listed falls through to the generic message so unknown
-// Supabase error strings (which we URL-encode raw) never leak to the UI.
+// copy. Anything not listed falls through to the generic message.
 const ERROR_MESSAGES: Record<string, string> = {
   missing_code: "El enlace no es válido. Pide uno nuevo.",
   auth_disabled: "El inicio de sesión no está activo en este entorno.",
 };
 const GENERIC_ERROR = "No pudimos iniciarte sesión. Inténtalo de nuevo.";
 
-// Cooldown between magic-link resends. Long enough to discourage spamming
-// the SMTP queue, short enough that a user who just cleared their inbox can
-// retry without rage-quitting.
+// Cooldown between "resend confirmation/reset" clicks. Long enough to
+// discourage spamming the SMTP queue, short enough to retry without rage.
 const RESEND_COOLDOWN_SECONDS = 30;
+
+// Min password length enforced on the client. Supabase enforces a server-side
+// minimum too (default 6, configurable). 8 is a friendlier default.
+const MIN_PASSWORD_LENGTH = 8;
+
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type AuthMode = "signin" | "signup" | "signup-sent" | "forgot" | "forgot-sent";
 
 export default function LoginPage() {
   // useSearchParams() forces this subtree to be client-rendered, so wrap the
@@ -73,41 +85,37 @@ function LoginInner() {
     ? (ERROR_MESSAGES[errorParam] ?? GENERIC_ERROR)
     : null;
 
+  // ?mode=forgot lets external callers (e.g. the "link expired" page on
+  // /auth/reset-password) deep-link straight into the forgot-password screen.
+  const initialMode: AuthMode =
+    searchParams.get("mode") === "forgot" ? "forgot" : "signin";
+
   return (
-    <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
-      {/* Hero glow — a soft primary-soft radial gradient that sits behind the
-          wordmark and headline. Pointer-events-none so it never interferes
-          with form interaction. Pinned to the top of the shell on mobile and
-          floats behind the card on desktop. */}
+    <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
       <HeroGlow />
 
-      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
+      <div className="relative w-full max-w-[440px]">
         <section
           aria-labelledby="login-heading"
-          className="animate-in fade-in slide-in-from-bottom-2 duration-500"
+          className="animate-in fade-in slide-in-from-bottom-2 duration-500 rounded-2xl border border-border bg-card p-6 shadow-card md:p-8"
         >
-          <div className="text-center">
-            <h1
-              id="login-heading"
-              className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
-            >
-              Bienvenido a Lumi
-            </h1>
-          </div>
-
           {errorMessage ? (
             <div
               role="alert"
-              className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive"
+              className="mb-5 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive"
             >
               {errorMessage}
             </div>
           ) : null}
 
-          {SUPABASE_ENABLED ? <EmailMagicLinkForm /> : <NameOnlyForm />}
+          {SUPABASE_ENABLED ? (
+            <PasswordAuthForm initialMode={initialMode} />
+          ) : (
+            <NameOnlyForm />
+          )}
         </section>
 
-        <footer className="mt-auto pt-12">
+        <footer className="mt-8">
           <nav
             aria-label="Legal"
             className="flex justify-center gap-5 text-[12px] text-muted-foreground"
@@ -132,29 +140,23 @@ function LoginInner() {
   );
 }
 
-// Empty shell shown while Suspense resolves useSearchParams. Renders the
-// brand chrome so there's no flash of nothing.
 function LoginShell() {
   return (
-    <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
+    <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
       <HeroGlow />
-      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8" />
+      <div className="relative w-full max-w-[440px]">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8" />
+      </div>
     </main>
   );
 }
 
 // ─── Hero visual ──────────────────────────────────────────────────────────
-/**
- * A soft radial-gradient backdrop using `--color-primary-soft` at low alpha
- * so it picks up the brand emerald in light mode and a muted teal-shaded
- * version in dark mode without ever touching the headline contrast. We avoid
- * an SVG/illustration on purpose — Lumi is calm, not Stripe-y.
- */
 function HeroGlow() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[360px] overflow-hidden md:rounded-2xl"
+      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[360px] overflow-hidden"
     >
       <div
         className="absolute left-1/2 top-[-120px] h-[420px] w-[420px] -translate-x-1/2 rounded-full opacity-70"
@@ -163,6 +165,96 @@ function HeroGlow() {
             "radial-gradient(closest-side, var(--color-primary-soft), transparent 70%)",
         }}
       />
+    </div>
+  );
+}
+
+// ─── Header (heading + subtitle, varies per mode) ─────────────────────────
+function ModeHeading({ mode }: { mode: AuthMode }) {
+  const subtitle = SUBTITLE_BY_MODE[mode];
+  return (
+    <header className="text-center">
+      <h1
+        id="login-heading"
+        className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
+      >
+        Bienvenido a Lumi
+      </h1>
+      {subtitle ? (
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          {subtitle}
+        </p>
+      ) : null}
+    </header>
+  );
+}
+
+const SUBTITLE_BY_MODE: Record<AuthMode, string> = {
+  signin: "Inicia sesión con tu email y contraseña.",
+  signup: "Crea tu cuenta para empezar.",
+  "signup-sent": "Revisa tu correo",
+  forgot: "Recuperar contraseña",
+  "forgot-sent": "Te enviamos un enlace",
+};
+
+// ─── Password-visibility toggle input ─────────────────────────────────────
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  autoComplete,
+  disabled,
+  ariaInvalid,
+  ariaDescribedBy,
+  placeholder,
+  autoFocus,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete: string;
+  disabled?: boolean;
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  const [visible, setVisible] = React.useState(false);
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        name={id}
+        type={visible ? "text" : "password"}
+        autoComplete={autoComplete}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        autoFocus={autoFocus}
+        required
+        maxLength={128}
+        placeholder={placeholder ?? "••••••••"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        aria-invalid={ariaInvalid ? true : undefined}
+        aria-describedby={ariaDescribedBy}
+        className="h-12 rounded-xl px-4 pr-12 text-base"
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        aria-pressed={visible}
+        tabIndex={-1}
+        className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        {visible ? (
+          <EyeOff size={18} aria-hidden="true" />
+        ) : (
+          <Eye size={18} aria-hidden="true" />
+        )}
+      </button>
     </div>
   );
 }
@@ -186,23 +278,29 @@ function NameOnlyForm() {
     if (isEmpty) return;
 
     setIsSubmitting(true);
-    // Demo path: persistName resolves immediately (no Supabase). The promise
-    // is intentionally not awaited — name-only flow is purely localStorage.
     void persistName(trimmed);
     router.push("/dashboard");
   }
 
   return (
     <>
-      <p className="mt-3 text-center text-[15px] leading-relaxed text-muted-foreground">
-        ¿Cómo te llamas? Así te llamaremos desde aquí.
-      </p>
+      <header className="text-center">
+        <h1
+          id="login-heading"
+          className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
+        >
+          Bienvenido a Lumi
+        </h1>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          ¿Cómo te llamas? Así te llamaremos desde aquí.
+        </p>
+      </header>
 
       <form
         noValidate
         onSubmit={handleSubmit}
         aria-busy={isSubmitting}
-        className="mt-9 space-y-4"
+        className="mt-8 space-y-4"
       >
         <div className="space-y-2">
           <Label
@@ -298,26 +396,32 @@ function NameOnlyForm() {
   );
 }
 
-// ─── Real flow: Supabase magic-link OTP ───────────────────────────────────
-function EmailMagicLinkForm() {
+// ─── Real flow: Supabase email + password ─────────────────────────────────
+function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
+  const router = useRouter();
+  const [mode, setMode] = React.useState<AuthMode>(initialMode);
+
+  // Shared state across modes.
   const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [sent, setSent] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
 
-  // Cooldown timer for "Reenviar enlace". Counts down from
-  // RESEND_COOLDOWN_SECONDS to 0; the resend button is disabled while > 0.
+  // "Email not confirmed" surfaces a one-tap resend on the signin screen.
+  const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
+
+  // Cooldown timer shared by signup-sent and forgot-sent.
   const [cooldown, setCooldown] = React.useState(0);
 
-  const trimmed = email.trim();
-  const isInvalid =
-    trimmed.length === 0 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed);
-  const showError = submitted && isInvalid;
+  const trimmedEmail = email.trim();
+  const emailInvalid =
+    trimmedEmail.length === 0 || !EMAIL_REGEX.test(trimmedEmail);
+  const passwordTooShort = password.length < MIN_PASSWORD_LENGTH;
+  const passwordsMismatch = password !== confirmPassword;
 
-  // Tick the cooldown each second once the email is sent. We intentionally
-  // store an absolute count rather than a target timestamp — a 60s window is
-  // short enough that drift from setInterval scheduling is negligible.
+  // Tick the cooldown each second.
   React.useEffect(() => {
     if (cooldown <= 0) return;
     const id = window.setInterval(() => {
@@ -326,270 +430,684 @@ function EmailMagicLinkForm() {
     return () => window.clearInterval(id);
   }, [cooldown]);
 
-  async function sendMagicLink(): Promise<boolean> {
+  // When mode changes, drop transient validation/error UI but keep the email
+  // so users hopping signin → forgot don't have to retype.
+  function switchMode(next: AuthMode) {
+    setMode(next);
+    setSubmitted(false);
     setServerError(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) {
-        setServerError("No pudimos enviar el enlace. Inténtalo de nuevo.");
-        return false;
-      }
-      return true;
-    } catch {
-      setServerError("No pudimos enviar el enlace. Inténtalo de nuevo.");
-      return false;
-    }
+    setNeedsConfirmation(false);
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  // ─── Submit handlers ────────────────────────────────────────────────────
+  async function handleSignin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isSubmitting) return;
     setSubmitted(true);
-    if (isInvalid) return;
+    if (emailInvalid || password.length === 0) return;
 
     setIsSubmitting(true);
-    const ok = await sendMagicLink();
-    setIsSubmitting(false);
-    if (ok) {
-      setSent(true);
-      setCooldown(RESEND_COOLDOWN_SECONDS);
+    setServerError(null);
+    setNeedsConfirmation(false);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+      if (error) {
+        // Surface the "email not confirmed" case explicitly so we can offer a
+        // resend button. Everything else falls back to a generic message —
+        // we deliberately don't reveal whether the email exists.
+        const msg = error.message.toLowerCase();
+        if (msg.includes("not confirmed") || msg.includes("confirm")) {
+          setNeedsConfirmation(true);
+          setServerError(
+            "Confirma tu email primero. Revisa tu correo.",
+          );
+        } else {
+          toast.error("Email o contraseña incorrectos.");
+        }
+        return;
+      }
+      router.push("/dashboard");
+      // Refresh server components so middleware picks up the new session.
+      router.refresh();
+    } catch {
+      toast.error("No pudimos iniciar sesión. Inténtalo de nuevo.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  async function handleResend() {
+  async function handleSignup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setSubmitted(true);
+    if (emailInvalid || passwordTooShort || passwordsMismatch) return;
+
+    setIsSubmitting(true);
+    setServerError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes("already registered") ||
+          msg.includes("already been registered") ||
+          msg.includes("user already")
+        ) {
+          toast.error("Ya tienes una cuenta con ese email. Inicia sesión.");
+          switchMode("signin");
+          return;
+        }
+        toast.error(error.message || "No pudimos crear la cuenta.");
+        return;
+      }
+      setMode("signup-sent");
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      toast.error("No pudimos crear la cuenta.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleForgot(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setSubmitted(true);
+    if (emailInvalid) return;
+
+    setIsSubmitting(true);
+    setServerError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        trimmedEmail,
+        {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        },
+      );
+      if (error) {
+        toast.error(error.message || "No pudimos enviar el correo.");
+        return;
+      }
+      setMode("forgot-sent");
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      toast.error("No pudimos enviar el correo.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleResendSignup() {
     if (cooldown > 0 || isSubmitting) return;
     setIsSubmitting(true);
-    const ok = await sendMagicLink();
-    setIsSubmitting(false);
-    if (ok) {
-      setCooldown(RESEND_COOLDOWN_SECONDS);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: trimmedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      });
+      if (error) {
+        toast.error("No pudimos reenviar el correo. Inténtalo más tarde.");
+        return;
+      }
       toast.success("Correo reenviado");
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  function handleReset() {
-    setSent(false);
-    setSubmitted(false);
-    setServerError(null);
-    setCooldown(0);
+  async function handleResendForgot() {
+    if (cooldown > 0 || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        trimmedEmail,
+        {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        },
+      );
+      if (error) {
+        toast.error("No pudimos reenviar el correo. Inténtalo más tarde.");
+        return;
+      }
+      toast.success("Correo reenviado");
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  // When the sent card mounts, move focus to the resend button so screen
-  // readers announce the new state and keyboard users land on the primary
-  // action without a rogue Tab.
-  const resendBtnRef = React.useRef<HTMLButtonElement | null>(null);
-  React.useEffect(() => {
-    if (sent && resendBtnRef.current) {
-      resendBtnRef.current.focus();
+  async function handleResendConfirmationFromSignin() {
+    if (isSubmitting || emailInvalid) return;
+    setIsSubmitting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: trimmedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+        },
+      });
+      if (error) {
+        toast.error("No pudimos reenviar el correo.");
+        return;
+      }
+      toast.success("Correo de confirmación reenviado.");
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [sent]);
+  }
 
-  if (sent) {
+  // ─── Sent-state cards (shared layout for signup-sent and forgot-sent) ───
+  if (mode === "signup-sent" || mode === "forgot-sent") {
+    const isSignupSent = mode === "signup-sent";
+    const heading = isSignupSent
+      ? "Revisa tu correo"
+      : "Te enviamos el enlace de recuperación";
+    const description = isSignupSent
+      ? "para confirmar tu cuenta. Tócalo para activarla."
+      : "y toca el link para crear una contraseña nueva.";
+    const onResend = isSignupSent ? handleResendSignup : handleResendForgot;
+
     return (
-      <section
-        role="status"
-        aria-live="polite"
-        aria-labelledby="magic-link-sent-heading"
-        className="mt-9 animate-in fade-in slide-in-from-bottom-2 duration-500"
-      >
-        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-card md:p-7">
-          {/* Icon badge — soft brand circle so the success reads at a glance */}
-          <div
-            aria-hidden="true"
-            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
-          >
-            <MailCheck size={26} strokeWidth={2} />
-          </div>
-
-          <h2
-            id="magic-link-sent-heading"
-            className="mt-5 font-sans text-2xl font-bold leading-tight tracking-tight text-foreground md:text-[28px]"
-          >
-            Te enviamos un enlace
-          </h2>
-
-          <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-            Revisa tu correo en
-          </p>
-          <p className="mt-1 break-all text-[15px] font-semibold tracking-tight text-foreground">
-            {trimmed}
-          </p>
-          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-            y toca el enlace para entrar.
-          </p>
-
-          {serverError ? (
-            <p
-              role="alert"
-              className="mt-4 text-[13px] font-medium text-destructive"
-            >
-              {serverError}
-            </p>
-          ) : null}
-
-          <div className="mt-6 flex flex-col gap-3">
-            <Button
-              ref={resendBtnRef}
-              type="button"
-              variant="secondary"
-              onClick={handleResend}
-              disabled={cooldown > 0 || isSubmitting}
-              aria-live="polite"
-              className={cn(
-                "h-11 w-full rounded-xl text-[14px] font-semibold",
-                "transition-transform active:scale-[0.99]",
-              )}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2
-                    size={16}
-                    className="mr-2 animate-spin"
-                    aria-hidden="true"
-                  />
-                  Reenviando…
-                </>
-              ) : cooldown > 0 ? (
-                `Reenviar en ${cooldown}s`
-              ) : (
-                "Reenviar correo"
-              )}
-            </Button>
-
-            <button
-              type="button"
-              onClick={handleReset}
-              className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              ¿No es tu correo? <span className="underline">Cambiar</span>
-            </button>
-          </div>
-        </div>
-
-        <p className="mt-5 px-2 text-center text-[12px] leading-relaxed text-muted-foreground">
-          Si no lo ves en unos minutos, revisa la carpeta de spam o promociones.
-        </p>
-      </section>
+      <SentCard
+        heading={heading}
+        email={trimmedEmail}
+        description={description}
+        cooldown={cooldown}
+        isSubmitting={isSubmitting}
+        onResend={onResend}
+        onChangeEmail={() => switchMode(isSignupSent ? "signup" : "forgot")}
+        onBackToSignin={() => switchMode("signin")}
+      />
     );
   }
 
+  // ─── Forms ──────────────────────────────────────────────────────────────
   return (
     <>
-      <p className="mt-3 text-center text-[15px] leading-relaxed text-muted-foreground">
-        Te enviamos un enlace mágico a tu email. Sin contraseñas.
-      </p>
+      <ModeHeading mode={mode} />
 
-      <form
-        noValidate
-        onSubmit={handleSubmit}
-        aria-busy={isSubmitting}
-        className="mt-9 space-y-4"
-      >
-        <div className="space-y-2">
-          <Label
-            htmlFor="login-email"
-            className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-          >
-            Tu email
-          </Label>
-          <Input
-            id="login-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            autoFocus
-            required
-            maxLength={254}
-            placeholder="tu@email.com"
+      {mode === "signin" ? (
+        <form
+          noValidate
+          onSubmit={handleSignin}
+          aria-busy={isSubmitting}
+          className="mt-8 space-y-4"
+        >
+          <EmailField
             value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
+            onChange={(v) => {
+              setEmail(v);
               if (submitted) setSubmitted(false);
               if (serverError) setServerError(null);
+              if (needsConfirmation) setNeedsConfirmation(false);
             }}
             disabled={isSubmitting}
-            aria-invalid={showError ? true : undefined}
-            aria-describedby={
-              showError ? "login-email-error" : "login-email-hint"
-            }
-            className="h-12 rounded-xl px-4 text-base"
+            invalid={submitted && emailInvalid}
+            autoFocus
           />
-          {showError ? (
-            <p
-              id="login-email-error"
-              role="alert"
-              className="text-[13px] font-medium text-destructive"
-            >
-              Ingresa un email válido.
-            </p>
-          ) : (
-            <p
-              id="login-email-hint"
-              className="text-[12px] leading-relaxed text-muted-foreground"
-            >
-              No tienes que recordar contraseñas.
-            </p>
-          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label
+                htmlFor="login-password"
+                className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+              >
+                Contraseña
+              </Label>
+              <button
+                type="button"
+                onClick={() => switchMode("forgot")}
+                className="text-[12px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+            <PasswordInput
+              id="login-password"
+              value={password}
+              onChange={(v) => {
+                setPassword(v);
+                if (submitted) setSubmitted(false);
+                if (serverError) setServerError(null);
+              }}
+              autoComplete="current-password"
+              disabled={isSubmitting}
+              ariaInvalid={submitted && password.length === 0}
+            />
+            {submitted && password.length === 0 ? (
+              <p
+                role="alert"
+                className="text-[13px] font-medium text-destructive"
+              >
+                Ingresa tu contraseña.
+              </p>
+            ) : null}
+          </div>
+
           {serverError ? (
-            <p
-              role="alert"
-              className="text-[13px] font-medium text-destructive"
-            >
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive">
               {serverError}
-            </p>
+              {needsConfirmation ? (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmationFromSignin}
+                  disabled={isSubmitting}
+                  className="ml-2 underline underline-offset-2 hover:no-underline disabled:opacity-60"
+                >
+                  Reenviar correo de confirmación
+                </button>
+              ) : null}
+            </div>
           ) : null}
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className={cn(
+              "h-12 w-full rounded-xl text-[15px] font-semibold",
+              "transition-transform active:scale-[0.99]",
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                  aria-hidden="true"
+                />
+                Iniciando sesión…
+              </>
+            ) : (
+              "Iniciar sesión"
+            )}
+          </Button>
+
+          <p className="pt-2 text-center text-[13px] text-muted-foreground">
+            ¿No tienes cuenta?{" "}
+            <button
+              type="button"
+              onClick={() => switchMode("signup")}
+              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
+            >
+              Crear cuenta
+            </button>
+          </p>
+        </form>
+      ) : null}
+
+      {mode === "signup" ? (
+        <form
+          noValidate
+          onSubmit={handleSignup}
+          aria-busy={isSubmitting}
+          className="mt-8 space-y-4"
+        >
+          <EmailField
+            value={email}
+            onChange={(v) => {
+              setEmail(v);
+              if (submitted) setSubmitted(false);
+            }}
+            disabled={isSubmitting}
+            invalid={submitted && emailInvalid}
+            autoFocus
+          />
+
+          <div className="space-y-2">
+            <Label
+              htmlFor="signup-password"
+              className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+            >
+              Contraseña
+            </Label>
+            <PasswordInput
+              id="signup-password"
+              value={password}
+              onChange={(v) => {
+                setPassword(v);
+                if (submitted) setSubmitted(false);
+              }}
+              autoComplete="new-password"
+              disabled={isSubmitting}
+              ariaInvalid={submitted && passwordTooShort}
+              ariaDescribedBy="signup-password-hint"
+            />
+            <p
+              id="signup-password-hint"
+              className={cn(
+                "text-[12px] leading-relaxed",
+                submitted && passwordTooShort
+                  ? "text-destructive"
+                  : "text-muted-foreground",
+              )}
+            >
+              Mínimo {MIN_PASSWORD_LENGTH} caracteres.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label
+              htmlFor="signup-confirm"
+              className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+            >
+              Confirmar contraseña
+            </Label>
+            <PasswordInput
+              id="signup-confirm"
+              value={confirmPassword}
+              onChange={(v) => {
+                setConfirmPassword(v);
+                if (submitted) setSubmitted(false);
+              }}
+              autoComplete="new-password"
+              disabled={isSubmitting}
+              ariaInvalid={submitted && passwordsMismatch}
+            />
+            {submitted && passwordsMismatch ? (
+              <p
+                role="alert"
+                className="text-[13px] font-medium text-destructive"
+              >
+                Las contraseñas no coinciden.
+              </p>
+            ) : null}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className={cn(
+              "h-12 w-full rounded-xl text-[15px] font-semibold",
+              "transition-transform active:scale-[0.99]",
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                  aria-hidden="true"
+                />
+                Creando cuenta…
+              </>
+            ) : (
+              "Crear cuenta"
+            )}
+          </Button>
+
+          <p className="pt-2 text-center text-[13px] text-muted-foreground">
+            ¿Ya tienes cuenta?{" "}
+            <button
+              type="button"
+              onClick={() => switchMode("signin")}
+              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
+            >
+              Iniciar sesión
+            </button>
+          </p>
+        </form>
+      ) : null}
+
+      {mode === "forgot" ? (
+        <form
+          noValidate
+          onSubmit={handleForgot}
+          aria-busy={isSubmitting}
+          className="mt-8 space-y-4"
+        >
+          <p className="text-[14px] leading-relaxed text-muted-foreground">
+            Ingresa tu email y te enviaremos un enlace para crear una contraseña
+            nueva.
+          </p>
+          <EmailField
+            value={email}
+            onChange={(v) => {
+              setEmail(v);
+              if (submitted) setSubmitted(false);
+            }}
+            disabled={isSubmitting}
+            invalid={submitted && emailInvalid}
+            autoFocus
+          />
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className={cn(
+              "h-12 w-full rounded-xl text-[15px] font-semibold",
+              "transition-transform active:scale-[0.99]",
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                  aria-hidden="true"
+                />
+                Enviando…
+              </>
+            ) : (
+              "Enviar enlace de recuperación"
+            )}
+          </Button>
+
+          <p className="pt-2 text-center text-[13px] text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => switchMode("signin")}
+              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
+            >
+              Volver a iniciar sesión
+            </button>
+          </p>
+        </form>
+      ) : null}
+
+      <p className="pt-6 text-center text-[12px] leading-relaxed text-muted-foreground">
+        Al continuar, aceptas los{" "}
+        <a
+          href="#"
+          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          términos
+        </a>{" "}
+        y la{" "}
+        <a
+          href="#"
+          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          política de privacidad
+        </a>
+        .
+      </p>
+    </>
+  );
+}
+
+// ─── Reusable email field (signin/signup/forgot share it) ─────────────────
+function EmailField({
+  value,
+  onChange,
+  disabled,
+  invalid,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  invalid?: boolean;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label
+        htmlFor="login-email"
+        className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+      >
+        Tu email
+      </Label>
+      <Input
+        id="login-email"
+        name="email"
+        type="email"
+        autoComplete="email"
+        inputMode="email"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        autoFocus={autoFocus}
+        required
+        maxLength={254}
+        placeholder="tu@email.com"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={invalid ? "login-email-error" : undefined}
+        className="h-12 rounded-xl px-4 text-base"
+      />
+      {invalid ? (
+        <p
+          id="login-email-error"
+          role="alert"
+          className="text-[13px] font-medium text-destructive"
+        >
+          Ingresa un email válido.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Sent card (shared by signup-sent and forgot-sent) ────────────────────
+function SentCard({
+  heading,
+  email,
+  description,
+  cooldown,
+  isSubmitting,
+  onResend,
+  onChangeEmail,
+  onBackToSignin,
+}: {
+  heading: string;
+  email: string;
+  description: string;
+  cooldown: number;
+  isSubmitting: boolean;
+  onResend: () => void;
+  onChangeEmail: () => void;
+  onBackToSignin: () => void;
+}) {
+  // Move focus to the resend button so screen readers announce the new state.
+  const resendBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    resendBtnRef.current?.focus();
+  }, []);
+
+  return (
+    <section
+      role="status"
+      aria-live="polite"
+      aria-labelledby="sent-card-heading"
+      className="animate-in fade-in slide-in-from-bottom-2 duration-500"
+    >
+      <div className="text-center">
+        <div
+          aria-hidden="true"
+          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+        >
+          <MailCheck size={26} strokeWidth={2} />
         </div>
 
-        <Button
-          type="submit"
-          disabled={isSubmitting || isInvalid}
-          className={cn(
-            "h-12 w-full rounded-xl text-[15px] font-semibold",
-            "transition-transform active:scale-[0.99]",
-          )}
+        <h2
+          id="sent-card-heading"
+          className="mt-5 font-sans text-2xl font-bold leading-tight tracking-tight text-foreground md:text-[28px]"
         >
-          {isSubmitting ? (
-            <>
-              <Loader2
-                size={16}
-                className="mr-2 animate-spin"
-                aria-hidden="true"
-              />
-              Enviando…
-            </>
-          ) : (
-            "Enviarme el enlace"
-          )}
-        </Button>
+          {heading}
+        </h2>
 
-        <p className="pt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
-          Al continuar, aceptas los{" "}
-          <a
-            href="#"
-            className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-          >
-            términos
-          </a>{" "}
-          y la{" "}
-          <a
-            href="#"
-            className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-          >
-            política de privacidad
-          </a>
-          .
+        <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+          Te enviamos un correo a
         </p>
-      </form>
-    </>
+        <p className="mt-1 break-all text-[15px] font-semibold tracking-tight text-foreground">
+          {email}
+        </p>
+        <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-3">
+          <Button
+            ref={resendBtnRef}
+            type="button"
+            variant="secondary"
+            onClick={onResend}
+            disabled={cooldown > 0 || isSubmitting}
+            aria-live="polite"
+            className={cn(
+              "h-11 w-full rounded-xl text-[14px] font-semibold",
+              "transition-transform active:scale-[0.99]",
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                  aria-hidden="true"
+                />
+                Reenviando…
+              </>
+            ) : cooldown > 0 ? (
+              `Reenviar en ${cooldown}s`
+            ) : (
+              "Reenviar correo"
+            )}
+          </Button>
+
+          <button
+            type="button"
+            onClick={onChangeEmail}
+            className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            ¿No es tu correo? <span className="underline">Cambiar</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onBackToSignin}
+            className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            Volver a iniciar sesión
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-5 px-2 text-center text-[12px] leading-relaxed text-muted-foreground">
+        Si no lo ves en unos minutos, revisa la carpeta de spam o promociones.
+      </p>
+    </section>
   );
 }

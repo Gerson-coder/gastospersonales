@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { UpdatePrompt } from "@/components/lumi/UpdatePrompt";
 import { SessionProvider } from "@/lib/use-session";
 
 /**
@@ -52,6 +53,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <SessionProvider>
         {children}
+        <UpdatePrompt />
         <Toaster richColors position="top-center" />
       </SessionProvider>
     </ThemeProvider>
