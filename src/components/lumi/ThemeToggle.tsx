@@ -71,7 +71,7 @@ export function ThemeToggle({ className }: { className?: string }) {
           return (
             <DropdownMenuItem
               key={value}
-              onSelect={() => setTheme(value)}
+              onClick={() => setTheme(value)}
               aria-checked={selected}
               role="menuitemradio"
               className={cn(
