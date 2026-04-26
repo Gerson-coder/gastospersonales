@@ -204,7 +204,7 @@ function IdleState({
       <div className="mt-5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Escanear ticket
       </div>
-      <h1 className="mt-1.5 font-display text-3xl italic leading-tight md:text-4xl">
+      <h1 className="mt-1.5 text-3xl font-bold leading-tight md:text-4xl">
         Una foto y listo
       </h1>
       <p className="mt-2 max-w-[28ch] text-sm text-muted-foreground">
@@ -258,7 +258,7 @@ function PreviewState({
       <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Foto cargada
       </div>
-      <h1 className="mt-1 font-display text-3xl italic leading-tight">
+      <h1 className="mt-1 text-3xl font-bold leading-tight">
         ¿Se ve bien?
       </h1>
       <p className="mt-1.5 text-sm text-muted-foreground">
@@ -319,7 +319,7 @@ function LoadingState({
       <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Procesando
       </div>
-      <h1 className="mt-1 font-display text-3xl italic leading-tight">
+      <h1 className="mt-1 text-3xl font-bold leading-tight">
         Leyendo el ticket…
       </h1>
 
@@ -426,7 +426,7 @@ function FailedState({
         <AlertTriangle size={28} aria-hidden="true" />
       </div>
       <div>
-        <h1 className="font-display text-3xl italic leading-tight">No pude leer el ticket</h1>
+        <h1 className="text-3xl font-bold leading-tight">No pude leer el ticket</h1>
         <p className="mt-2 max-w-[30ch] text-sm text-muted-foreground">
           La imagen salió borrosa o no encontré los datos. Prueba con buena luz y enfoque.
         </p>
@@ -760,7 +760,7 @@ export default function ReceiptPage() {
           <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Lo que leí del ticket
           </div>
-          <h1 className="mt-1 font-display text-3xl italic leading-tight">
+          <h1 className="mt-1 text-3xl font-bold leading-tight">
             Revisa los datos
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">

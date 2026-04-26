@@ -18,7 +18,7 @@
  * Title style:
  *   - "page" → regular bold 22/30, used for context-heavy screens (Dashboard,
  *     Accounts) where the title is a label, not a hero.
- *   - "display" → font-display italic 28/36, used for hero pages (Movements,
+ *   - "display" → bold sans 28/36, used for hero pages (Movements,
  *     Insights) where the title carries character.
  */
 
@@ -34,7 +34,7 @@ export interface AppHeaderProps {
   className?: string;
   /** Optional element inserted RIGHT of the title (e.g. search trigger). */
   actionsBefore?: React.ReactNode;
-  /** Title styling: "page" (regular bold) or "display" (font-display italic). */
+  /** Title styling: "page" (regular bold) or "display" (larger bold sans). */
   titleStyle?: "page" | "display";
 }
 
@@ -65,7 +65,7 @@ export function AppHeader({
           className={cn(
             "leading-tight",
             titleStyle === "display"
-              ? "mt-1 font-display text-[28px] italic md:text-4xl tracking-tight font-semibold"
+              ? "mt-1 text-[28px] md:text-4xl tracking-tight font-bold"
               : "mt-1.5 text-[22px] font-bold md:text-3xl",
           )}
         >

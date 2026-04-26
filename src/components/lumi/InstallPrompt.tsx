@@ -142,7 +142,7 @@ export function InstallPrompt() {
           >
             <h2
               id="install-ios-title"
-              className="font-display text-2xl italic text-foreground"
+              className="text-2xl font-bold text-foreground"
             >
               Instalar Lumi en iOS
             </h2>

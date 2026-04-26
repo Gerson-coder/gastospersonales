@@ -37,7 +37,7 @@ export function TabsTopBar() {
       role="toolbar"
       aria-label="Acciones de la cuenta"
       className={cn(
-        "fixed top-3 right-3 z-30 flex items-center gap-1 rounded-full border border-border/60 bg-background/75 p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/55 md:top-5 md:right-6",
+        "fixed top-3 right-3 z-30 flex items-center gap-1 md:top-5 md:right-6",
         hideOnMobile && "hidden md:flex",
       )}
     >

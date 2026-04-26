@@ -229,7 +229,7 @@ function NameStep({
 }: NameStepProps) {
   return (
     <>
-      <h1 className="font-display text-[40px] italic leading-[1.05] tracking-tight md:text-4xl">
+      <h1 className="text-[40px] font-bold leading-[1.05] tracking-tight md:text-4xl">
         Bienvenido
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
@@ -324,7 +324,7 @@ type OrientationStepProps = {
 function OrientationStep({ displayName, onContinue }: OrientationStepProps) {
   return (
     <>
-      <h1 className="font-display text-[34px] italic leading-[1.05] tracking-tight md:text-4xl">
+      <h1 className="text-[34px] font-bold leading-[1.05] tracking-tight md:text-4xl">
         Hola, {displayName}
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
@@ -373,7 +373,7 @@ type FinalStepProps = {
 function FinalStep({ displayName, onStart }: FinalStepProps) {
   return (
     <>
-      <h1 className="font-display text-[34px] italic leading-[1.05] tracking-tight md:text-4xl">
+      <h1 className="text-[34px] font-bold leading-[1.05] tracking-tight md:text-4xl">
         Listo, {displayName}.
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">

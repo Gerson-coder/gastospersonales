@@ -609,8 +609,8 @@ function WeeklyBars({
                 y={y - 6}
                 textAnchor="middle"
                 fontSize="9"
-                fontFamily="var(--font-display)"
-                fontStyle="italic"
+                fontFamily="var(--font-sans)"
+                fontWeight={700}
                 className="fill-foreground"
                 style={{ fontFeatureSettings: '"tnum","lnum"' }}
               >
@@ -900,7 +900,7 @@ function RecentTransactionsSkeleton() {
 export default function DashboardPage() {
   const router = useRouter();
   const { name, hydrated } = useUserName();
-  const { currency, setCurrency } = useActiveCurrency();
+  const { currency } = useActiveCurrency();
 
   // Real data via the shared 6-month window hook. Returns []/zeroes in demo
   // mode would still call Supabase, so we gate all usage of `window` results
@@ -954,15 +954,6 @@ export default function DashboardPage() {
         0,
       )
     : window.incomeCurrentMonth;
-
-  // Mock month-over-month deltas in demo mode; real signed fractions otherwise.
-  // `null` from the hook → undefined for MonthSummaryCard so it hides chips.
-  const spentDelta: number | undefined = isDemo
-    ? -0.12
-    : window.spentDeltaVsPrevMonth ?? undefined;
-  const incomeDelta: number | undefined = isDemo
-    ? 0.18
-    : window.incomeDeltaVsPrevMonth ?? undefined;
 
   // Top categories — real path derives an icon key + color ladder from the
   // bucket index. Demo path keeps the curated palette mapping.
@@ -1044,7 +1035,6 @@ export default function DashboardPage() {
             Other tabs (movements/insights/etc.) don't pass it, so the switch
             only appears here. */}
         <AppHeader
-          eyebrow="abril · 2026"
           title={greeting}
           titleStyle="page"
           actionsBefore={<CurrencySwitch />}
@@ -1070,16 +1060,14 @@ export default function DashboardPage() {
           <>
             {/* Hero — vertical "Este mes · abril" summary card. */}
             <MonthSummaryCard
-              eyebrow="Este mes · abril"
-              comparison="comparado con marzo"
+              periodLabel={(() => {
+                const now = new Date();
+                const month = now.toLocaleDateString("es", { month: "long" });
+                return `${month.charAt(0).toUpperCase() + month.slice(1)} ${now.getFullYear()}`;
+              })()}
               spent={spent}
               income={income}
               currency={currency}
-              spentDelta={isEmpty ? undefined : spentDelta}
-              incomeDelta={isEmpty ? undefined : incomeDelta}
-              onCurrencyToggle={() =>
-                setCurrency(currency === "PEN" ? "USD" : "PEN")
-              }
               onFilterChange={(next) => {
                 if (next === "all") {
                   router.push("/movements");

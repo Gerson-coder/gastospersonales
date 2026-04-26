@@ -16,7 +16,6 @@
 "use client";
 
 import * as React from "react";
-import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -25,26 +24,28 @@ import { Card } from "@/components/ui/card";
 export type MonthFilter = "all" | "expense" | "income";
 
 export interface MonthSummaryCardProps {
-  /** Eyebrow label, e.g. "Este mes · abril" */
-  eyebrow?: string;
-  /** Comparison label, e.g. "comparado con marzo" */
-  comparison?: string;
+  /** Period label shown in the top-right corner, e.g. "Abril 2026" */
+  periodLabel?: string;
   /** Total expenses for the period (positive number) */
   spent: number;
   /** Total income for the period (positive number) */
   income: number;
   /** Currency for the displayed numbers */
   currency: "PEN" | "USD";
-  /** Deltas vs previous period — fractional values (e.g. -0.12 for -12%) */
+  /** Deltas vs previous period — fractional values (e.g. -0.12 for -12%). Currently unused; kept for API back-compat. */
   spentDelta?: number;
   incomeDelta?: number;
   /** Active filter (controls the visual pressed state of Gasto/Ingreso cells) */
   filter?: MonthFilter;
   /** When provided, Gasto/Ingreso cells become tappable buttons. */
   onFilterChange?: (filter: MonthFilter) => void;
-  /** When provided, a compact PEN/USD pill appears in the card header. */
+  /** Deprecated — currency toggle now lives in the global header. Kept as a noop prop for back-compat. */
   onCurrencyToggle?: () => void;
   className?: string;
+  /** Deprecated — eyebrow no longer rendered. Kept as a noop prop for back-compat. */
+  eyebrow?: string;
+  /** Deprecated — comparison no longer rendered. Kept as a noop prop for back-compat. */
+  comparison?: string;
 }
 
 // --- Money formatting -----------------------------------------------------
@@ -60,44 +61,6 @@ function formatMoney(amount: number, currency: "PEN" | "USD" = "PEN"): string {
 // Shared min-width so spent / income / net land on aligned right edges.
 const MONEY_COL_MIN_WIDTH = "108px";
 
-// --- Delta chip -----------------------------------------------------------
-/**
- * Compact, single-line delta chip. Icon + percentage only; the comparison
- * label ("comparado con marzo") lives once in the eyebrow so the chip never
- * wraps inside narrow cells.
- *
- * `tone` is semantic, not raw sign: "positive" = good news for the user
- * (gasto bajó, ingreso subió, ahorro positivo) → emerald.
- */
-function DeltaChip({
-  pct,
-  tone,
-}: {
-  pct: number;
-  tone: "positive" | "negative" | "neutral";
-}) {
-  const Icon = pct === 0 ? Minus : pct > 0 ? TrendingUp : TrendingDown;
-  const palette =
-    tone === "positive"
-      ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : tone === "negative"
-        ? "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]"
-        : "bg-muted text-muted-foreground";
-  // Always show absolute %; the icon carries the direction.
-  const display = `${Math.abs(pct)}%`;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums whitespace-nowrap",
-        palette,
-      )}
-    >
-      <Icon size={12} aria-hidden="true" strokeWidth={2.5} />
-      {display}
-    </span>
-  );
-}
-
 // --- KPI cell -------------------------------------------------------------
 /**
  * Secondary KPI cell (Gasto / Ingreso). Renders as a real <button> when
@@ -109,9 +72,8 @@ type HeroKpiProps = {
   label: string;
   amount: number;
   currency: "PEN" | "USD";
-  forceSign: "+" | "−";
+  forceSign: "−" | "";
   variant: "expense" | "income";
-  pct?: number;
   ariaLabel?: string;
   pressed?: boolean;
   onClick?: () => void;
@@ -123,32 +85,24 @@ function HeroKpi({
   currency,
   forceSign,
   variant,
-  pct,
   ariaLabel,
   pressed = false,
   onClick,
 }: HeroKpiProps) {
   const interactive = typeof onClick === "function";
+  // Subtle (non-saturated) tones: rose for gasto, emerald for ingreso. Use a
+  // soft chroma + medium lightness so they read as colored without shouting.
   const numberColor =
     variant === "income"
-      ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : "text-foreground";
+      ? "text-[oklch(0.50_0.13_162)] dark:text-[oklch(0.82_0.13_162)]"
+      : "text-[oklch(0.50_0.14_25)] dark:text-[oklch(0.82_0.12_25)]";
   const dotColor =
-    variant === "income" ? "bg-[oklch(0.65_0.16_162)]" : "bg-foreground/40";
-  // Semantic tone: gasto bajó (pct < 0) = positive; ingreso subió (pct > 0) = positive.
-  const tone: "positive" | "negative" | "neutral" =
-    pct === undefined
-      ? "neutral"
-      : variant === "expense"
-        ? pct <= 0
-          ? "positive"
-          : "negative"
-        : pct >= 0
-          ? "positive"
-          : "negative";
+    variant === "income"
+      ? "bg-[oklch(0.65_0.16_162)]"
+      : "bg-[oklch(0.65_0.18_25)]";
 
   const baseClass = cn(
-    "flex min-h-[64px] w-full flex-col items-start gap-1.5 rounded-xl px-3.5 py-3 text-left",
+    "flex min-h-[72px] w-full flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left",
     interactive && [
       "transition-colors duration-150 ease-out",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -157,12 +111,6 @@ function HeroKpi({
         : "hover:bg-muted/60",
     ],
   );
-
-  // For non-interactive percent rendering we still want fractional inputs to
-  // render as integer percentages (e.g. -0.12 → 12%). The DeltaChip already
-  // takes a raw integer, so callers pass the fractional value here and we
-  // round on render below.
-  const pctInt = pct === undefined ? undefined : Math.round(pct * 100);
 
   const content = (
     <>
@@ -183,9 +131,9 @@ function HeroKpi({
           minWidth: MONEY_COL_MIN_WIDTH,
         }}
       >
-        {forceSign} {formatMoney(amount, currency)}
+        {forceSign ? `${forceSign} ` : ""}
+        {formatMoney(amount, currency)}
       </span>
-      {pctInt !== undefined && <DeltaChip pct={pctInt} tone={tone} />}
     </>
   );
 
@@ -212,38 +160,16 @@ function HeroKpi({
 
 // --- Public component -----------------------------------------------------
 export function MonthSummaryCard({
-  eyebrow = "Este mes · abril",
-  comparison = "comparado con marzo",
+  periodLabel = "Abril 2026",
   spent,
   income,
   currency,
-  spentDelta,
-  incomeDelta,
   filter = "all",
   onFilterChange,
-  onCurrencyToggle,
   className,
 }: MonthSummaryCardProps) {
   const net = income - spent;
   const netPositive = net >= 0;
-  const netTone: "positive" | "negative" = netPositive ? "positive" : "negative";
-  const netColor = netPositive
-    ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-    : "text-destructive";
-
-  // Compute net delta from the spent/income deltas only when both are
-  // provided; otherwise omit. We treat positive net-direction as "good".
-  const netPctInt = (() => {
-    if (spentDelta === undefined || incomeDelta === undefined) return undefined;
-    // Approximate prior-period reconstruction: reverse the fractional change.
-    // prior = current / (1 + delta). Guard against divide-by-zero.
-    const priorIncome = income / (1 + incomeDelta);
-    const priorSpent = spent / (1 + spentDelta);
-    const priorNet = priorIncome - priorSpent;
-    if (priorNet === 0) return undefined;
-    const change = (net - priorNet) / Math.abs(priorNet);
-    return Math.round(change * 100);
-  })();
 
   // Tap-to-filter: tapping the active cell again returns to "all" so the
   // card is a true toggle, not a one-way switch.
@@ -259,77 +185,41 @@ export function MonthSummaryCard({
         className,
       )}
     >
-      {/* Eyebrow — also carries the comparison ("comparado con marzo") so the
-          delta chips below stay compact (icon + %) and never line-wrap.
-          The currency pill (when provided) sits at the right edge so the
-          per-card money lever lives next to the numbers it controls, not in
-          the global header. */}
-      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <span className="inline-flex items-center gap-2">
-          <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
-          {eyebrow}
+      {/* Top-right period label — small + muted. Currency switching now
+          lives in the global header (CurrencySwitch) so we don't render a
+          PEN/S/ badge in this card anymore. */}
+      <div className="flex items-start justify-end">
+        <span className="text-[12px] font-medium text-muted-foreground">
+          {periodLabel}
         </span>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/80">
-            {comparison}
-          </span>
-          {onCurrencyToggle ? (
-            <button
-              type="button"
-              onClick={onCurrencyToggle}
-              aria-label={`Cambiar moneda (actualmente ${currency})`}
-              aria-pressed={currency === "USD"}
-              className="inline-flex h-7 items-center justify-center rounded-full border border-border bg-card px-2.5 text-[11px] font-semibold normal-case tracking-normal transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span aria-hidden="true">{currency === "PEN" ? "S/" : "$"}</span>
-              <span className="ml-1 text-muted-foreground font-medium">
-                {currency}
-              </span>
-            </button>
-          ) : null}
-        </div>
       </div>
 
-      {/* HERO: NETO. The single most important number — "how am I doing this
-          month?". Centered, oversized, uses sans + tabular-nums. Renders as
-          <dl> for semantic structure (label + value pair, not a control). */}
-      <dl className="mt-6 flex flex-col items-center text-center md:mt-8">
-        <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "inline-block h-1.5 w-1.5 rounded-full",
-              netPositive ? "bg-[oklch(0.65_0.16_162)]" : "bg-destructive",
-            )}
-          />
-          Neto
+      {/* HERO: SALDO ACTUAL. Centered, oversized, neutral color (no green/red
+          shouting on the headline number — the user wants Saldo to read as
+          "your reality" not as "good or bad"). Sign carries the only signal:
+          "−" prefix when negative, no prefix when positive. */}
+      <dl className="mt-3 flex flex-col items-center text-center md:mt-4">
+        <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Saldo actual
         </dt>
         <dd
-          className={cn(
-            "mt-2 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap",
-            "text-[40px] md:text-[56px]",
-            netColor,
-          )}
+          className="mt-3 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap text-foreground text-[44px] md:text-[60px]"
           style={{ fontFeatureSettings: '"tnum","lnum"' }}
         >
-          {netPositive ? "+" : "−"} {formatMoney(Math.abs(net), currency)}
+          {netPositive ? "" : "− "}
+          {formatMoney(Math.abs(net), currency)}
         </dd>
-        {netPctInt !== undefined && (
-          <div className="mt-3">
-            <DeltaChip pct={netPctInt} tone={netTone} />
-          </div>
-        )}
       </dl>
 
       {/* Thin separator — restraint, not a heavy divider. */}
       <div
         aria-hidden="true"
-        className="mx-auto my-6 h-px w-full max-w-xs bg-border md:my-8"
+        className="mx-auto my-7 h-px w-full max-w-xs bg-border md:my-9"
       />
 
-      {/* Secondary KPIs — only TWO cells (no cramped 3-col), so the numbers
-          + delta chips never wrap. Each cell is a tappable filter when
-          `onFilterChange` is provided. */}
+      {/* Secondary KPIs — Gasto / Ingreso side by side. Subtle rose / emerald
+          on the numbers themselves; labels stay muted. No deltas, no "+"
+          prefix — the Lucide arrow indicators went away with the redesign. */}
       <div className="grid grid-cols-2 gap-2 md:gap-4">
         <HeroKpi
           label="Gasto"
@@ -337,7 +227,6 @@ export function MonthSummaryCard({
           currency={currency}
           forceSign="−"
           variant="expense"
-          pct={spentDelta}
           ariaLabel={
             onFilterChange
               ? filter === "expense"
@@ -352,9 +241,8 @@ export function MonthSummaryCard({
           label="Ingreso"
           amount={income}
           currency={currency}
-          forceSign="+"
+          forceSign=""
           variant="income"
-          pct={incomeDelta}
           ariaLabel={
             onFilterChange
               ? filter === "income"

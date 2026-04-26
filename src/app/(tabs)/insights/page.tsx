@@ -428,8 +428,8 @@ function MonthBars({ months, currency }: { months: MonthBucket[]; currency: Curr
                 y={Math.max(spentY - 6, 10)}
                 textAnchor="middle"
                 fontSize="10"
-                fontFamily="var(--font-display)"
-                fontStyle="italic"
+                fontFamily="var(--font-sans)"
+                fontWeight={700}
                 className="fill-foreground"
                 style={{ fontFeatureSettings: '"tnum","lnum"' }}
               >
