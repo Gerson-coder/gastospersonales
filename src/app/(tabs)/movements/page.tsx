@@ -40,6 +40,9 @@ import {
   Circle,
   ArrowLeft,
   X,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -48,7 +51,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AppHeader } from "@/components/lumi/AppHeader";
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// --- Types ----------------------------------------------------------------
 type Currency = "PEN" | "USD";
 type Kind = "expense" | "income";
 type CategoryId =
@@ -76,13 +79,13 @@ type Transaction = {
 
 type Filter = "todo" | "gastos" | "ingresos";
 
-// ─── Mock anchor ──────────────────────────────────────────────────────────
+// --- Mock anchor ----------------------------------------------------------
 // MOCK_TODAY: anchor for grouped mock transactions; replace with new Date()
 // once Supabase data lands. Using a fixed reference keeps SSR + hydration
 // deterministic — no `Date.now()` drift between server and client.
 const MOCK_TODAY = new Date(2026, 3, 24); // April 24, 2026 (month is 0-indexed)
 
-// ─── Mock data ────────────────────────────────────────────────────────────
+// --- Mock data ------------------------------------------------------------
 // 18 transactions across 6 days, mixed kinds, categories, accounts, currencies.
 const TRANSACTIONS: Transaction[] = [
   // 2026-04-24 — Hoy
@@ -262,7 +265,7 @@ const TRANSACTIONS: Transaction[] = [
   },
 ];
 
-// ─── Category map ─────────────────────────────────────────────────────────
+// --- Category map ---------------------------------------------------------
 const CATEGORY_ICONS: Record<
   CategoryId,
   React.ComponentType<{ className?: string; size?: number }>
@@ -292,7 +295,7 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   other: "Otros",
 };
 
-// ─── Unified category tint palette ────────────────────────────────────────
+// --- Unified category tint palette ----------------------------------------
 // Subtle tints (high lightness, low chroma) so the list reads as a coherent
 // taxonomy instead of an arcoíris. Mirrors the Dashboard polish palette.
 // Local Lumi categories `home` and `edu` map to the closest spec entries
@@ -347,7 +350,7 @@ const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
 // proper column.
 const MONEY_COL_MIN_WIDTH = "108px";
 
-// ─── Money formatting ─────────────────────────────────────────────────────
+// --- Money formatting -----------------------------------------------------
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
 function formatMoney(amount: number, currency: Currency = "PEN"): string {
   return new Intl.NumberFormat("es-PE", {
@@ -357,7 +360,7 @@ function formatMoney(amount: number, currency: Currency = "PEN"): string {
   }).format(amount);
 }
 
-// ─── Date helpers ─────────────────────────────────────────────────────────
+// --- Date helpers ---------------------------------------------------------
 /** Returns a YYYY-MM-DD key from a local-naive ISO timestamp. */
 function dayKey(iso: string): string {
   return iso.slice(0, 10);
@@ -390,7 +393,7 @@ function dayLabel(key: string): string {
     .replace(/\./g, "");
 }
 
-// ─── Group by day (preserves dataset order; assumes data is sorted) ───────
+// --- Group by day (preserves dataset order; assumes data is sorted) -------
 type DayGroup = {
   key: string;
   label: string;
@@ -417,7 +420,7 @@ function groupByDay(txns: Transaction[]): DayGroup[] {
   return Array.from(map.values()).sort((a, b) => (a.key < b.key ? 1 : -1));
 }
 
-// ─── Transaction row ──────────────────────────────────────────────────────
+// --- Transaction row ------------------------------------------------------
 function TransactionRow({ t }: { t: Transaction }) {
   const Icon = CATEGORY_ICONS[t.categoryId];
   const tint = CATEGORY_TINT[t.categoryId];
@@ -476,7 +479,7 @@ function TransactionRow({ t }: { t: Transaction }) {
   );
 }
 
-// ─── Hero summary (this month) ────────────────────────────────────────────
+// --- Hero summary (this month) --------------------------------------------
 // Mock month-over-month deltas. Real values land with Supabase + FX (Batch B/C).
 // Convention: positive `delta` = "good" for the user's wallet (gasto bajó, ingreso
 // subió, ahorro mayor). The chip color follows that semantic, not the raw sign.
@@ -487,84 +490,120 @@ const MOCK_DELTAS = {
 } as const;
 
 /**
- * Tiny KPI cell used in the hero. All three cells share the same shape, the
- * same right-aligned numeric column (text-right + tabular-nums + a forced
- * sign prefix), and the same delta chip slot — so the digits land on three
- * vertical right edges and the labels sit on the same baseline.
+ * Compact, single-line delta chip used by the hero. Icon + percentage only;
+ * the comparison label ("comparado con marzo") lives once in the eyebrow so
+ * the chip never wraps inside narrow cells.
  *
- * Sign handling fixes the original misalignment: GASTO had no prefix while
- * INGRESO/NETO had "+ ", which pushed each column's first digit to a
- * different x. By right-aligning the number AND giving every kind an explicit
- * sign character ("−" for expense, "+" for income, "+/−" for net), every
- * column ends on the same right edge and the eye reads a clean grid.
+ * `tone` is semantic, not raw sign: "positive" = good news for the user
+ * (gasto bajó, ingreso subió, ahorro positivo) → emerald; "negative" = bad
+ * news → red; "neutral" → muted.
  */
-function HeroKpi({
+function DeltaChip({
+  pct,
+  tone,
+}: {
+  pct: number;
+  tone: "positive" | "negative" | "neutral";
+}) {
+  const Icon = pct === 0 ? Minus : pct > 0 ? TrendingUp : TrendingDown;
+  const palette =
+    tone === "positive"
+      ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
+      : tone === "negative"
+        ? "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]"
+        : "bg-muted text-muted-foreground";
+  // Always show absolute %; the icon carries the direction.
+  const display = `${Math.abs(pct)}%`;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums whitespace-nowrap",
+        palette,
+      )}
+    >
+      <Icon size={12} aria-hidden="true" strokeWidth={2.5} />
+      {display}
+    </span>
+  );
+}
+
+/**
+ * Secondary KPI cell (Gasto / Ingreso). Rendered as a real <button> so the
+ * card itself becomes a filter UI: tap → toggle the matching filter chip on
+ * the page. Active state mirrors aria-pressed for screen readers AND uses a
+ * subtle bg + inset ring so the active filter is obvious without shouting.
+ */
+function HeroKpiButton({
   label,
   amount,
-  variant,
   forceSign,
-  delta,
-  deltaPositive,
+  variant,
+  pct,
+  ariaLabel,
+  pressed,
+  onClick,
 }: {
   label: string;
   amount: number;
-  variant: "expense" | "income" | "neutral-positive" | "neutral-negative";
-  /** Always render this sign before the number; pass "" to omit. */
-  forceSign: "+" | "−" | "";
-  /** e.g. "−12% vs marzo" */
-  delta: string;
-  /** Whether the delta reads as "good news" (drives the chip palette). */
-  deltaPositive: boolean;
+  forceSign: "+" | "−";
+  variant: "expense" | "income";
+  pct: number;
+  ariaLabel: string;
+  pressed: boolean;
+  onClick: () => void;
 }) {
-  const colorClass =
-    variant === "income" || variant === "neutral-positive"
+  const numberColor =
+    variant === "income"
       ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : variant === "neutral-negative"
-        ? "text-destructive"
-        : "text-foreground";
-
-  const chipClass = deltaPositive
-    ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
-    : "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]";
-
+      : "text-foreground";
+  const dotColor =
+    variant === "income" ? "bg-[oklch(0.65_0.16_162)]" : "bg-foreground/40";
+  // Semantic tone: gasto bajó (pct < 0) = positive; ingreso subió (pct > 0) = positive.
+  const tone: "positive" | "negative" =
+    variant === "expense"
+      ? pct <= 0
+        ? "positive"
+        : "negative"
+      : pct >= 0
+        ? "positive"
+        : "negative";
   return (
-    <div className="min-w-0 text-right">
-      <div className="flex items-center justify-end gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      aria-label={ariaLabel}
+      className={cn(
+        // 44px+ tap target, full-cell, left-aligned content. Subtle interactive
+        // surface — restraint over flash. Active state uses an inset ring + bg
+        // lift so it reads as "selected" without competing with the hero.
+        "flex min-h-[64px] w-full flex-col items-start gap-1.5 rounded-xl px-3.5 py-3 text-left",
+        "transition-colors duration-150 ease-out",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        pressed
+          ? "bg-foreground/[0.06] ring-1 ring-inset ring-foreground/15"
+          : "hover:bg-muted/60",
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         <span
           aria-hidden="true"
-          className={cn(
-            "inline-block h-1.5 w-1.5 rounded-full",
-            variant === "income" || variant === "neutral-positive"
-              ? "bg-[oklch(0.65_0.16_162)]"
-              : variant === "neutral-negative"
-                ? "bg-destructive"
-                : "bg-foreground/40",
-          )}
+          className={cn("inline-block h-1.5 w-1.5 rounded-full", dotColor)}
         />
         {label}
-      </div>
-      <div
+      </span>
+      <span
         className={cn(
-          "mt-2 font-display italic leading-none tracking-tight text-[20px] md:text-[22px] tabular-nums whitespace-nowrap",
-          colorClass,
+          "font-display italic leading-none tracking-tight text-[22px] md:text-[26px] tabular-nums whitespace-nowrap",
+          numberColor,
+          pressed && "font-semibold",
         )}
         style={{ fontFeatureSettings: '"tnum","lnum"' }}
       >
-        {forceSign}
-        {forceSign ? " " : ""}
-        {formatMoney(amount, "PEN")}
-      </div>
-      <div className="mt-2 flex justify-end">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-tight tabular-nums",
-            chipClass,
-          )}
-        >
-          {delta}
-        </span>
-      </div>
-    </div>
+        {forceSign} {formatMoney(amount, "PEN")}
+      </span>
+      <DeltaChip pct={pct} tone={tone} />
+    </button>
   );
 }
 
@@ -572,56 +611,114 @@ function MonthSummary({
   spent,
   income,
   net,
+  filter,
+  onFilterChange,
 }: {
   spent: number;
   income: number;
   net: number;
+  filter: Filter;
+  onFilterChange: (next: Filter) => void;
 }) {
   const netPositive = net >= 0;
+  const netTone: "positive" | "negative" = netPositive ? "positive" : "negative";
+  const netColor = netPositive
+    ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
+    : "text-destructive";
+
+  // Tap-to-filter: tapping the active cell again returns to "todo" so the card
+  // is a true toggle, not a one-way switch. Both the cells here and the chip
+  // group below the card read/write the same `filter` state on the page.
+  const toggle = (next: Filter) => {
+    onFilterChange(filter === next ? "todo" : next);
+  };
+
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-6 md:p-10">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
-        Este mes · abril
+      {/* Eyebrow — also carries the comparison ("comparado con marzo") so the
+          delta chips below stay compact (icon + %) and never line-wrap. */}
+      <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <span className="inline-flex items-center gap-2">
+          <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
+          Este mes · abril
+        </span>
+        <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/80">
+          comparado con marzo
+        </span>
       </div>
-      {/*
-        Three equal columns, every cell right-aligned, every number
-        tabular-nums with a forced sign prefix. This is the alignment fix
-        (Approach C + B): grid-cols-3 with explicit equal-width tracks,
-        text-right per cell, and a sign character on every value so the digits
-        land on the same right edge column-to-column.
-      */}
-      <div className="mt-5 grid grid-cols-3 gap-3 md:mt-6 md:gap-6">
-        <HeroKpi
+
+      {/* HERO: NETO. The single most important number — "how am I doing this
+          month?". Centered, oversized, font-display italic. Renders as <dl>
+          for semantic structure (label + value pair, not a control). */}
+      <dl className="mt-6 flex flex-col items-center text-center md:mt-8">
+        <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-block h-1.5 w-1.5 rounded-full",
+              netPositive ? "bg-[oklch(0.65_0.16_162)]" : "bg-destructive",
+            )}
+          />
+          Neto
+        </dt>
+        <dd
+          className={cn(
+            "mt-2 font-display italic leading-[0.95] tracking-tight tabular-nums whitespace-nowrap",
+            "text-[40px] md:text-[56px]",
+            netColor,
+          )}
+          style={{ fontFeatureSettings: '"tnum","lnum"' }}
+        >
+          {netPositive ? "+" : "−"} {formatMoney(Math.abs(net), "PEN")}
+        </dd>
+        <div className="mt-3">
+          <DeltaChip pct={MOCK_DELTAS.net.pct} tone={netTone} />
+        </div>
+      </dl>
+
+      {/* Thin separator — restraint, not a heavy divider. */}
+      <div
+        aria-hidden="true"
+        className="mx-auto my-6 h-px w-full max-w-xs bg-border md:my-8"
+      />
+
+      {/* Secondary KPIs — only TWO cells now (no more cramped 3-col), so the
+          numbers + delta chips never wrap. Each cell is a tappable filter. */}
+      <div className="grid grid-cols-2 gap-2 md:gap-4">
+        <HeroKpiButton
           label="Gasto"
           amount={spent}
-          variant="expense"
           forceSign="−"
-          delta={`${MOCK_DELTAS.spent.pct}% ${MOCK_DELTAS.spent.label}`}
-          deltaPositive={MOCK_DELTAS.spent.pct < 0}
+          variant="expense"
+          pct={MOCK_DELTAS.spent.pct}
+          ariaLabel={
+            filter === "gastos"
+              ? "Quitar filtro de gastos"
+              : "Filtrar por gastos"
+          }
+          pressed={filter === "gastos"}
+          onClick={() => toggle("gastos")}
         />
-        <HeroKpi
+        <HeroKpiButton
           label="Ingreso"
           amount={income}
-          variant="income"
           forceSign="+"
-          delta={`+${MOCK_DELTAS.income.pct}% ${MOCK_DELTAS.income.label}`}
-          deltaPositive={MOCK_DELTAS.income.pct >= 0}
-        />
-        <HeroKpi
-          label="Neto"
-          amount={Math.abs(net)}
-          variant={netPositive ? "neutral-positive" : "neutral-negative"}
-          forceSign={netPositive ? "+" : "−"}
-          delta={`+${MOCK_DELTAS.net.pct}% ${MOCK_DELTAS.net.label}`}
-          deltaPositive={netPositive}
+          variant="income"
+          pct={MOCK_DELTAS.income.pct}
+          ariaLabel={
+            filter === "ingresos"
+              ? "Quitar filtro de ingresos"
+              : "Filtrar por ingresos"
+          }
+          pressed={filter === "ingresos"}
+          onClick={() => toggle("ingresos")}
         />
       </div>
     </Card>
   );
 }
 
-// ─── Filter chips ─────────────────────────────────────────────────────────
+// --- Filter chips ---------------------------------------------------------
 const FILTERS: ReadonlyArray<{ id: Filter; label: string }> = [
   { id: "todo", label: "Todo" },
   { id: "gastos", label: "Gastos" },
@@ -670,7 +767,7 @@ function FilterChips({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// --- Page -----------------------------------------------------------------
 export default function MovementsPage() {
   const [filter, setFilter] = React.useState<Filter>("todo");
   // Search state — `isSearching` toggles the inline-expand header swap;
@@ -816,8 +913,16 @@ export default function MovementsPage() {
 
         {/* Month summary hero — intentionally based on the FULL dataset, not
             the filtered/searched view. The hero is a month-level summary, not
-            a search summary. */}
-        <MonthSummary spent={spent} income={income} net={net} />
+            a search summary. The hero's secondary cells (Gasto / Ingreso)
+            also act as filter controls — they read/write the same `filter`
+            state used by the chip group below, so both UIs stay in sync. */}
+        <MonthSummary
+          spent={spent}
+          income={income}
+          net={net}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
 
         {/* Filter chips */}
         <div className="px-4 pb-3 pt-6 md:px-0 md:pt-8">
@@ -853,7 +958,7 @@ export default function MovementsPage() {
   );
 }
 
-// ─── No search results ────────────────────────────────────────────────────
+// --- No search results ----------------------------------------------------
 // Lives inside the list area (not full-page) so the hero + chips stay
 // reachable. role="status" so a screen reader announces the count change.
 function NoSearchResults({ query }: { query: string }) {
@@ -881,7 +986,7 @@ function NoSearchResults({ query }: { query: string }) {
   );
 }
 
-// ─── Day group section ────────────────────────────────────────────────────
+// --- Day group section ----------------------------------------------------
 function DayGroupSection({ group }: { group: DayGroup }) {
   const netSign = group.net < 0 ? "– " : "+ ";
   const netText = `${netSign}${formatMoney(Math.abs(group.net), "PEN")}`;
@@ -925,7 +1030,7 @@ function DayGroupSection({ group }: { group: DayGroup }) {
   );
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────
+// --- Empty state ----------------------------------------------------------
 function EmptyState() {
   return (
     <div className="mx-auto flex flex-col items-center gap-4 px-6 py-16 text-center md:py-24">
