@@ -17,7 +17,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Camera,
@@ -380,6 +380,7 @@ export default function ReceiptPage() {
 }
 
 function ReceiptContent() {
+  const router = useRouter();
   const params = useSearchParams();
   // ?status=loading | failed lets design-review preview the alternate states.
   const queryStatus = params?.get("status");
@@ -423,12 +424,14 @@ function ReceiptContent() {
   const handleAccept = () => {
     // TODO: wire to mutation in Batch C (createTransactionFromReceipt).
     setSavedToast(`Guardado: ${formatMoney(parsedAmount, currency)} en ${CATEGORY_LABEL[categoryId]}`);
+    window.setTimeout(() => {
+      router.push("/dashboard");
+    }, 1400);
   };
 
   const handleDiscard = () => {
     setIsDiscardOpen(false);
-    // TODO: navigate back / clear capture state once router wiring lands.
-    setStatus("idle");
+    router.push("/capture");
   };
 
   return (

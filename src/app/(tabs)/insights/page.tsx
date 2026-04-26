@@ -723,8 +723,34 @@ function TopMovementRow({ t, rank }: { t: Transaction; rank: number }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────
+const PERIOD_STORAGE_KEY = "lumi-pref-insights-period";
+const DEFAULT_PERIOD: Period = "month";
+
 export default function InsightsPage() {
-  const [period, setPeriod] = React.useState<Period>("month");
+  const [period, setPeriod] = React.useState<Period>(DEFAULT_PERIOD);
+  const [periodHydrated, setPeriodHydrated] = React.useState(false);
+
+  // Hydrate period from localStorage AFTER mount — never during SSR.
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PERIOD_STORAGE_KEY);
+      if (raw === "month" || raw === "q3" || raw === "year") setPeriod(raw);
+    } catch {
+      // Corrupted value or storage disabled — stay on default.
+    }
+    setPeriodHydrated(true);
+  }, []);
+
+  // Persist period whenever it changes AFTER hydration. Skipping pre-hydration
+  // writes prevents the default from clobbering whatever was on disk.
+  React.useEffect(() => {
+    if (!periodHydrated) return;
+    try {
+      window.localStorage.setItem(PERIOD_STORAGE_KEY, period);
+    } catch {
+      // Quota exceeded or storage disabled — nothing actionable here.
+    }
+  }, [period, periodHydrated]);
 
   const currency: Currency = "PEN";
   const current = MONTH_TOTALS[CURRENT_INDEX];

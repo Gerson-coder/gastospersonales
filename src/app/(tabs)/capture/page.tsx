@@ -318,12 +318,15 @@ export default function CapturePage() {
     setAmountBuffer("");
     setNote("");
     setCategoryId("food");
-    // Auto-clear the success banner after 4s so screen readers re-announce
-    // a fresh save the next time the user taps.
+    // After 1.4s show the user the success state, then route to /dashboard
+    // where the new transaction will appear in the latest list.
+    // TODO: when Supabase persistence lands (Batch C), the success banner
+    // can stay where it is (on /capture) and we let realtime push the new
+    // row into /dashboard's list.
     window.setTimeout(() => {
-      setSaved((cur) => (cur && cur.ts === ts ? null : cur));
-    }, 4000);
-  }, [ready]);
+      router.push("/dashboard");
+    }, 1400);
+  }, [ready, router]);
 
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {

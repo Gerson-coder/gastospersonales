@@ -38,11 +38,14 @@ import {
   GraduationCap,
   Briefcase,
   Circle,
+  ArrowLeft,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -669,20 +672,54 @@ function FilterChips({
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function MovementsPage() {
   const [filter, setFilter] = React.useState<Filter>("todo");
+  // Search state — `isSearching` toggles the inline-expand header swap;
+  // `query` is the live text. Both reset on close.
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [query, setQuery] = React.useState("");
 
-  const filtered = React.useMemo(
-    () =>
-      TRANSACTIONS.filter((t) =>
-        filter === "todo"
-          ? true
-          : filter === "gastos"
-            ? t.kind === "expense"
-            : t.kind === "income",
-      ),
-    [filter],
-  );
+  // Filter chain composes the chip filter (Todo / Gastos / Ingresos) with the
+  // free-text search. Search matches on merchant name, category label, and
+  // amount string (so "32" matches 32.00). Both filters compose: chips narrow
+  // the pool first, then search narrows further.
+  const filtered = React.useMemo(() => {
+    let list: Transaction[] = TRANSACTIONS.filter((t) =>
+      filter === "todo"
+        ? true
+        : filter === "gastos"
+          ? t.kind === "expense"
+          : t.kind === "income",
+    );
+
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((t) => {
+        if (t.merchant.toLowerCase().includes(q)) return true;
+        const catLabel = CATEGORY_LABEL[t.categoryId]?.toLowerCase() ?? "";
+        if (catLabel.includes(q)) return true;
+        // Amount substring match: "32" matches 32.00, "189" matches 189.40,
+        // "1450" matches 1450.00. We don't try to localize separators here —
+        // raw decimal string is the most predictable behavior for the user.
+        const amountStr = t.amount.toFixed(2);
+        if (amountStr.includes(q)) return true;
+        return false;
+      });
+    }
+
+    return list;
+  }, [filter, query]);
 
   const groups = React.useMemo(() => groupByDay(filtered), [filtered]);
+
+  // Close the search bar AND wipe the query — closing implies "I'm done
+  // filtering," not "keep the filter but hide the input."
+  const closeSearch = React.useCallback(() => {
+    setIsSearching(false);
+    setQuery("");
+  }, []);
+
+  const trimmedQuery = query.trim();
+  const hasActiveQuery = trimmedQuery.length > 0;
+  const noResults = hasActiveQuery && groups.length === 0;
 
   // Month summary uses the FULL dataset, not the filtered view — the hero is
   // about the month, not the filter. Numbers are PEN-only in mock; the few
@@ -698,33 +735,90 @@ export default function MovementsPage() {
     return { spent: s, income: i, net: i - s };
   }, []);
 
-  const isEmpty = groups.length === 0;
+  // "Empty" splits two cases:
+  //   - dataset truly empty (no chip filter active, no query) → onboarding
+  //     EmptyState (the existing "Aún no hay movimientos").
+  //   - dataset has rows but the search filter wiped them → in-list
+  //     "Sin resultados" message rendered below.
+  const isEmpty = groups.length === 0 && !hasActiveQuery;
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl md:px-8 md:py-8">
-        {/* Header */}
-        <header className="flex items-center justify-between px-5 pt-3 md:px-0 md:pt-0">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              abril · 2026
+        {/* Header — swaps between title+search-icon and inline search input.
+            The wrapper keeps the same min-height so the layout doesn't jump
+            when toggling. transition-all gives a soft 200ms swap. */}
+        <header className="flex min-h-[64px] items-center gap-2 px-5 pt-3 transition-all duration-200 md:px-0 md:pt-0">
+          {isSearching ? (
+            <>
+              <button
+                type="button"
+                onClick={closeSearch}
+                aria-label="Cerrar búsqueda"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <ArrowLeft size={18} aria-hidden="true" />
+              </button>
+              <div className="relative flex-1">
+                <Search
+                  size={16}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  type="search"
+                  inputMode="search"
+                  autoComplete="off"
+                  autoFocus
+                  aria-label="Buscar movimientos"
+                  placeholder="Buscar por nombre, categoría o monto"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") closeSearch();
+                  }}
+                  className="h-11 rounded-full border-border bg-muted pl-9 pr-10 text-[14px]"
+                />
+                {query.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    aria-label="Borrar búsqueda"
+                    className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex w-full items-center justify-between">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  abril · 2026
+                </div>
+                <h1 className="mt-1 font-display italic leading-none tracking-tight text-[28px] font-semibold text-foreground md:text-4xl">
+                  Movimientos
+                </h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSearching(true)}
+                aria-label="Buscar movimientos"
+                aria-expanded={false}
+                // 44px tap target with a subtle border so the affordance reads
+                // even on a tinted background (dark mode hero card behind it).
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <Search size={18} aria-hidden="true" />
+              </button>
             </div>
-            <h1 className="mt-1 font-display italic leading-none tracking-tight text-[28px] font-semibold text-foreground md:text-4xl">
-              Movimientos
-            </h1>
-          </div>
-          <button
-            type="button"
-            aria-label="Buscar movimientos"
-            // 44px tap target with a subtle border so the affordance reads
-            // even on a tinted background (dark mode hero card behind it).
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <Search size={18} aria-hidden="true" />
-          </button>
+          )}
         </header>
 
-        {/* Month summary hero */}
+        {/* Month summary hero — intentionally based on the FULL dataset, not
+            the filtered/searched view. The hero is a month-level summary, not
+            a search summary. */}
         <MonthSummary spent={spent} income={income} net={net} />
 
         {/* Filter chips */}
@@ -732,9 +826,11 @@ export default function MovementsPage() {
           <FilterChips value={filter} onChange={setFilter} />
         </div>
 
-        {/* Grouped list — or empty state */}
+        {/* Grouped list — onboarding empty, no-results empty, or the list. */}
         {isEmpty ? (
           <EmptyState />
+        ) : noResults ? (
+          <NoSearchResults query={trimmedQuery} />
         ) : (
           <div className="px-4 pb-8 md:px-0">
             {groups.map((g) => (
@@ -754,6 +850,34 @@ export default function MovementsPage() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── No search results ────────────────────────────────────────────────────
+// Lives inside the list area (not full-page) so the hero + chips stay
+// reachable. role="status" so a screen reader announces the count change.
+function NoSearchResults({ query }: { query: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mx-auto flex flex-col items-center gap-3 px-6 py-16 text-center md:py-20"
+    >
+      <div
+        aria-hidden="true"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
+      >
+        <Search size={20} />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold text-foreground">
+          Sin resultados para «{query}»
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Probá con otra palabra.
+        </p>
       </div>
     </div>
   );

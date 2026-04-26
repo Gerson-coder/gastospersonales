@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import {
@@ -42,9 +43,19 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -81,6 +92,8 @@ const DEFAULT_PREFS: Prefs = {
   theme: "system",
 };
 
+const NAME_MAX_LENGTH = 40;
+
 // Hardcoded for now; package.json import would couple build to a server module.
 const APP_VERSION = "0.1.0";
 
@@ -114,19 +127,37 @@ const CATEGORY_TINT: Record<CategoryId, string> = {
   other: "bg-[oklch(0.92_0_95)] text-[oklch(0.45_0_95)]",
 };
 
-// User identity placeholders — replaced by Supabase session data in Batch C.
-const USER_NAME = "Ana Bermúdez";
+// User identity placeholders — email replaced by Supabase session data in Batch C.
 const USER_EMAIL = "gerson@lumi.app";
-const USER_INITIALS = USER_NAME.split(" ")
-  .map((p) => p[0])
-  .slice(0, 2)
-  .join("")
-  .toUpperCase();
+const FALLBACK_USER_NAME = "Sin nombre";
+
+function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
+  const router = useRouter();
+  const { name, setName, clearName, hydrated: nameHydrated } = useUserName();
+
   const [prefs, setPrefs] = React.useState<Prefs>(DEFAULT_PREFS);
   const [hydrated, setHydrated] = React.useState(false);
+
+  // Sheet state
+  const [signOutOpen, setSignOutOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [draftName, setDraftName] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  // Refs for focus management on open
+  const signOutConfirmRef = React.useRef<HTMLButtonElement | null>(null);
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // next-themes returns sane defaults outside a provider, so calling this at
   // the top level is safe even if RootLayout has not mounted ThemeProvider yet.
@@ -157,6 +188,28 @@ export default function SettingsPage() {
     }
   }, [prefs, hydrated]);
 
+  // When sign-out sheet opens, focus the destructive button so keyboard users
+  // land on the most prominent action. Base UI's Dialog manages the focus trap;
+  // we just steer the initial focus target.
+  React.useEffect(() => {
+    if (!signOutOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      signOutConfirmRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [signOutOpen]);
+
+  // When edit sheet opens, focus the input. autoFocus on the element itself is
+  // unreliable inside portaled Dialogs, so we drive it imperatively.
+  React.useEffect(() => {
+    if (!editOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [editOpen]);
+
   function handleCurrencyChange(value: string) {
     if (value === "PEN" || value === "USD") {
       setPrefs((p) => ({ ...p, currency: value }));
@@ -171,18 +224,37 @@ export default function SettingsPage() {
     }
   }
 
-  function handleEditProfile() {
-    toast("Próximamente", {
-      description: "La edición de perfil llega en la próxima fase.",
-    });
+  function openEditProfile() {
+    setDraftName(name ?? "");
+    setEditOpen(true);
   }
 
-  function handleSignOut() {
-    // TODO: wire to supabase.auth.signOut() in Batch C.
-    toast("Próximamente", {
-      description: "La autenticación llega en la próxima fase.",
-    });
+  function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = draftName.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    try {
+      setName(trimmed);
+      setEditOpen(false);
+      toast.success("Nombre actualizado");
+    } finally {
+      setSubmitting(false);
+    }
   }
+
+  function handleConfirmSignOut() {
+    // TODO: when Supabase auth lands (Batch C), this becomes
+    // supabase.auth.signOut() + router.push('/login') after the session cookie clears.
+    clearName();
+    setSignOutOpen(false);
+    router.push("/login");
+  }
+
+  const displayName = nameHydrated ? (name ?? FALLBACK_USER_NAME) : " ";
+  const displayInitials = nameHydrated && name ? deriveInitials(name) : "?";
+  const trimmedDraft = draftName.trim();
+  const canSubmitName = trimmedDraft.length > 0 && !submitting;
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
@@ -215,17 +287,17 @@ export default function SettingsPage() {
                 aria-hidden="true"
                 className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-lg font-bold"
               >
-                {USER_INITIALS}
+                {displayInitials}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-semibold">{USER_NAME}</div>
+                <div className="truncate text-[15px] font-semibold">{displayName}</div>
                 <div className="truncate text-xs text-muted-foreground">{USER_EMAIL}</div>
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={handleEditProfile}
+                onClick={openEditProfile}
                 aria-label="Editar perfil"
                 className="min-h-11 rounded-full px-4"
               >
@@ -424,7 +496,7 @@ export default function SettingsPage() {
           <Button
             type="button"
             variant="destructive"
-            onClick={handleSignOut}
+            onClick={() => setSignOutOpen(true)}
             aria-label="Cerrar sesión"
             className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
           >
@@ -433,6 +505,100 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Sign-out confirmation Sheet (bottom sheet on mobile, side panel on desktop) */}
+      <Sheet open={signOutOpen} onOpenChange={setSignOutOpen}>
+        <SheetContent
+          side="bottom"
+          role="alertdialog"
+          aria-labelledby="signout-title"
+          aria-describedby="signout-desc"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <SheetHeader>
+            <SheetTitle id="signout-title">¿Cerrar sesión?</SheetTitle>
+            <SheetDescription id="signout-desc">
+              Vamos a borrar tu nombre y volverás al inicio. Tus preferencias quedan
+              guardadas.
+            </SheetDescription>
+          </SheetHeader>
+          <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSignOutOpen(false)}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              ref={signOutConfirmRef}
+              type="button"
+              variant="destructive"
+              onClick={handleConfirmSignOut}
+              className="min-h-11"
+            >
+              Cerrar sesión
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Edit name Sheet */}
+      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+        <SheetContent
+          side="bottom"
+          aria-labelledby="editname-title"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <form onSubmit={handleEditSubmit} aria-busy={submitting}>
+            <SheetHeader>
+              <SheetTitle id="editname-title">Editar nombre</SheetTitle>
+              <SheetDescription>
+                Así te llamamos en Lumi. Podés cambiarlo cuando quieras.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="px-4 pb-2">
+              <Label
+                htmlFor="edit-name-input"
+                className="mb-1.5 block text-[13px] font-semibold"
+              >
+                Nombre
+              </Label>
+              <Input
+                id="edit-name-input"
+                ref={nameInputRef}
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                maxLength={NAME_MAX_LENGTH}
+                autoComplete="off"
+                autoFocus
+                placeholder="Tu nombre"
+                disabled={submitting}
+                className="h-11 text-[15px]"
+              />
+            </div>
+            <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditOpen(false)}
+                disabled={submitting}
+                className="min-h-11"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canSubmitName}
+                className="min-h-11"
+              >
+                Guardar
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </main>
   );
 }

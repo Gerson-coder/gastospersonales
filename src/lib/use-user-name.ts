@@ -18,6 +18,7 @@ const STORAGE_KEY = "lumi-user-name";
 export function useUserName(): {
   name: string | null;
   setName: (name: string) => void;
+  clearName: () => void;
   hydrated: boolean;
 } {
   const [name, setNameState] = useState<string | null>(null);
@@ -46,5 +47,14 @@ export function useUserName(): {
     }
   }, []);
 
-  return { name, setName, hydrated };
+  const clearName = useCallback(() => {
+    setNameState(null);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage disabled — nothing actionable here.
+    }
+  }, []);
+
+  return { name, setName, clearName, hydrated };
 }

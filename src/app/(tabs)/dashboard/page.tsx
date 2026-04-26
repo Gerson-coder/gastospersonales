@@ -544,8 +544,35 @@ function TransactionRow({ t }: { t: Transaction }) {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
+const CURRENCY_STORAGE_KEY = "lumi-pref-currency";
+const DEFAULT_CURRENCY: Currency = "PEN";
+
 export default function DashboardPage() {
-  const [currency, setCurrency] = React.useState<Currency>("PEN");
+  const [currency, setCurrency] = React.useState<Currency>(DEFAULT_CURRENCY);
+  const [currencyHydrated, setCurrencyHydrated] = React.useState(false);
+
+  // Hydrate currency from localStorage AFTER mount — never during SSR.
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
+      if (raw === "PEN" || raw === "USD") setCurrency(raw);
+    } catch {
+      // Corrupted value or storage disabled — stay on default.
+    }
+    setCurrencyHydrated(true);
+  }, []);
+
+  // Persist currency whenever it changes AFTER hydration. Skipping pre-hydration
+  // writes prevents the default from clobbering whatever was on disk.
+  React.useEffect(() => {
+    if (!currencyHydrated) return;
+    try {
+      window.localStorage.setItem(CURRENCY_STORAGE_KEY, currency);
+    } catch {
+      // Quota exceeded or storage disabled — nothing actionable here.
+    }
+  }, [currency, currencyHydrated]);
+
   const { name, hydrated } = useUserName();
   const balance = 4820.1;
   const spent = 2180.4;
