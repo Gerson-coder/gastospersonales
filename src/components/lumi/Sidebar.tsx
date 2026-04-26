@@ -105,8 +105,10 @@ export function Sidebar({
                     "group relative flex min-h-10 items-center gap-3 rounded-lg px-4 py-3",
                     "text-sm font-semibold transition-colors duration-150 ease-out",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    // Active: subtle muted pill + bold foreground; tiny primary
+                    // bar on the left as the brand-anchor accent. Inactive: muted.
                     active
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-muted text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-1 before:-translate-y-1/2 before:rounded-r-full before:bg-primary before:content-['']"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                 >
@@ -147,11 +149,11 @@ export function Sidebar({
           href="/settings"
           aria-current={isItemActive(pathname, "/settings") ? "page" : undefined}
           className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
+            "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
             "transition-colors duration-150 ease-out",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isItemActive(pathname, "/settings")
-              ? "bg-primary/10 text-primary"
+              ? "bg-muted text-foreground before:absolute before:-left-0 before:top-1/2 before:h-6 before:w-1 before:-translate-y-1/2 before:rounded-r-full before:bg-primary before:content-['']"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
           )}
         >

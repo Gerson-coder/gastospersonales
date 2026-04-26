@@ -27,6 +27,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -287,77 +288,123 @@ function KpiBlock({
   );
 }
 
-function DonutChart({
-  segments,
+// Interactive category breakdown — replaces the legacy donut. Each row is a
+// button (keyboard-native), with an animated proportional bar fill. Tapping a
+// row highlights it (others fade) and a second tap clears the selection.
+// Bars animate from 0 → target on mount via a one-shot RAF so the transition
+// reliably runs on first paint.
+type CategoryBarItem = {
+  id: CategoryId;
+  label: string;
+  value: number; // percentage share (0-100)
+  color: string; // CSS var ref, e.g. var(--color-chart-2)
+};
+
+function CategoryBars({
+  items,
   total,
   currency = "PEN",
-  size = 180,
 }: {
-  segments: { id: string; label: string; value: number; color: string }[];
+  items: CategoryBarItem[];
   total: number;
   currency?: Currency;
-  size?: number;
 }) {
-  const r = 15.91549;
-  const totalVal = segments.reduce((a, s) => a + s.value, 0);
-  // Precompute (dash, offset) per segment without mutating after render.
-  const computed = segments.reduce<
-    { id: string; color: string; dash: number; offset: number }[]
-  >((acc, s) => {
-    const dash = (s.value / totalVal) * 100;
-    const offset = acc.length === 0 ? 0 : acc[acc.length - 1].offset + acc[acc.length - 1].dash;
-    acc.push({ id: s.id, color: s.color, dash, offset });
-    return acc;
+  const [selectedId, setSelectedId] = React.useState<CategoryId | null>(null);
+  // Mount-time animation: render bars at width 0, then flip to target on the
+  // next frame so the CSS transition actually plays.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
   }, []);
+
+  const toggle = (id: CategoryId) => {
+    setSelectedId((curr) => (curr === id ? null : id));
+  };
+
   return (
-    <svg
-      viewBox="0 0 42 42"
-      width={size}
-      height={size}
-      role="img"
-      aria-label="Distribución por categoría"
-    >
-      <circle cx="21" cy="21" r={r} fill="none" stroke="var(--color-muted)" strokeWidth="6" />
-      {computed.map((s) => (
-        <circle
-          key={s.id}
-          cx="21"
-          cy="21"
-          r={r}
-          fill="none"
-          stroke={s.color}
-          strokeWidth="6"
-          strokeDasharray={`${s.dash} ${100 - s.dash}`}
-          strokeDashoffset={-s.offset}
-          transform="rotate(-90 21 21)"
-          className="transition-[stroke-dasharray] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
-        />
-      ))}
-      <text
-        x="21"
-        y="19.6"
-        textAnchor="middle"
-        fontSize="5.4"
-        className="fill-foreground"
-        fontFamily="var(--font-display)"
-        fontStyle="italic"
-        style={{ fontFeatureSettings: '"tnum","lnum"' }}
-      >
-        {formatMoney(total, currency)}
-      </text>
-      <text
-        x="21"
-        y="25.2"
-        textAnchor="middle"
-        fontSize="2.4"
-        letterSpacing="0.18"
-        className="fill-muted-foreground uppercase"
-        fontFamily="var(--font-sans)"
-        fontWeight="600"
-      >
-        gastado este mes
-      </text>
-    </svg>
+    <ul className="flex flex-col gap-1.5" role="list">
+      {items.map((item) => {
+        const isSelected = selectedId === item.id;
+        const isDimmed = selectedId !== null && !isSelected;
+        const Icon = CATEGORY_ICONS[item.id];
+        const tint = CATEGORY_TINT[item.id];
+        const amount = (item.value / 100) * total;
+        const fillPct = mounted ? item.value : 0;
+
+        return (
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => toggle(item.id)}
+              aria-pressed={isSelected}
+              aria-label={`${item.label}: ${item.value}% (${formatMoney(amount, currency)})`}
+              className={cn(
+                "group flex w-full flex-col gap-2 rounded-xl px-2.5 py-2.5 text-left",
+                "transition-opacity duration-200 ease-out",
+                "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                isDimmed && "opacity-45",
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={cn(
+                    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg",
+                    tint.bg,
+                    tint.text,
+                  )}
+                  aria-hidden="true"
+                >
+                  <Icon size={15} />
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[13.5px] leading-tight transition-[font-weight] duration-200",
+                    isSelected ? "font-bold" : "font-semibold",
+                  )}
+                >
+                  {item.label}
+                </span>
+                <span
+                  className={cn(
+                    "tabular-nums text-[12px] font-medium",
+                    isSelected ? "text-foreground" : "text-muted-foreground",
+                  )}
+                  style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                >
+                  {item.value}%
+                </span>
+                <span
+                  className={cn(
+                    "min-w-[68px] text-right tabular-nums text-[13px]",
+                    isSelected ? "font-bold text-foreground" : "font-semibold text-foreground/80",
+                  )}
+                  style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                >
+                  {formatMoney(amount, currency)}
+                </span>
+              </div>
+              <div
+                className="relative h-2 w-full overflow-hidden rounded-full bg-muted"
+                aria-hidden="true"
+              >
+                <span
+                  className="absolute inset-y-0 left-0 block rounded-full ease-[cubic-bezier(0.32,0.72,0,1)]"
+                  style={{
+                    width: `${fillPct}%`,
+                    backgroundColor: item.color,
+                    transitionProperty: "width, opacity, filter",
+                    transitionDuration: "600ms, 200ms, 200ms",
+                    opacity: selectedId !== null && !isSelected ? 0.55 : 1,
+                    filter: isSelected ? "saturate(1.15)" : "none",
+                  }}
+                />
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -559,11 +606,11 @@ export default function DashboardPage() {
             }}
           />
           <div className="relative">
-            {/* Primary label — small emerald dot signals brand + hierarchy */}
+            {/* Primary label — neutral dot keeps hierarchy without screaming brand */}
             <div className="flex items-center gap-2">
               <span
                 aria-hidden="true"
-                className="h-1.5 w-1.5 rounded-full bg-[oklch(0.72_0.18_162)]"
+                className="h-1.5 w-1.5 rounded-full bg-foreground/40"
               />
               <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/80">
                 Disponible · abril
@@ -624,49 +671,29 @@ export default function DashboardPage() {
             <WeeklyBars data={WEEK_SPEND} height={150} currency={currency} />
           </Card>
 
-          {/* Donut */}
+          {/* Distribución — interactive category bars (replaces legacy donut) */}
           <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
-            <div className="mb-5 flex items-baseline justify-between">
+            <div className="mb-3 flex items-baseline justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Distribución
               </div>
               <button
                 type="button"
-                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Ver todo →
               </button>
             </div>
-            <div className="flex flex-col items-center gap-6 md:flex-row md:items-center md:gap-7">
-              <DonutChart
-                segments={TOP_CATEGORIES}
-                total={spent}
-                currency={currency}
-                size={160}
-              />
-              <div className="flex-1 space-y-2.5 text-xs md:grid md:grid-cols-2 md:gap-x-5 md:gap-y-2.5 md:space-y-0">
-                {TOP_CATEGORIES.map((s) => {
-                  const tint = CATEGORY_TINT[s.id];
-                  const Icon = CATEGORY_ICONS[s.id];
-                  return (
-                    <div key={s.id} className="flex items-center justify-between gap-3">
-                      <span className="inline-flex min-w-0 items-center gap-2.5">
-                        <span
-                          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${tint.bg} ${tint.text}`}
-                          aria-hidden="true"
-                        >
-                          <Icon size={13} />
-                        </span>
-                        <span className="truncate">{s.label}</span>
-                      </span>
-                      <span className="font-mono font-medium tabular-nums text-muted-foreground">
-                        {s.value}%
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="mb-5 text-[13px] leading-snug text-muted-foreground">
+              <span
+                className="font-semibold tabular-nums text-foreground"
+                style={{ fontFeatureSettings: '"tnum","lnum"' }}
+              >
+                {formatMoney(spent, currency)}
+              </span>{" "}
+              gastado en {TOP_CATEGORIES.length} categorías
+            </p>
+            <CategoryBars items={TOP_CATEGORIES} total={spent} currency={currency} />
           </Card>
 
           {/* Recent transactions */}
@@ -677,7 +704,7 @@ export default function DashboardPage() {
               </div>
               <button
                 type="button"
-                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Ver todas →
               </button>

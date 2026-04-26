@@ -47,7 +47,7 @@ export interface TabBarProps {
 // Default Lumi tab structure — order matches the source TabBar.jsx + index.html.
 export const DEFAULT_ITEMS: TabBarItem[] = [
   { href: "/dashboard", label: "Inicio", icon: Home },
-  { href: "/movements", label: "Movs", icon: List },
+  { href: "/movements", label: "Movimientos", icon: List },
   { href: "/capture", label: "Capturar", icon: Plus, primary: true },
   { href: "/insights", label: "Análisis", icon: BarChart3 },
   { href: "/accounts", label: "Cuentas", icon: Wallet },
@@ -137,7 +137,7 @@ export function TabBar({
                   "transition-colors duration-150 ease-out",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active
-                    ? "text-primary"
+                    ? "text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >

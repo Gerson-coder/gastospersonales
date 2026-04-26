@@ -563,7 +563,7 @@ function ReceiptContent() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsCategoryOpen(true)}
-                className="min-h-11 text-primary"
+                className="min-h-11 text-foreground hover:bg-muted"
               >
                 cambiar
                 <ChevronRight size={14} aria-hidden="true" />

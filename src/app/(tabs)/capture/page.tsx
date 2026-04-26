@@ -234,8 +234,11 @@ function CategoryChip({
       className={cn(
         "inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-full border pl-1.5 pr-3.5 text-[13px] font-medium transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        // Selected state: high-contrast neutral pill (foreground bg / background text).
+        // Brand emerald is reserved for the Save CTA below — keep selection
+        // visually loud without painting it green.
         selected
-          ? "border-transparent bg-primary text-primary-foreground font-semibold"
+          ? "border-foreground bg-foreground text-background font-semibold"
           : "border-border bg-card text-foreground hover:bg-muted",
       )}
     >
@@ -244,8 +247,8 @@ function CategoryChip({
         className={cn(
           "inline-flex h-8 w-8 items-center justify-center rounded-full",
           selected
-            ? "bg-white/20 text-current"
-            : "bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]",
+            ? "bg-background/20 text-current"
+            : "bg-muted text-foreground",
         )}
       >
         <Icon size={16} />
@@ -480,7 +483,7 @@ export default function CapturePage() {
           >
             <span
               aria-hidden="true"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
             >
               <account.Icon size={14} />
             </span>
@@ -589,7 +592,7 @@ export default function CapturePage() {
                     "flex min-h-[88px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected
-                      ? "border-transparent bg-primary text-primary-foreground"
+                      ? "border-foreground bg-foreground text-background"
                       : "border-border bg-card text-foreground hover:bg-muted",
                   )}
                 >
@@ -598,8 +601,8 @@ export default function CapturePage() {
                     className={cn(
                       "flex h-10 w-10 items-center justify-center rounded-full",
                       selected
-                        ? "bg-white/20 text-current"
-                        : "bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]",
+                        ? "bg-background/20 text-current"
+                        : "bg-muted text-foreground",
                     )}
                   >
                     <Icon size={20} />
@@ -647,7 +650,7 @@ export default function CapturePage() {
                   >
                     <span
                       aria-hidden="true"
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground"
                     >
                       <Icon size={16} />
                     </span>
@@ -658,7 +661,7 @@ export default function CapturePage() {
                       </span>
                     </span>
                     {selected ? (
-                      <Check size={16} aria-hidden="true" className="text-primary" />
+                      <Check size={16} aria-hidden="true" className="text-foreground" />
                     ) : null}
                   </button>
                 </li>
