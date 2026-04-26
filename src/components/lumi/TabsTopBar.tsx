@@ -17,17 +17,29 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { ProfileMenu } from "@/components/lumi/ProfileMenu";
 
 export function TabsTopBar() {
+  // /capture pulls the eye toward the amount + keypad; the persistent action
+  // cluster competes for attention with no benefit on that screen. Hide on
+  // mobile only — desktop has plenty of horizontal real estate so the cluster
+  // never crowds the capture flow there.
+  const pathname = usePathname();
+  const hideOnMobile = pathname?.startsWith("/capture") ?? false;
+
   return (
     <div
       role="toolbar"
       aria-label="Acciones de la cuenta"
-      className="fixed top-3 right-3 z-30 flex items-center gap-1 rounded-full border border-border/60 bg-background/75 p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/55 md:top-5 md:right-6"
+      className={cn(
+        "fixed top-3 right-3 z-30 flex items-center gap-1 rounded-full border border-border/60 bg-background/75 p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/55 md:top-5 md:right-6",
+        hideOnMobile && "hidden md:flex",
+      )}
     >
       <Link
         href="/settings"

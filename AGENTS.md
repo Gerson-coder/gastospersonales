@@ -54,13 +54,18 @@ A personal finance PWA for tracking expenses and income. Optimized for fast mobi
 - **Mobile-first UX** — capture flow must work in 3 taps or fewer.
 - **Async OCR** — receipt scanning happens server-side via API route, never blocks UI. When traffic grows, move to a queue (Inngest / Trigger.dev / Supabase Edge Functions) — design for it now, implement when needed.
 - **Cost discipline on OCR** — default model is GPT-4o-mini. Escalate to GPT-4o only on retry / low-confidence parses.
+- **Transactions mapper centralized** — all DB ↔ UI shape conversion lives in `src/lib/data/transactions.ts`. Do NOT read `amount_minor` outside this module; consume rows via `toView()` / write via `toInsertPayload()`.
+- **Active currency** — persisted in `lumi-prefs` localStorage; consume via `useActiveCurrency()`. Filters Movements/Insights/Dashboard reads.
+- **Realtime scope** — only `/dashboard` subscribes to `transactions` changes (debounced 250ms). Pro plan caps at ~200 concurrent connections — keep this tight.
+- **Edit transaction flow** — navigate to `/capture?edit=<id>`; the same Capture screen handles create + update via `upsertTransaction()`.
 
 ## Data Model (high-level, refined in /sdd-spec)
 
 - `users` (managed by Supabase Auth)
 - `accounts` (per user: cash, card, bank, etc.)
 - `categories` (per user, customizable)
-- `transactions` (expense / income, linked to account + category)
+- `merchants` (per user + system seeds, with avatar metadata)
+- `transactions` (expense / income, linked to account + category + optional merchant; soft-delete via `archived_at`)
 - `receipts` (uploaded image + OCR result + linked transaction)
 
 ## SDD Workflow
@@ -92,3 +97,4 @@ public/
 - When adding components, prefer shadcn/ui primitives via `npx shadcn@latest add <component>`. Don't reinvent.
 - Receipt OCR API key (`OPENAI_API_KEY`) is server-side only — never expose to the client.
 - Supabase service role key is server-side only — client uses anon key with RLS.
+- Transactions persist to Supabase with cursor pagination on `/movements` (page size 50), realtime-debounced refetch on `/dashboard`, soft-delete + Sonner undo on long-press, and PEN/USD currency switch mounted from `AppHeader` actionsBefore. See `src/lib/data/transactions.ts` for the canonical mapper.

@@ -1,5 +1,4 @@
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
-// TODO: wire real save action to Supabase once the persistence layer is up — currently mock-only.
 /**
  * Capture route — Lumi
  *
@@ -23,7 +22,8 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Camera,
@@ -43,18 +43,15 @@ import {
   Wallet,
   CreditCard,
   Landmark,
-  StickyNote,
-  X,
+  Loader2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   Drawer,
   DrawerContent,
   DrawerDescription,
-  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
@@ -63,8 +60,18 @@ import {
   listCategories,
   type Category as DbCategory,
 } from "@/lib/data/categories";
+import {
+  createTransaction,
+  getTransactionById,
+  updateTransaction,
+  MAX_TRANSACTION_AMOUNT,
+  type TransactionDraft,
+} from "@/lib/data/transactions";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MerchantPicker } from "@/components/lumi/MerchantPicker";
+import { useOnline } from "@/hooks/use-online";
+import { useSession } from "@/lib/use-session";
 
 // Demo-mode flag — when env vars are absent, fall back to the inline
 // MOCK_ACCOUNTS rather than hitting Supabase. Mirrors the same gate used by
@@ -179,6 +186,23 @@ function parseAmount(buffer: string): number {
   if (!buffer || buffer === "." || buffer === "0") return 0;
   const n = Number.parseFloat(buffer);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Inverse of `parseAmount`: render a numeric amount back into the keypad
+ * buffer shape. Used by edit-mode hydration so the keypad reflects the
+ * existing transaction's amount as if the user had typed it. Round-trip
+ * via `amount_minor` to dodge floating drift, then strip any trailing
+ * ".00" so an integer like 25 shows as "25" (not "25.00") — matching the
+ * shape `parseAmount`/`displayAmount` produced before save.
+ */
+function formatAmountToBuffer(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  const minor = Math.round(amount * 100);
+  const major = Math.trunc(minor / 100);
+  const cents = minor % 100;
+  if (cents === 0) return String(major);
+  return `${major}.${cents.toString().padStart(2, "0")}`;
 }
 
 /** Display string for the live amount — falls back to "0". */
@@ -309,6 +333,24 @@ function CategoryChip({
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function CapturePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const { user } = useSession();
+  const online = useOnline();
+
+  // Submit state — true while we await the Supabase ACK. The form is read-only
+  // during this window so the user can't double-submit.
+  const [submitting, setSubmitting] = React.useState(false);
+  // Edit-mode hydration flag — when `?edit=<id>` is present we block the form
+  // until `getTransactionById` resolves, so we never render an empty keypad
+  // with stale defaults that the user might accidentally save over the row.
+  const [hydrating, setHydrating] = React.useState<boolean>(Boolean(editId));
+  // When editing, preserve the original `occurred_at` so re-saving doesn't
+  // shift the row's timestamp to "now". Captured during hydration; sent
+  // verbatim in `updateTransaction`.
+  const [editOriginalOccurredAt, setEditOriginalOccurredAt] = React.useState<
+    string | null
+  >(null);
 
   // Buffer is the raw keypad string; "" means "nothing typed yet" (shows 0).
   const [amountBuffer, setAmountBuffer] = React.useState("");
@@ -392,12 +434,61 @@ export default function CapturePage() {
     };
   }, []);
   const [note, setNote] = React.useState("");
+  // Merchant selection — optional. Always reset to null when the category
+  // changes (merchants are scoped per-category) and after a successful save
+  // so the next capture starts clean. `null` is a valid value at insert
+  // time — the `transactions.merchant_id` column is nullable.
+  const [merchantId, setMerchantId] = React.useState<string | null>(null);
+
+  // Edit-mode hydration: when `?edit=<id>` is in the URL we fetch the row
+  // and seed every form field from it. If the row is gone (archived from
+  // another device, or never owned by this user) we toast + redirect to
+  // /movements per the spec scenario "Edit a row already archived elsewhere".
+  React.useEffect(() => {
+    if (!editId) return;
+    if (!SUPABASE_ENABLED) {
+      // No backend in demo mode; treat the edit param as a soft redirect so
+      // the user lands somewhere sane instead of a half-loaded form.
+      router.replace("/movements");
+      return;
+    }
+    let cancelled = false;
+    setHydrating(true);
+    void (async () => {
+      try {
+        const tx = await getTransactionById(editId);
+        if (cancelled) return;
+        if (!tx) {
+          toast.error("Este movimiento ya no existe.");
+          router.replace("/movements");
+          return;
+        }
+        setAmountBuffer(formatAmountToBuffer(tx.amount));
+        setCurrency(tx.currency);
+        setKind(tx.kind);
+        setCategoryId(tx.categoryId);
+        setAccountId(tx.accountId);
+        setMerchantId(tx.merchantId);
+        setNote(tx.note ?? "");
+        setEditOriginalOccurredAt(tx.occurredAt);
+      } catch (err) {
+        if (cancelled) return;
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "No pudimos cargar el movimiento.",
+        );
+        router.replace("/movements");
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, router]);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
-  // Note drawer — opens on demand from the chip strip. `noteDraft` holds the
-  // in-progress text so the user can cancel without committing.
-  const [noteDrawerOpen, setNoteDrawerOpen] = React.useState(false);
-  const [noteDraft, setNoteDraft] = React.useState("");
   // Saved state — { ts } is stamped in handleSave (post-mount, not during
   // render) to keep SSR output stable.
   const [saved, setSaved] = React.useState<{ ts: number } | null>(null);
@@ -442,40 +533,129 @@ export default function CapturePage() {
       // Cap at 9 chars — prevents absurd numbers and overflow.
       if (s.length >= 9) return s;
       // Prevent leading zeros like "007".
-      if (s === "0") return k;
+      const next = s === "0" ? k : s + k;
       // Cap to 2 decimals.
       const dot = s.indexOf(".");
       if (dot >= 0 && s.length - dot > 2) return s;
-      return s + k;
+      // Spend cap — refuse keypresses that would push the amount past the
+      // hard upper bound. Prevents the user from typing a value the data
+      // layer is going to reject anyway. Silent ignore: no toast spam on
+      // every digit, the displayed amount simply stops growing.
+      const prospective = parseAmount(next);
+      if (prospective > MAX_TRANSACTION_AMOUNT) return s;
+      return next;
     });
   }, []);
 
-  const handleSave = React.useCallback(() => {
-    if (!ready) return;
-    // Stamp "now" post-interaction (NOT during render). This is the single
-    // place we touch Date — keeps SSR output deterministic.
-    const ts = Date.now();
-    setSaved({ ts });
-    // Reset form for the next entry. Drop back to the default category if we
-    // can identify one — otherwise let the next category-fetch tick re-seed.
-    setAmountBuffer("");
-    setNote("");
-    const firstExpense = categories.find((c) => c.defaultKind === "expense");
-    setCategoryId(firstExpense?.id ?? categories[0]?.id ?? null);
-    // After 1.4s show the user the success state, then route to /dashboard
-    // where the new transaction will appear in the latest list.
-    // TODO: when Supabase persistence lands (Batch C), the success banner
-    // can stay where it is (on /capture) and we let realtime push the new
-    // row into /dashboard's list.
-    window.setTimeout(() => {
-      router.push("/dashboard");
-    }, 1400);
-  }, [ready, router, categories]);
+  const handleSave = React.useCallback(async () => {
+    if (!ready || submitting || hydrating) return;
+
+    // Spend cap guard — belt-and-braces in case the keypad somehow let a
+    // value through (paste, autocomplete, future scanner integration). The
+    // data layer also enforces this; we mirror it here so the user gets a
+    // clear toast instead of a generic write error.
+    if (amount > MAX_TRANSACTION_AMOUNT) {
+      toast.error(
+        `El monto no puede superar ${MAX_TRANSACTION_AMOUNT.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+      );
+      return;
+    }
+
+    // Demo mode (no Supabase): keep the legacy success-banner behaviour so
+    // the UI is still demo-able without env vars. Reset + delayed nav.
+    if (!SUPABASE_ENABLED) {
+      const ts = Date.now();
+      setSaved({ ts });
+      setAmountBuffer("");
+      setNote("");
+      setMerchantId(null);
+      const firstExpense = categories.find((c) => c.defaultKind === "expense");
+      setCategoryId(firstExpense?.id ?? categories[0]?.id ?? null);
+      window.setTimeout(() => {
+        router.push("/dashboard");
+      }, 1400);
+      return;
+    }
+
+    if (!user) {
+      toast.error("Necesitás iniciar sesión para registrar movimientos.");
+      return;
+    }
+    if (!online) {
+      // Offline guard — Save is also disabled in the UI; this is the
+      // belt-and-braces backup.
+      toast.error("Sin conexión — vas a poder guardar cuando vuelva la red.");
+      return;
+    }
+    if (!categoryId || !accountId || amount <= 0) {
+      toast.error("Completá monto, categoría y cuenta para guardar.");
+      return;
+    }
+
+    const draft: TransactionDraft = {
+      amount,
+      currency,
+      kind,
+      categoryId,
+      merchantId,
+      accountId,
+      note: note.trim() ? note.trim() : null,
+      // In edit mode, preserve the original timestamp; in create mode let
+      // the DB default `occurred_at` to `now()` server-side.
+      ...(editId && editOriginalOccurredAt
+        ? { occurredAt: editOriginalOccurredAt }
+        : {}),
+    };
+
+    setSubmitting(true);
+    try {
+      if (editId) {
+        await updateTransaction(editId, draft);
+        toast.success("Movimiento actualizado.");
+        router.push("/movements");
+      } else {
+        await createTransaction(draft);
+        toast.success("Guardado.");
+        router.push("/dashboard");
+      }
+      // Don't reset state on success: the page is unmounting via navigation.
+      // Keeping `submitting=true` until unmount also blocks any double-tap.
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "No pudimos guardar el movimiento.",
+      );
+      setSubmitting(false);
+    }
+  }, [
+    ready,
+    submitting,
+    hydrating,
+    user,
+    online,
+    categoryId,
+    accountId,
+    amount,
+    currency,
+    kind,
+    merchantId,
+    note,
+    editId,
+    editOriginalOccurredAt,
+    router,
+    categories,
+  ]);
 
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {
       setCategoryId(id);
       setCategoryDrawerOpen(false);
+      // Merchants are scoped per-category — switching categories MUST clear
+      // the previously-selected merchant. The MerchantPicker also bails out
+      // visually when the category has no merchants, but the state reset is
+      // what guarantees we never persist a cross-category id on save.
+      setMerchantId(null);
       const picked = categories.find((c) => c.id === id);
       if (picked && picked.defaultKind !== kind) {
         // Switching to an income-by-default category (e.g. "Trabajo") flips
@@ -486,30 +666,6 @@ export default function CapturePage() {
     },
     [kind, categories],
   );
-
-  const openNoteDrawer = React.useCallback(() => {
-    // Prefill the draft with the saved note so editing feels natural.
-    setNoteDraft(note);
-    setNoteDrawerOpen(true);
-  }, [note]);
-
-  const handleSaveNote = React.useCallback(() => {
-    const trimmed = noteDraft.trim();
-    setNote(trimmed);
-    setNoteDrawerOpen(false);
-  }, [noteDraft]);
-
-  const handleClearNote = React.useCallback((e: React.MouseEvent) => {
-    // Stop propagation so we don't also open the drawer when the user taps
-    // the small ✕ inside the note chip.
-    e.stopPropagation();
-    setNote("");
-  }, []);
-
-  const noteExcerpt = React.useMemo(() => {
-    if (!note) return "";
-    return note.length > 24 ? `${note.slice(0, 24)}…` : note;
-  }, [note]);
 
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"
@@ -529,11 +685,16 @@ export default function CapturePage() {
             <ArrowLeft size={20} aria-hidden="true" />
           </button>
 
-          {/* Kind toggle (gasto / ingreso) */}
+          {/* Kind toggle (gasto / ingreso) — bigger pill on mobile so it
+              reads as a primary control next to the amount; reverts to the
+              tighter desktop sizing at md+ where the header has more chrome
+              competing for visual weight. mx-auto keeps it visually anchored
+              between the back button and the currency cluster on small
+              screens. */}
           <div
             role="radiogroup"
             aria-label="Tipo de movimiento"
-            className="flex h-9 items-center gap-0.5 rounded-full bg-muted p-0.5"
+            className="mx-auto flex h-11 items-center gap-0.5 rounded-full bg-muted p-0.5 md:h-9"
           >
             <button
               type="button"
@@ -541,7 +702,7 @@ export default function CapturePage() {
               aria-checked={kind === "expense"}
               onClick={() => setKind("expense")}
               className={cn(
-                "rounded-full px-3.5 text-xs font-semibold transition-colors",
+                "rounded-full px-4 text-sm font-semibold transition-colors md:px-3.5 md:text-xs",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -556,7 +717,7 @@ export default function CapturePage() {
               aria-checked={kind === "income"}
               onClick={() => setKind("income")}
               className={cn(
-                "rounded-full px-3.5 text-xs font-semibold transition-colors",
+                "rounded-full px-4 text-sm font-semibold transition-colors md:px-3.5 md:text-xs",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -597,7 +758,7 @@ export default function CapturePage() {
           </div>
           <div
             className={cn(
-              "mt-2 font-display italic tabular-nums leading-none tracking-tight",
+              "mt-2 font-semibold tabular-nums leading-none tracking-tight",
               "text-[44px] md:text-[56px]",
               amountBuffer === "" ? "text-muted-foreground" : "text-foreground",
             )}
@@ -630,6 +791,34 @@ export default function CapturePage() {
             </div>
           ) : null}
         </output>
+
+        {/* Offline banner — visible when the browser reports `offline`. The
+            Save button is also disabled in that state; this just makes the
+            "why is Save grey" visible to the user. */}
+        {!online ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mx-4 mt-3 rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+          >
+            Sin conexión — vas a poder guardar cuando vuelva la red.
+          </div>
+        ) : null}
+
+        {/* Hydrating overlay — when arriving via `?edit=<id>`, block the
+            form behind a friendly spinner until the row is loaded. Avoids
+            the "user types over the wrong amount before hydration lands"
+            footgun. */}
+        {hydrating ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mx-4 mt-3 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-3 text-[13px] text-muted-foreground"
+          >
+            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
+            <span>Cargando movimiento…</span>
+          </div>
+        ) : null}
 
         {/* MRU category chips */}
         <section className="mt-4 px-4" aria-label="Categorías recientes">
@@ -667,6 +856,16 @@ export default function CapturePage() {
             </button>
           </div>
         </section>
+
+        {/* Merchant picker — "¿Dónde? (opcional)". Renders nothing when
+            there's no category context or the category has zero visible
+            merchants, so the 3-tap happy path stays untouched. */}
+        <MerchantPicker
+          categoryId={categoryId}
+          categoryName={category?.label ?? null}
+          value={merchantId}
+          onChange={setMerchantId}
+        />
 
         {/* Account picker + note */}
         <section className="mt-3 space-y-3 px-4">
@@ -711,50 +910,11 @@ export default function CapturePage() {
             )}
           </button>
 
-          {/* Note chip — empty: a small "+ Nota" affordance; filled: shows the
-              excerpt with an inline ✕ to clear. Tapping the chip (anywhere
-              outside the ✕) opens the note drawer. */}
-          {note ? (
-            <button
-              type="button"
-              onClick={openNoteDrawer}
-              aria-label={`Editar nota: ${note}`}
-              aria-haspopup="dialog"
-              aria-expanded={noteDrawerOpen}
-              className="flex h-11 w-full items-center gap-2 rounded-full border border-foreground bg-foreground pl-3 pr-1.5 text-left text-[13px] font-semibold text-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <StickyNote size={14} aria-hidden="true" className="flex-shrink-0" />
-              <span className="flex-1 truncate">Nota: «{noteExcerpt}»</span>
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label="Quitar nota"
-                onClick={handleClearNote}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setNote("");
-                  }
-                }}
-                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-background/15 text-background transition-colors hover:bg-background/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X size={14} aria-hidden="true" />
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={openNoteDrawer}
-              aria-label="Agregar nota opcional"
-              aria-haspopup="dialog"
-              aria-expanded={noteDrawerOpen}
-              className="inline-flex h-11 items-center gap-2 self-start rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <StickyNote size={14} aria-hidden="true" />
-              + Nota
-            </button>
-          )}
+          {/* TODO(ux): note input se quitó de mobile. Reubicar — quizás en
+              una expand-on-demand row inline. El state `note` y el
+              `noteDrawer` siguen montados para que la hidratación de edit
+              mode (que puede traer una nota guardada) no se rompa: el draft
+              sigue persistiendo `note` en handleSave. */}
         </section>
 
         {/* Hint */}
@@ -772,21 +932,37 @@ export default function CapturePage() {
           <Button
             type="button"
             onClick={handleSave}
-            disabled={!ready}
+            disabled={!ready || submitting || hydrating || !online}
             aria-label={saveAriaLabel}
+            aria-busy={submitting}
             className={cn(
               "h-14 w-full rounded-full text-base font-bold transition-transform",
               "active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50",
             )}
-            style={ready ? { boxShadow: "var(--shadow-fab)" } : undefined}
+            style={
+              ready && !submitting && !hydrating && online
+                ? { boxShadow: "var(--shadow-fab)" }
+                : undefined
+            }
           >
-            {kind === "income" ? "Guardar ingreso" : "Guardar gasto"}
+            {submitting ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={18} aria-hidden="true" className="animate-spin" />
+                <span>Guardando…</span>
+              </span>
+            ) : editId ? (
+              "Guardar cambios"
+            ) : kind === "income" ? (
+              "Guardar ingreso"
+            ) : (
+              "Guardar gasto"
+            )}
           </Button>
 
           <button
             type="button"
             onClick={() => setCategoryDrawerOpen(true)}
-            disabled={!ready}
+            disabled={!ready || submitting || hydrating}
             aria-haspopup="dialog"
             aria-expanded={categoryDrawerOpen}
             className={cn(
@@ -799,68 +975,6 @@ export default function CapturePage() {
           </button>
         </div>
       </div>
-
-      {/* Note drawer — small modal sheet to add or edit the optional note.
-          Lives outside the form flow so the textarea autoFocus only fires when
-          the drawer opens. */}
-      <Drawer
-        open={noteDrawerOpen}
-        onOpenChange={(open) => {
-          setNoteDrawerOpen(open);
-          if (!open) {
-            // Discard the in-progress draft when the user closes the drawer
-            // any way other than tapping Guardar.
-            setNoteDraft(note);
-          }
-        }}
-      >
-        <DrawerContent
-          aria-describedby="capture-note-desc"
-          className="bg-background"
-        >
-          <DrawerHeader>
-            <DrawerTitle>Agregar nota</DrawerTitle>
-            <DrawerDescription id="capture-note-desc">
-              Detalle opcional para recordar este movimiento.
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-2">
-            <Label htmlFor="capture-note-textarea" className="sr-only">
-              Nota opcional
-            </Label>
-            <textarea
-              id="capture-note-textarea"
-              autoFocus
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              placeholder="Una nota opcional…"
-              maxLength={200}
-              rows={4}
-              className="w-full resize-none rounded-2xl border border-border bg-card px-3 py-2.5 text-[14px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <div className="mt-1 text-right text-[11px] text-muted-foreground tabular-nums">
-              {noteDraft.length}/200
-            </div>
-          </div>
-          <DrawerFooter className="flex-col gap-2">
-            <Button
-              type="button"
-              onClick={handleSaveNote}
-              disabled={noteDraft.trim().length === 0}
-              className="h-12 w-full rounded-full text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Guardar
-            </Button>
-            <button
-              type="button"
-              onClick={() => setNoteDrawerOpen(false)}
-              className="h-10 w-full rounded-full text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Cancelar
-            </button>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
 
       {/* Category drawer — full grid */}
       <Drawer open={categoryDrawerOpen} onOpenChange={setCategoryDrawerOpen}>

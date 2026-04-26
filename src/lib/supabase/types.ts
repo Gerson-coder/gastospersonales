@@ -86,6 +86,11 @@ export type Database = {
           account_id: string;
           // category_id is `references categories on delete set null`, so it is nullable.
           category_id: string | null;
+          // merchant_id is `references merchants on delete set null`, so it is nullable.
+          // Added manually to unblock the merchants-picker frontend; will be
+          // overwritten when this file is regenerated via
+          // `supabase gen types typescript --linked` after migration 00006.
+          merchant_id: string | null;
           kind: CategoryKind;
           amount_minor: number;
           currency: Currency;
@@ -106,6 +111,32 @@ export type Database = {
           currency: Currency;
         };
         Update: Partial<Database["public"]["Tables"]["transactions"]["Row"]>;
+        Relationships: [];
+      };
+      // Manually added ahead of `supabase gen types typescript --linked` so
+      // the `merchants-picker` frontend can compile against migrations
+      // 00006 + 00008 before they land in the remote DB. Regenerate this
+      // file once the migrations are applied to keep these in sync.
+      merchants: {
+        Row: {
+          id: string;
+          // NULL → system merchant visible to every authenticated user.
+          user_id: string | null;
+          category_id: string;
+          name: string;
+          // Added by 00008_merchants_logo_slug.sql. Maps to a static SVG
+          // at /public/logos/merchants/{logo_slug}.svg; NULL → render the
+          // initials avatar at runtime.
+          logo_slug: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["merchants"]["Row"]> & {
+          category_id: string;
+          name: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["merchants"]["Row"]>;
         Relationships: [];
       };
       receipts: {
@@ -162,7 +193,15 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      list_mru_merchants: {
+        Args: {
+          p_category_id: string;
+          p_limit?: number;
+        };
+        Returns: Database["public"]["Tables"]["merchants"]["Row"][];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

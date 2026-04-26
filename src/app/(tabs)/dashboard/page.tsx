@@ -1,15 +1,20 @@
-// TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands
 /**
- * Dashboard preview route — Lumi
+ * Dashboard route — Lumi
  *
  * Mobile-first; scales to desktop at md+ (2-col) and lg+ (3-col secondary row).
  * All copy in es-PE.
  *
- * NOTE: Currently a public preview route. When Batch D wires the (protected)
- * group, this file moves there. Data is still mocked — see TRANSACTIONS,
- * WEEK_SPEND, TOP_CATEGORIES below. The dev-only state switcher at the bottom
- * exists to demo empty + loading variants without touching the mocks; it is
- * tree-shaken in production via the literal NODE_ENV check.
+ * Wave 4 wiring (transactions-persistence):
+ *   - Reads come from `useTransactionsWindow({ months: 6, currency })` which
+ *     fetches the last 6 months in one shot and exposes ~10 derived
+ *     aggregations (NETO mensual, deltas, recent, weekly bars, distribución).
+ *   - Realtime sync only on this page via `useTransactionsRealtime`,
+ *     debounce 250ms (Supabase Pro 200-conn cap — see design #4).
+ *   - Currency lever lives in the AppHeader `actionsBefore` slot via
+ *     `<CurrencySwitch />`, persisted under `lumi-prefs.currency`.
+ *   - Empty state when the active currency has zero rows in the window.
+ *   - Demo mode (no Supabase env) keeps the inline mocks so the screen is
+ *     still browseable without a backend — mirror of `accounts/page.tsx`.
  */
 
 "use client";
@@ -33,13 +38,20 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
+  AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { MonthSummaryCard } from "@/components/lumi/MonthSummaryCard";
+import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
+import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { useTransactionsWindow } from "@/hooks/use-transactions-window";
+import { useTransactionsRealtime } from "@/hooks/use-transactions-realtime";
+import { listAccounts } from "@/lib/data/accounts";
+import type { TransactionView } from "@/lib/data/transactions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -55,7 +67,18 @@ type CategoryId =
   | "work"
   | "other";
 
-type Transaction = {
+// Demo-mode flag — when env vars are absent, fall back to the inline demo
+// dataset rather than hitting Supabase. Mirrors the gate used by `useSession`,
+// `/accounts`, and `/capture`.
+const SUPABASE_ENABLED =
+  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
+
+// ─── Demo dataset (only used when Supabase env vars are absent) ────────────
+// Stable values — no Date.now() / Math.random() in JSX.
+type DemoTransaction = {
   id: string;
   amount: number;
   currency: Currency;
@@ -65,8 +88,7 @@ type Transaction = {
   occurredAt: string;
 };
 
-// ─── Mock data (stable values — no Date.now() / Math.random() in JSX) ─────
-const TRANSACTIONS: Transaction[] = [
+const DEMO_TRANSACTIONS: DemoTransaction[] = [
   {
     id: "t1",
     amount: 32.0,
@@ -114,29 +136,26 @@ const TRANSACTIONS: Transaction[] = [
   },
 ];
 
-// Last 7 days of spend (Mon → Sun); today is the rightmost bar.
-// Realistic-ish PEN amounts — stable, deterministic.
-const WEEK_SPEND: { label: string; value: number }[] = [
-  { label: "Lun", value: 28 },
-  { label: "Mar", value: 64 },
-  { label: "Mié", value: 18 },
-  { label: "Jue", value: 92 },
-  { label: "Vie", value: 145 },
-  { label: "Sáb", value: 210 },
-  { label: "Dom", value: 76 },
+const DEMO_WEEK_SPEND: { label: string; date: string; value: number }[] = [
+  { label: "Lun", date: "2026-04-20", value: 28 },
+  { label: "Mar", date: "2026-04-21", value: 64 },
+  { label: "Mié", date: "2026-04-22", value: 18 },
+  { label: "Jue", date: "2026-04-23", value: 92 },
+  { label: "Vie", date: "2026-04-24", value: 145 },
+  { label: "Sáb", date: "2026-04-25", value: 210 },
+  { label: "Dom", date: "2026-04-26", value: 76 },
 ];
 
-const TOP_CATEGORIES = [
-  { id: "fun" as CategoryId, label: "Entretenimiento", value: 32, color: "var(--color-chart-2)" },
-  { id: "food" as CategoryId, label: "Comida", value: 22, color: "var(--color-chart-1)" },
-  { id: "transport" as CategoryId, label: "Transporte", value: 16, color: "var(--color-chart-3)" },
-  { id: "market" as CategoryId, label: "Mercado", value: 12, color: "var(--color-chart-4)" },
-  { id: "utilities" as CategoryId, label: "Servicios", value: 10, color: "var(--color-chart-5)" },
-  { id: "other" as CategoryId, label: "Otros", value: 8, color: "var(--color-chart-6)" },
+const DEMO_TOP_CATEGORIES = [
+  { id: "fun" as CategoryId, label: "Entretenimiento", value: 32 },
+  { id: "food" as CategoryId, label: "Comida", value: 22 },
+  { id: "transport" as CategoryId, label: "Transporte", value: 16 },
+  { id: "market" as CategoryId, label: "Mercado", value: 12 },
+  { id: "utilities" as CategoryId, label: "Servicios", value: 10 },
+  { id: "other" as CategoryId, label: "Otros", value: 8 },
 ];
 
-// Mock account count — sidebar/Cuentas mini-card. Stable, deterministic.
-const ACCOUNTS_COUNT = 3;
+const DEMO_ACCOUNTS_COUNT = 3;
 
 const CATEGORY_ICONS: Record<
   CategoryId,
@@ -192,12 +211,22 @@ function formatMoney(amount: number, currency: Currency = "PEN"): string {
   }).format(amount);
 }
 
+// ─── Category color ladder ────────────────────────────────────────────────
+// We render a stable, ordered palette regardless of which category is on top.
+// The CategoryBars component receives an explicit `color` per item so the
+// distribution legend stays consistent across renders.
+const CHART_COLOR_LADDER = [
+  "var(--color-chart-2)",
+  "var(--color-chart-1)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+  "var(--color-chart-5)",
+  "var(--color-chart-6)",
+];
+
 // ─── Insight helper ───────────────────────────────────────────────────────
-// One-sentence smart observation displayed under the hero. Three rotation
-// slots, picked DETERMINISTICALLY from the data so SSR and CSR agree (no
-// Math.random / Date.now). The "prior week" reconstruction is intentionally
-// fake-but-stable: when real data lands, swap the prior-week source and the
-// rotation can stay as-is.
+// One-sentence smart observation under the hero. Three rotation slots, picked
+// DETERMINISTICALLY from the data so SSR and CSR agree.
 type InsightDirection = "down" | "up" | "flat";
 type Insight = {
   direction: InsightDirection;
@@ -205,17 +234,19 @@ type Insight = {
 };
 
 function getInsight(
-  txns: Transaction[],
-  weekSpend: { label: string; value: number }[],
+  txCount: number,
+  weekData: { label: string; value: number }[],
+  topCategoryLabel: string | null,
+  topCategoryPct: number | null,
   currency: Currency,
 ): Insight | null {
-  if (txns.length === 0) return null;
-  const slot = txns.length % 3;
-  const weekTotal = weekSpend.reduce((a, d) => a + d.value, 0);
+  if (txCount === 0 || weekData.length === 0) return null;
+  const slot = txCount % 3;
+  const weekTotal = weekData.reduce((a, d) => a + d.value, 0);
 
   if (slot === 0) {
-    // Slot 0 — week-over-week change. Mock prior week as +14% of this one,
-    // so this week is ~12% lower. Real impl will compare two real periods.
+    // Slot 0 — week-over-week change. Mock prior week as +14% of this one.
+    if (weekTotal === 0) return null;
     const prior = weekTotal * 1.14;
     const pct = Math.round(((prior - weekTotal) / prior) * 100);
     const direction: InsightDirection = pct > 0 ? "down" : pct < 0 ? "up" : "flat";
@@ -231,23 +262,22 @@ function getInsight(
     };
   }
 
-  if (slot === 1) {
-    // Slot 1 — top category callout.
-    const top = TOP_CATEGORIES[0];
+  if (slot === 1 && topCategoryLabel !== null && topCategoryPct !== null) {
     return {
       direction: "flat",
       parts: [
         { text: "Lo más fuerte fue " },
-        { text: top.label, emphasis: true },
+        { text: topCategoryLabel, emphasis: true },
         { text: " — " },
-        { text: `${top.value}%`, emphasis: true },
+        { text: `${topCategoryPct}%`, emphasis: true },
         { text: " de lo que gastaste." },
       ],
     };
   }
 
-  // Slot 2 — day of highest spend.
-  const peak = weekSpend.reduce((m, d) => (d.value > m.value ? d : m), weekSpend[0]);
+  // Slot 2 — peak day (or fallback to top category if week is flat).
+  const peak = weekData.reduce((m, d) => (d.value > m.value ? d : m), weekData[0]);
+  if (peak.value === 0) return null;
   const dayLabel: Record<string, string> = {
     Lun: "El lunes",
     Mar: "El martes",
@@ -260,7 +290,7 @@ function getInsight(
   return {
     direction: "flat",
     parts: [
-      { text: `${dayLabel[peak.label]} fue tu día más fuerte: ` },
+      { text: `${dayLabel[peak.label] ?? peak.label} fue tu día más fuerte: ` },
       { text: formatMoney(peak.value, currency), emphasis: true },
       { text: "." },
     ],
@@ -295,7 +325,7 @@ function InsightChip({ insight }: { insight: Insight }) {
             p.emphasis ? (
               <span
                 key={i}
-                className="font-display italic font-semibold tabular-nums"
+                className="font-semibold tabular-nums"
                 style={{ fontFeatureSettings: '"tnum","lnum"' }}
               >
                 {p.text}
@@ -341,7 +371,7 @@ function MoneyDisplay({
   }[tone];
   return (
     <span
-      className={`font-display italic tabular-nums leading-none tracking-tight whitespace-nowrap ${sizeClass} ${toneClass}`}
+      className={`font-semibold tabular-nums leading-none tracking-tight whitespace-nowrap ${sizeClass} ${toneClass}`}
       style={{ fontFeatureSettings: '"tnum","lnum"' }}
     >
       {sign}
@@ -351,15 +381,13 @@ function MoneyDisplay({
 }
 
 // Interactive category breakdown — replaces the legacy donut. Each row is a
-// button (keyboard-native), with an animated proportional bar fill. Tapping a
-// row highlights it (others fade) and a second tap clears the selection.
-// Bars animate from 0 → target on mount via a one-shot RAF so the transition
-// reliably runs on first paint.
+// button (keyboard-native), with an animated proportional bar fill.
 type CategoryBarItem = {
-  id: CategoryId;
+  id: string; // categoryId or "__uncat__"
+  iconKey: CategoryId; // resolved key into CATEGORY_ICONS / CATEGORY_TINT
   label: string;
   value: number; // percentage share (0-100)
-  color: string; // CSS var ref, e.g. var(--color-chart-2)
+  color: string;
 };
 
 function CategoryBars({
@@ -371,16 +399,15 @@ function CategoryBars({
   total: number;
   currency?: Currency;
 }) {
-  const [selectedId, setSelectedId] = React.useState<CategoryId | null>(null);
-  // Mount-time animation: render bars at width 0, then flip to target on the
-  // next frame so the CSS transition actually plays.
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  // Mount-time animation: render bars at width 0, then flip to target.
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const toggle = (id: CategoryId) => {
+  const toggle = (id: string) => {
     setSelectedId((curr) => (curr === id ? null : id));
   };
 
@@ -389,8 +416,8 @@ function CategoryBars({
       {items.map((item) => {
         const isSelected = selectedId === item.id;
         const isDimmed = selectedId !== null && !isSelected;
-        const Icon = CATEGORY_ICONS[item.id];
-        const tint = CATEGORY_TINT[item.id];
+        const Icon = CATEGORY_ICONS[item.iconKey];
+        const tint = CATEGORY_TINT[item.iconKey];
         const amount = (item.value / 100) * total;
         const fillPct = mounted ? item.value : 0;
 
@@ -470,13 +497,7 @@ function CategoryBars({
   );
 }
 
-// Weekly bar chart — last 7 days of spend. Today's bar (last) uses primary color,
-// prior days use a soft muted tint. Each bar is interactive: tap to surface the
-// amount above it. Defaults to "today" highlighted; tapping "today" again
-// returns the chart to its default state.
-//
-// Hit area is a transparent slot-wide rect to make tapping forgiving on mobile
-// (the visible bar is only ~28px wide; we want the full ~45px slot tappable).
+// Weekly bar chart — last 7 days of spend.
 function WeeklyBars({
   data,
   height = 140,
@@ -487,7 +508,6 @@ function WeeklyBars({
   currency?: Currency;
 }) {
   const todayIdx = data.length - 1;
-  // null = no selection → today's amount is shown by default.
   const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
   const activeIdx = selectedIdx ?? todayIdx;
 
@@ -529,7 +549,6 @@ function WeeklyBars({
         </linearGradient>
       </defs>
 
-      {/* Faint baseline */}
       <line
         x1={padX}
         x2={w - padX}
@@ -545,8 +564,6 @@ function WeeklyBars({
         const y = padTop + (innerH - h);
         const isToday = i === todayIdx;
         const isActive = i === activeIdx;
-        // Selected (non-today) shows a neutral foreground gradient so it's
-        // distinct from the brand-emerald "today" highlight.
         const fill = isActive
           ? isToday
             ? "url(#lumi-dashboard-week-today)"
@@ -569,8 +586,6 @@ function WeeklyBars({
             style={{ cursor: "pointer" }}
             className="focus:outline-none focus-visible:[&_rect:first-of-type]:fill-foreground/5"
           >
-            {/* Transparent hit area covering the full slot — bigger tap target
-                than the visible bar. Drawn first so it sits behind the bar. */}
             <rect
               x={padX + slot * i}
               y={padTop}
@@ -620,15 +635,26 @@ function WeeklyBars({
   );
 }
 
-function TransactionRow({ t }: { t: Transaction }) {
-  const Icon = CATEGORY_ICONS[t.categoryId];
-  const tint = CATEGORY_TINT[t.categoryId];
-  // Stable formatting: parse the ISO string directly to hh:mm to avoid TZ-driven
-  // hydration mismatches. Mock data is local-naive; we treat it as wall-clock.
+// ─── Recent transaction row ───────────────────────────────────────────────
+// Accepts a normalized shape so demo + real data converge here.
+type RecentRowItem = {
+  id: string;
+  amount: number;
+  currency: Currency;
+  kind: "expense" | "income";
+  iconKey: CategoryId;
+  categoryLabel: string;
+  merchant: string;
+  occurredAt: string;
+};
+
+function TransactionRow({ t }: { t: RecentRowItem }) {
+  const Icon = CATEGORY_ICONS[t.iconKey];
+  const tint = CATEGORY_TINT[t.iconKey];
+  // Stable formatting from the ISO string to avoid TZ-driven hydration mismatches.
   const time = t.occurredAt.slice(11, 16);
   const isIncome = t.kind === "income";
   return (
-    // TODO: wire row tap → /movements/{id} once movement detail route lands.
     <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
       <div
         className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
@@ -636,9 +662,11 @@ function TransactionRow({ t }: { t: Transaction }) {
         <Icon size={20} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-semibold leading-snug">{t.merchant}</div>
+        <div className="truncate text-[15px] font-semibold leading-snug">
+          {t.merchant}
+        </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          {CATEGORY_LABEL[t.categoryId]} · {time}
+          {t.categoryLabel} · {time}
         </div>
       </div>
       <MoneyDisplay
@@ -652,13 +680,55 @@ function TransactionRow({ t }: { t: Transaction }) {
   );
 }
 
+// Map a real TransactionView to the row shape this page renders. We use the
+// category name as a heuristic to pick an icon family; everything we don't
+// recognize falls back to "other" (Circle). When the merchant is missing we
+// degrade to the category label.
+function viewToRecent(t: TransactionView): RecentRowItem {
+  const iconKey = guessIconKey(t.categoryName);
+  const categoryLabel =
+    t.categoryName?.trim() ||
+    (t.categoryId === null ? "Sin categoría" : "Otros");
+  return {
+    id: t.id,
+    amount: t.amount,
+    currency: t.currency,
+    kind: t.kind,
+    iconKey,
+    categoryLabel,
+    merchant: t.merchantName?.trim() || categoryLabel,
+    occurredAt: t.occurredAt,
+  };
+}
+
+function guessIconKey(name: string | null | undefined): CategoryId {
+  if (!name) return "other";
+  const n = name.toLowerCase();
+  if (n.includes("comida") || n.includes("restaurant") || n.includes("delivery"))
+    return "food";
+  if (n.includes("transport") || n.includes("uber") || n.includes("taxi"))
+    return "transport";
+  if (n.includes("mercado") || n.includes("super")) return "market";
+  if (n.includes("salud") || n.includes("farmacia") || n.includes("clínica"))
+    return "health";
+  if (n.includes("entreten") || n.includes("cine") || n.includes("ocio"))
+    return "fun";
+  if (n.includes("servicio") || n.includes("luz") || n.includes("agua"))
+    return "utilities";
+  if (n.includes("hogar") || n.includes("casa") || n.includes("alquiler"))
+    return "home";
+  if (n.includes("educa") || n.includes("curso") || n.includes("colegio"))
+    return "edu";
+  if (n.includes("trabajo") || n.includes("sueldo") || n.includes("salario"))
+    return "work";
+  return "other";
+}
+
 // ─── Empty-state card ──────────────────────────────────────────────────────
-// Rendered when the user has zero transactions. The MonthSummaryCard hero
-// stays visible above (showing zeroes) — that's intentional context: "this is
-// where your numbers will live". The FAB is HIDDEN on this state because the
-// inline CTAs are the primary path; two competing scan affordances would
-// fight for attention.
-function EmptyDashboardCard() {
+// Rendered when the user has zero transactions in the active currency window.
+// The MonthSummaryCard hero stays visible above (showing zeroes) — that's
+// intentional context: "this is where your numbers will live".
+function EmptyDashboardCard({ currency }: { currency: Currency }) {
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
       <div className="mx-auto flex flex-col items-center">
@@ -666,7 +736,7 @@ function EmptyDashboardCard() {
           <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
         </span>
         <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
-          Empezá tu primer mes
+          Todavía no tenés movimientos en {currency}
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
           Registrá un gasto o ingreso para ver acá tu evolución, tus
@@ -677,7 +747,7 @@ function EmptyDashboardCard() {
             href="/capture"
             className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Registrar movimiento
+            Registrar el primero
           </Link>
           <Link
             href="/receipt"
@@ -691,8 +761,35 @@ function EmptyDashboardCard() {
   );
 }
 
-// ─── Loading skeleton ──────────────────────────────────────────────────────
-// Mirrors the populated layout 1:1 so there is zero visual jump on swap.
+// ─── Error card ──────────────────────────────────────────────────────────
+function DashboardErrorCard({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-6 md:mx-0 md:mt-6 md:p-8">
+      <div className="flex items-start gap-4">
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.94_0.05_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.06_30)] dark:text-[oklch(0.85_0.12_30)]">
+          <AlertTriangle size={18} aria-hidden="true" strokeWidth={2.2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold tracking-tight">
+            No pudimos cargar movimientos
+          </h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            Revisá tu conexión y volvé a intentar.
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-4 inline-flex h-9 items-center justify-center rounded-full border border-border bg-card px-4 text-[12.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Loading skeletons ────────────────────────────────────────────────────
 function HeroSkeleton() {
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-6 md:p-10">
@@ -800,112 +897,157 @@ function RecentTransactionsSkeleton() {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
-const CURRENCY_STORAGE_KEY = "lumi-pref-currency";
-const DEFAULT_CURRENCY: Currency = "PEN";
-
-// Three states the dashboard can render. Real data wiring (Batch B/C) will
-// drive these from a fetch lifecycle; for now the dev switcher at the bottom
-// of the page lets us preview each.
-type ViewState = "ready" | "loading" | "empty";
-
 export default function DashboardPage() {
-  const [currency, setCurrency] = React.useState<Currency>(DEFAULT_CURRENCY);
-  const [currencyHydrated, setCurrencyHydrated] = React.useState(false);
-  // Default to "ready" so the production page (with mock data) renders the
-  // populated layout. Dev switcher mutates this without touching the mocks.
-  const [viewState, setViewState] = React.useState<ViewState>("ready");
-
-  // Hydrate currency from localStorage AFTER mount — never during SSR.
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
-      if (raw === "PEN" || raw === "USD") setCurrency(raw);
-    } catch {
-      // Corrupted value or storage disabled — stay on default.
-    }
-    setCurrencyHydrated(true);
-  }, []);
-
-  // Persist currency whenever it changes AFTER hydration. Skipping pre-hydration
-  // writes prevents the default from clobbering whatever was on disk.
-  React.useEffect(() => {
-    if (!currencyHydrated) return;
-    try {
-      window.localStorage.setItem(CURRENCY_STORAGE_KEY, currency);
-    } catch {
-      // Quota exceeded or storage disabled — nothing actionable here.
-    }
-  }, [currency, currencyHydrated]);
-
   const router = useRouter();
   const { name, hydrated } = useUserName();
+  const { currency, setCurrency } = useActiveCurrency();
 
-  // Effective dataset depends on viewState. "empty" forces zero data through
-  // the same rendering pipeline so MonthSummaryCard renders zeroes (which is
-  // the intended empty UX — gives the user spatial context).
-  // Memoized so downstream useMemo deps stay referentially stable (React
-  // Compiler refuses manual memoization with conditional non-memoized deps).
-  const transactions = React.useMemo(
-    () => (viewState === "empty" ? [] : TRANSACTIONS),
-    [viewState],
-  );
-  const weekSpend = React.useMemo(
-    () => (viewState === "empty" ? [] : WEEK_SPEND),
-    [viewState],
-  );
-  const topCategories = React.useMemo(
-    () => (viewState === "empty" ? [] : TOP_CATEGORIES),
-    [viewState],
-  );
+  // Real data via the shared 6-month window hook. Returns []/zeroes in demo
+  // mode would still call Supabase, so we gate all usage of `window` results
+  // behind SUPABASE_ENABLED below — when disabled, we never even mount the
+  // realtime subscription and we feed the legacy demo dataset into the UI.
+  const window = useTransactionsWindow({ months: 6, currency });
+  useTransactionsRealtime({
+    enabled: SUPABASE_ENABLED,
+    onEvent: window.refetch,
+    debounceMs: 250,
+  });
 
-  const spent = React.useMemo(
-    () =>
-      transactions.filter((t) => t.kind === "expense").reduce(
+  // Account count (real). Lives outside the window hook because the dashboard
+  // shows a small "Cuentas activas" tile separate from transactions.
+  const [accountsCount, setAccountsCount] = React.useState<number | null>(
+    SUPABASE_ENABLED ? null : DEMO_ACCOUNTS_COUNT,
+  );
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listAccounts();
+        if (!cancelled) setAccountsCount(list.length);
+      } catch {
+        // Non-fatal — keep null and the tile renders a dash placeholder.
+        if (!cancelled) setAccountsCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Branch on the data source ──────────────────────────────────────────
+  // Demo mode: feed the legacy in-file dataset. Real mode: derive everything
+  // from `window`. Both paths produce the same downstream shape.
+  const isDemo = !SUPABASE_ENABLED;
+  const isLoading = !isDemo && window.loading;
+  const hasError = !isDemo && window.error !== null;
+
+  const spent = isDemo
+    ? DEMO_TRANSACTIONS.filter((t) => t.kind === "expense").reduce(
         (s, t) => s + t.amount,
         0,
-      ),
-    [transactions],
-  );
-  const income = React.useMemo(
-    () =>
-      transactions.filter((t) => t.kind === "income").reduce(
+      )
+    : window.expenseCurrentMonth;
+  const income = isDemo
+    ? DEMO_TRANSACTIONS.filter((t) => t.kind === "income").reduce(
         (s, t) => s + t.amount,
         0,
-      ),
-    [transactions],
-  );
-  // Mock month-over-month deltas (mirrors values used in Movements). Real
-  // values land with Supabase + FX. Convention: fractional, e.g. -0.12 = -12%.
-  // On empty state we omit them so MonthSummaryCard hides the chips.
-  const spentDelta = viewState === "empty" ? undefined : -0.12;
-  const incomeDelta = viewState === "empty" ? undefined : 0.18;
-  const recent = transactions.slice(0, 5);
-  const weekTotal = weekSpend.reduce((a, d) => a + d.value, 0);
-  const insight = React.useMemo(
-    () => getInsight(transactions, weekSpend, currency),
-    [transactions, weekSpend, currency],
-  );
+      )
+    : window.incomeCurrentMonth;
 
-  // Greeting: defaults to "Hola" until hydration completes; then "Hola, {name}"
-  // when a name is stored. Avoids a hydration mismatch flicker.
+  // Mock month-over-month deltas in demo mode; real signed fractions otherwise.
+  // `null` from the hook → undefined for MonthSummaryCard so it hides chips.
+  const spentDelta: number | undefined = isDemo
+    ? -0.12
+    : window.spentDeltaVsPrevMonth ?? undefined;
+  const incomeDelta: number | undefined = isDemo
+    ? 0.18
+    : window.incomeDeltaVsPrevMonth ?? undefined;
+
+  // Top categories — real path derives an icon key + color ladder from the
+  // bucket index. Demo path keeps the curated palette mapping.
+  const topCategories: CategoryBarItem[] = React.useMemo(() => {
+    if (isDemo) {
+      return DEMO_TOP_CATEGORIES.map((c, i) => ({
+        id: c.id,
+        iconKey: c.id,
+        label: c.label,
+        value: c.value,
+        color: CHART_COLOR_LADDER[i % CHART_COLOR_LADDER.length],
+      }));
+    }
+    return window.topCategoriesAllWindow.slice(0, 6).map((b, i) => ({
+      id: b.categoryId ?? "__uncat__",
+      iconKey: guessIconKey(b.categoryName),
+      label: b.categoryName,
+      value: b.value,
+      color: CHART_COLOR_LADDER[i % CHART_COLOR_LADDER.length],
+    }));
+  }, [isDemo, window.topCategoriesAllWindow]);
+
+  // Last 7 days bars.
+  const weekData = React.useMemo(() => {
+    if (isDemo) return DEMO_WEEK_SPEND.map((d) => ({ label: d.label, value: d.value }));
+    return window.weeklyExpenseBars.map((b) => ({
+      label: b.label,
+      value: b.amount,
+    }));
+  }, [isDemo, window.weeklyExpenseBars]);
+
+  // Recent transactions (5 most recent).
+  const recent: RecentRowItem[] = React.useMemo(() => {
+    if (isDemo) {
+      return DEMO_TRANSACTIONS.slice(0, 5).map((t) => ({
+        id: t.id,
+        amount: t.amount,
+        currency: t.currency,
+        kind: t.kind,
+        iconKey: t.categoryId,
+        categoryLabel: CATEGORY_LABEL[t.categoryId],
+        merchant: t.merchant,
+        occurredAt: t.occurredAt,
+      }));
+    }
+    return window.recentTransactions.map(viewToRecent);
+  }, [isDemo, window.recentTransactions]);
+
+  const weekTotal = weekData.reduce((a, d) => a + d.value, 0);
+
+  const insight = React.useMemo(() => {
+    const top = topCategories[0] ?? null;
+    const txCount = isDemo ? DEMO_TRANSACTIONS.length : window.rows.length;
+    return getInsight(
+      txCount,
+      weekData,
+      top?.label ?? null,
+      top?.value ?? null,
+      currency,
+    );
+  }, [isDemo, window.rows.length, weekData, topCategories, currency]);
+
+  // Empty: no rows for the active currency in the entire window. We only
+  // show the full-page empty card in this case. If rows exist but the current
+  // month is zero we just render the dashboard with zero values + a subtle
+  // hint baked into the existing chips (NETO renders +S/0.00 cleanly).
+  const isEmpty = !isDemo && !isLoading && !hasError && window.rows.length === 0;
+
+  // Greeting: defaults to "Hola" until hydration completes.
   const greeting = hydrated && name ? `Hola, ${name}` : "Hola";
 
-  const isLoading = viewState === "loading";
-  const isEmpty = viewState === "empty";
-  // FAB visibility: keep it on the populated state (it's the quick scan path
-  // alongside TabBar's center "Capturar"). HIDE on empty (inline CTAs already
-  // surface scan), HIDE during loading (no point on a skeleton).
-  const showFab = !isLoading && !isEmpty;
+  // FAB visibility: hide on loading/empty/error to avoid competing CTAs.
+  const showFab = !isLoading && !isEmpty && !hasError;
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
-        {/* Header — render even during loading; the greeting handles its own
-            hydration via useUserName. */}
+        {/* AppHeader — Wave 4 mounts the CurrencySwitch in the trailing slot.
+            Other tabs (movements/insights/etc.) don't pass it, so the switch
+            only appears here. */}
         <AppHeader
           eyebrow="abril · 2026"
           title={greeting}
           titleStyle="page"
+          actionsBefore={<CurrencySwitch />}
         />
 
         {isLoading ? (
@@ -914,7 +1056,6 @@ export default function DashboardPage() {
             <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-3">
               <WeeklyBarsSkeleton />
               <CategoryBarsSkeleton />
-              {/* Cuentas mini — lg+ only. Hidden below to mirror live layout. */}
               <Card className="mx-4 mt-4 hidden rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:block">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="mt-3 h-8 w-12" />
@@ -923,22 +1064,22 @@ export default function DashboardPage() {
               <RecentTransactionsSkeleton />
             </div>
           </>
+        ) : hasError ? (
+          <DashboardErrorCard onRetry={window.refetch} />
         ) : (
           <>
-            {/* Hero — vertical "Este mes · abril" summary card. Tapping a KPI
-                cell navigates to /movements with the matching filter
-                pre-applied (Movements reads ?filter= from the URL on mount).
-                Dashboard does not track filter state, so we omit `filter`
-                and just route. */}
+            {/* Hero — vertical "Este mes · abril" summary card. */}
             <MonthSummaryCard
               eyebrow="Este mes · abril"
               comparison="comparado con marzo"
               spent={spent}
               income={income}
               currency={currency}
-              spentDelta={spentDelta}
-              incomeDelta={incomeDelta}
-              onCurrencyToggle={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
+              spentDelta={isEmpty ? undefined : spentDelta}
+              incomeDelta={isEmpty ? undefined : incomeDelta}
+              onCurrencyToggle={() =>
+                setCurrency(currency === "PEN" ? "USD" : "PEN")
+              }
               onFilterChange={(next) => {
                 if (next === "all") {
                   router.push("/movements");
@@ -950,24 +1091,14 @@ export default function DashboardPage() {
               }}
             />
 
-            {/* Mini insight chip — hidden on empty; only renders with data. */}
+            {/* Mini insight chip — only renders with data. */}
             {!isEmpty && insight && <InsightChip insight={insight} />}
 
             {isEmpty ? (
-              <EmptyDashboardCard />
+              <EmptyDashboardCard currency={currency} />
             ) : (
-              // Desktop grid: 2 cols at md+, 3 cols at lg+.
-              // The lg 3-col adds a small "Cuentas" mini-card alongside
-              // Weekly + Distribución — gives a quick at-a-glance entry point
-              // to the accounts tab without leaving the dashboard density
-              // unchanged on tablet/mid widths. Recent transactions still
-              // spans the full row below.
               <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-3">
-                {/* Recent transactions — moved to the top per user request:
-                    the most actionable surface (last 5 movements) reads first;
-                    aggregates (Distribución, Esta semana) follow. Spans full
-                    grid row on md AND lg so it acts as a hero band above the
-                    secondary cards. */}
+                {/* Recent transactions — full-width band on top. */}
                 <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2 lg:col-span-3 lg:order-1">
                   <div className="flex items-baseline justify-between px-5 pb-3 pt-5">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -981,11 +1112,17 @@ export default function DashboardPage() {
                     </Link>
                   </div>
                   <div>
-                    {recent.map((t, i) => (
-                      <div key={t.id} className={i ? "border-t border-border" : ""}>
-                        <TransactionRow t={t} />
+                    {recent.length > 0 ? (
+                      recent.map((t, i) => (
+                        <div key={t.id} className={i ? "border-t border-border" : ""}>
+                          <TransactionRow t={t} />
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-5 pb-5 pt-2 text-[13px] text-muted-foreground">
+                        Sin movimientos este mes.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </Card>
 
@@ -1011,7 +1148,13 @@ export default function DashboardPage() {
                     </span>{" "}
                     gastado en {topCategories.length} categorías
                   </p>
-                  <CategoryBars items={topCategories} total={spent} currency={currency} />
+                  {topCategories.length > 0 ? (
+                    <CategoryBars items={topCategories} total={spent} currency={currency} />
+                  ) : (
+                    <p className="text-[13px] text-muted-foreground">
+                      Sin gastos para mostrar.
+                    </p>
+                  )}
                 </Card>
 
                 {/* Weekly bars */}
@@ -1034,38 +1177,10 @@ export default function DashboardPage() {
                       hoy
                     </div>
                   </div>
-                  <WeeklyBars data={weekSpend} height={150} currency={currency} />
+                  <WeeklyBars data={weekData} height={150} currency={currency} />
                 </Card>
 
-                {/* Distribución — interactive category bars */}
-                <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
-                  <div className="mb-3 flex items-baseline justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      Distribución
-                    </div>
-                    <Link
-                      href="/insights"
-                      className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Ver todo →
-                    </Link>
-                  </div>
-                  <p className="mb-5 text-[13px] leading-snug text-muted-foreground">
-                    <span
-                      className="font-semibold tabular-nums text-foreground"
-                      style={{ fontFeatureSettings: '"tnum","lnum"' }}
-                    >
-                      {formatMoney(spent, currency)}
-                    </span>{" "}
-                    gastado en {topCategories.length} categorías
-                  </p>
-                  <CategoryBars items={topCategories} total={spent} currency={currency} />
-                </Card>
-
-                {/* Cuentas mini — lg+ only. Quick at-a-glance count + link.
-                    On md (tablet) the 2-col grid keeps the original density;
-                    showing this card there would force a 3rd row of 1+1+1
-                    that looks unbalanced. */}
+                {/* Cuentas mini — lg+ only. */}
                 <Card className="mx-4 mt-4 hidden rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:flex lg:flex-col">
                   <div className="mb-3 flex items-baseline justify-between">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -1084,10 +1199,10 @@ export default function DashboardPage() {
                     </span>
                     <div className="min-w-0">
                       <div
-                        className="font-display italic text-[32px] leading-none tabular-nums tracking-tight"
+                        className="font-semibold tabular-nums text-[32px] leading-none tracking-tight"
                         style={{ fontFeatureSettings: '"tnum","lnum"' }}
                       >
-                        {ACCOUNTS_COUNT}
+                        {accountsCount ?? "—"}
                       </div>
                       <div className="mt-1.5 text-[12px] text-muted-foreground">
                         cuentas activas
@@ -1099,51 +1214,9 @@ export default function DashboardPage() {
             )}
           </>
         )}
-
-        {/* Dev-only state switcher — preview affordance for empty/loading
-            without touching the mocks. The literal NODE_ENV check is
-            tree-shaken in prod by Next.js, so this block (and its handlers)
-            disappear from the production bundle. */}
-        {process.env.NODE_ENV !== "production" && (
-          <div className="mx-4 mt-8 mb-[calc(80px+env(safe-area-inset-bottom))] md:mx-0">
-            <Card className="flex flex-col gap-2 rounded-xl border-dashed border-border bg-muted/40 p-3 text-xs">
-              <span className="font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Dev · estado de la vista
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {(
-                  [
-                    ["ready", "Estado normal"],
-                    ["empty", "Estado vacío"],
-                    ["loading", "Cargando…"],
-                  ] as [ViewState, string][]
-                ).map(([state, label]) => (
-                  <button
-                    key={state}
-                    type="button"
-                    onClick={() => setViewState(state)}
-                    aria-pressed={viewState === state}
-                    className={cn(
-                      "rounded-full border border-border px-3 py-1.5 text-xs font-medium transition-colors",
-                      viewState === state
-                        ? "bg-foreground text-background"
-                        : "bg-card text-foreground hover:bg-muted",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </Card>
-          </div>
-        )}
       </div>
 
-      {/* Camera FAB — mobile only. The TabBar's center "Capturar" handles the
-          primary capture; this is the alternative path (snap a receipt photo).
-          Sidebar shows the same alternative on desktop, so this hides at md+.
-          Hidden on empty / loading (see showFab). One-shot mount bounce via
-          animate-in keeps it from feeling like a generic floating ad. */}
+      {/* Camera FAB — mobile only. */}
       {showFab && (
         <button
           type="button"

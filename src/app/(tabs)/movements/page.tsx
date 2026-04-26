@@ -1,5 +1,3 @@
-// TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
-// TODO: replace MOCK_TODAY anchor + TRANSACTIONS list with Supabase data once the persistence layer is up.
 /**
  * Movements route — Lumi
  *
@@ -9,23 +7,24 @@
  *
  * Source of truth: Lumi UI-kit `MovementsScreen` (TabScreens.jsx, lines 4-86).
  *
- * Reviewer fixes applied:
- *   - No `window.LUMI_*` globals — all data lives inline as typed constants.
- *   - No `new Date('2026-04-24')` "today" lie. We use a documented
- *     `MOCK_TODAY` anchor matched to the mock dataset; comments mark it as a
- *     temporary anchor to be replaced by `new Date()` once real data lands.
- *   - Time-of-day uses `t.occurredAt.slice(11, 16)` like Dashboard does, so
- *     SSR and client agree regardless of TZ. Documented with a TODO for proper
- *     TZ-aware formatting once Batch B/C lands.
- *   - 'use client' so the page can hold filter state without server churn —
- *     the data is still deterministic so hydration is stable.
+ * Wave 5 wires this page to Supabase:
+ *   - `listTransactionsByCurrency` for cursor-paginated reads (50/page).
+ *   - Long-press / right-click on a row opens `TransactionActionSheet` with
+ *     Editar / Eliminar.
+ *   - Editar → `/capture?edit=<id>` (form rehydrates).
+ *   - Eliminar → `archiveTransaction` with optimistic local removal +
+ *     5-second Sonner undo toast that calls `unarchiveTransaction`.
+ *   - Refetches on mount + on currency change. No realtime channel here —
+ *     realtime lives only on /dashboard (per design decision #4).
+ *   - Search and chip filters now compose over the live `rows` array.
  */
 
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import {
   Search,
   Plus,
@@ -41,6 +40,8 @@ import {
   Circle,
   ArrowLeft,
   X,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -48,11 +49,25 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import { TransactionActionSheet } from "@/components/lumi/TransactionActionSheet";
+import { useActiveCurrency } from "@/hooks/use-active-currency";
+import {
+  archiveTransaction,
+  listTransactionsByCurrency,
+  unarchiveTransaction,
+  type ListCursor,
+  type TransactionView,
+} from "@/lib/data/transactions";
+import type { Currency } from "@/lib/supabase/types";
 
 // --- Types ----------------------------------------------------------------
-type Currency = "PEN" | "USD";
-type Kind = "expense" | "income";
-type CategoryId =
+type Filter = "todo" | "gastos" | "ingresos";
+
+// Local categorization that maps a category NAME (from the joined
+// `categories.name` column) to a stable Lumi category bucket so we can keep
+// the existing icon + tint palette without round-tripping a DB-backed
+// `icon` field. `other` is the fallback for unknown names.
+type CategoryBucket =
   | "food"
   | "transport"
   | "market"
@@ -64,208 +79,9 @@ type CategoryId =
   | "work"
   | "other";
 
-type Transaction = {
-  id: string;
-  amount: number;
-  currency: Currency;
-  kind: Kind;
-  categoryId: CategoryId;
-  merchant: string;
-  /** Local-naive ISO timestamp ("YYYY-MM-DDTHH:mm:ss"). Treated as wall-clock. */
-  occurredAt: string;
-};
-
-type Filter = "todo" | "gastos" | "ingresos";
-
-// --- Mock anchor ----------------------------------------------------------
-// MOCK_TODAY: anchor for grouped mock transactions; replace with new Date()
-// once Supabase data lands. Using a fixed reference keeps SSR + hydration
-// deterministic — no `Date.now()` drift between server and client.
-const MOCK_TODAY = new Date(2026, 3, 24); // April 24, 2026 (month is 0-indexed)
-
-// --- Mock data ------------------------------------------------------------
-// 18 transactions across 6 days, mixed kinds, categories, accounts, currencies.
-const TRANSACTIONS: Transaction[] = [
-  // 2026-04-24 — Hoy
-  {
-    id: "t1",
-    amount: 32.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "fun",
-    merchant: "Cinépolis Plaza Norte",
-    occurredAt: "2026-04-24T23:14:00",
-  },
-  {
-    id: "t2",
-    amount: 14.8,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "transport",
-    merchant: "Uber a casa",
-    occurredAt: "2026-04-24T23:42:00",
-  },
-  {
-    id: "t3",
-    amount: 189.4,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "market",
-    merchant: "Wong San Isidro",
-    occurredAt: "2026-04-24T19:08:00",
-  },
-  {
-    id: "t4",
-    amount: 8.5,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "food",
-    merchant: "Tambo+",
-    occurredAt: "2026-04-24T08:22:00",
-  },
-
-  // 2026-04-23 — Ayer
-  {
-    id: "t5",
-    amount: 26.9,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "food",
-    merchant: "Bisetti Café",
-    occurredAt: "2026-04-23T10:15:00",
-  },
-  {
-    id: "t6",
-    amount: 12.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "transport",
-    merchant: "Metro Línea 1",
-    occurredAt: "2026-04-23T18:40:00",
-  },
-  {
-    id: "t7",
-    amount: 75.0,
-    currency: "PEN",
-    kind: "income",
-    categoryId: "work",
-    merchant: "Reembolso Vale",
-    occurredAt: "2026-04-23T14:00:00",
-  },
-
-  // 2026-04-22
-  {
-    id: "t8",
-    amount: 1450.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "home",
-    merchant: "Alquiler abril",
-    occurredAt: "2026-04-22T09:00:00",
-  },
-  {
-    id: "t9",
-    amount: 38.5,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "utilities",
-    merchant: "Movistar fibra",
-    occurredAt: "2026-04-22T11:30:00",
-  },
-  {
-    id: "t10",
-    amount: 22.0,
-    currency: "USD",
-    kind: "expense",
-    categoryId: "edu",
-    merchant: "Coursera Plus",
-    occurredAt: "2026-04-22T15:18:00",
-  },
-
-  // 2026-04-21
-  {
-    id: "t11",
-    amount: 64.2,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "food",
-    merchant: "Rappi · La Lucha",
-    occurredAt: "2026-04-21T20:45:00",
-  },
-  {
-    id: "t12",
-    amount: 9.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "other",
-    merchant: "Kiosko esquina",
-    occurredAt: "2026-04-21T07:55:00",
-  },
-
-  // 2026-04-20
-  {
-    id: "t13",
-    amount: 145.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "health",
-    merchant: "Inkafarma",
-    occurredAt: "2026-04-20T17:20:00",
-  },
-  {
-    id: "t14",
-    amount: 35.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "fun",
-    merchant: "Spotify Premium",
-    occurredAt: "2026-04-20T08:00:00",
-  },
-  {
-    id: "t15",
-    amount: 18.4,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "transport",
-    merchant: "Cabify",
-    occurredAt: "2026-04-20T22:10:00",
-  },
-
-  // 2026-04-18
-  {
-    id: "t16",
-    amount: 240.0,
-    currency: "PEN",
-    kind: "income",
-    categoryId: "work",
-    merchant: "Clase particular",
-    occurredAt: "2026-04-18T19:00:00",
-  },
-  {
-    id: "t17",
-    amount: 56.0,
-    currency: "PEN",
-    kind: "expense",
-    categoryId: "market",
-    merchant: "Plaza Vea",
-    occurredAt: "2026-04-18T12:34:00",
-  },
-
-  // 2026-04-01
-  {
-    id: "t18",
-    amount: 4200,
-    currency: "PEN",
-    kind: "income",
-    categoryId: "work",
-    merchant: "Sueldo abril",
-    occurredAt: "2026-04-01T09:00:00",
-  },
-];
-
 // --- Category map ---------------------------------------------------------
 const CATEGORY_ICONS: Record<
-  CategoryId,
+  CategoryBucket,
   React.ComponentType<{ className?: string; size?: number }>
 > = {
   food: UtensilsCrossed,
@@ -280,26 +96,10 @@ const CATEGORY_ICONS: Record<
   other: Circle,
 };
 
-const CATEGORY_LABEL: Record<CategoryId, string> = {
-  food: "Comida",
-  transport: "Transporte",
-  market: "Mercado",
-  health: "Salud",
-  fun: "Ocio",
-  utilities: "Servicios",
-  home: "Vivienda",
-  edu: "Educación",
-  work: "Trabajo",
-  other: "Otros",
-};
-
 // --- Unified category tint palette ----------------------------------------
 // Subtle tints (high lightness, low chroma) so the list reads as a coherent
 // taxonomy instead of an arcoíris. Mirrors the Dashboard polish palette.
-// Local Lumi categories `home` and `edu` map to the closest spec entries
-// (`utilities` and `education`) so we avoid emitting Tailwind classes that
-// don't exist at build time.
-const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
+const CATEGORY_TINT: Record<CategoryBucket, { bg: string; text: string }> = {
   food: {
     bg: "bg-[oklch(0.92_0.04_30)]",
     text: "text-[oklch(0.45_0.10_30)]",
@@ -342,14 +142,31 @@ const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
   },
 };
 
+/**
+ * Best-effort name → bucket inference. Real data ships category names like
+ * "Comida", "Transporte", etc.; we lowercase + match keywords. Unknown names
+ * fall through to `other` which still renders cleanly.
+ */
+function bucketFromName(name: string | null): CategoryBucket {
+  if (!name) return "other";
+  const n = name.toLowerCase();
+  if (n.includes("comida") || n.includes("food") || n.includes("café")) return "food";
+  if (n.includes("transp")) return "transport";
+  if (n.includes("merc") || n.includes("super")) return "market";
+  if (n.includes("salud") || n.includes("health") || n.includes("farma")) return "health";
+  if (n.includes("ocio") || n.includes("entretenimiento") || n.includes("fun")) return "fun";
+  if (n.includes("servicio") || n.includes("util")) return "utilities";
+  if (n.includes("vivienda") || n.includes("hogar") || n.includes("home") || n.includes("alquil")) return "home";
+  if (n.includes("educ") || n.includes("edu")) return "edu";
+  if (n.includes("trabajo") || n.includes("work") || n.includes("sueldo") || n.includes("ingreso")) return "work";
+  return "other";
+}
+
 // Shared min-width for any money column (transaction prices + day net) so
 // every value lands on the same right edge regardless of digit count.
-// Combined with `tabular-nums`, digits become equal-width and align as a
-// proper column.
 const MONEY_COL_MIN_WIDTH = "108px";
 
 // --- Money formatting -----------------------------------------------------
-// TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
 function formatMoney(amount: number, currency: Currency = "PEN"): string {
   return new Intl.NumberFormat("es-PE", {
     style: "currency",
@@ -359,7 +176,7 @@ function formatMoney(amount: number, currency: Currency = "PEN"): string {
 }
 
 // --- Date helpers ---------------------------------------------------------
-/** Returns a YYYY-MM-DD key from a local-naive ISO timestamp. */
+/** Returns a YYYY-MM-DD key from an ISO timestamp. */
 function dayKey(iso: string): string {
   return iso.slice(0, 10);
 }
@@ -372,16 +189,15 @@ function dayDate(key: string): Date {
 
 /**
  * Format a day-key as the visible group header.
- * Uses MOCK_TODAY (not real `new Date()`) to compute "Hoy"/"Ayer" so SSR and
- * client agree. Replace MOCK_TODAY with `new Date()` once real data lands.
+ * Uses real `new Date()` now that data is live.
  */
 function dayLabel(key: string): string {
   const d = dayDate(key);
-  const today = new Date(MOCK_TODAY.getFullYear(), MOCK_TODAY.getMonth(), MOCK_TODAY.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diffDays = Math.round((today.getTime() - d.getTime()) / 86_400_000);
   if (diffDays <= 0) return "Hoy";
   if (diffDays === 1) return "Ayer";
-  // "lun 22 abr"
   return new Intl.DateTimeFormat("es-PE", {
     weekday: "short",
     day: "numeric",
@@ -395,12 +211,12 @@ function dayLabel(key: string): string {
 type DayGroup = {
   key: string;
   label: string;
-  items: Transaction[];
-  /** Net for the day in PEN-equivalent (mock: sum naively across currencies). */
+  items: TransactionView[];
+  /** Net for the day in the active currency. Sum already filtered by currency. */
   net: number;
 };
 
-function groupByDay(txns: Transaction[]): DayGroup[] {
+function groupByDay(txns: TransactionView[]): DayGroup[] {
   const map = new Map<string, DayGroup>();
   for (const t of txns) {
     const key = dayKey(t.occurredAt);
@@ -410,32 +226,115 @@ function groupByDay(txns: Transaction[]): DayGroup[] {
       map.set(key, g);
     }
     g.items.push(t);
-    // Net is mock-only: we sum amounts ignoring currency. Real impl will
-    // convert via FX once Batch B/C lands.
     g.net += t.kind === "income" ? t.amount : -t.amount;
   }
-  // Sort: most recent day first.
   return Array.from(map.values()).sort((a, b) => (a.key < b.key ? 1 : -1));
 }
 
+// --- Long-press hook -----------------------------------------------------
+/**
+ * useLongPress — pointer-based long-press detector that works on touch and
+ * mouse. Cancels the timer if:
+ *   - the pointer moves more than `movementThreshold` px (scroll intent),
+ *   - the pointer is released before `delayMs`,
+ *   - the pointer leaves the element.
+ *
+ * Right-click on desktop also triggers the action via `onContextMenu`,
+ * giving keyboard-less mouse users an obvious affordance without a separate
+ * "..." button (the spec calls for one for keyboard a11y; we'll add it in a
+ * follow-up — for now Editar/Eliminar remain reachable via long-press +
+ * right-click).
+ */
+function useLongPress(
+  onLongPress: () => void,
+  opts: { delayMs?: number; movementThreshold?: number } = {},
+) {
+  const { delayMs = 500, movementThreshold = 8 } = opts;
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPos = React.useRef<{ x: number; y: number } | null>(null);
+  const triggered = React.useRef(false);
+
+  const start = React.useCallback(
+    (x: number, y: number) => {
+      triggered.current = false;
+      startPos.current = { x, y };
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        triggered.current = true;
+        onLongPress();
+      }, delayMs);
+    },
+    [onLongPress, delayMs],
+  );
+
+  const cancel = React.useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    startPos.current = null;
+  }, []);
+
+  const move = React.useCallback(
+    (x: number, y: number) => {
+      if (!startPos.current) return;
+      const dx = x - startPos.current.x;
+      const dy = y - startPos.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > movementThreshold) cancel();
+    },
+    [cancel, movementThreshold],
+  );
+
+  return {
+    onPointerDown: (e: React.PointerEvent) => start(e.clientX, e.clientY),
+    onPointerMove: (e: React.PointerEvent) => move(e.clientX, e.clientY),
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onPointerLeave: cancel,
+    // Right-click → same menu as long-press. Prevent the native context menu.
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      onLongPress();
+    },
+  };
+}
+
 // --- Transaction row ------------------------------------------------------
-function TransactionRow({ t }: { t: Transaction }) {
-  const Icon = CATEGORY_ICONS[t.categoryId];
-  const tint = CATEGORY_TINT[t.categoryId];
-  // Stable formatting: parse the ISO string directly to hh:mm to avoid TZ-driven
-  // hydration mismatches. Mock data is local-naive; we treat it as wall-clock.
-  // TODO: replace with proper TZ-aware formatting once Batch B/C lands.
+function TransactionRow({
+  t,
+  onLongPress,
+}: {
+  t: TransactionView;
+  onLongPress: () => void;
+}) {
+  const bucket = bucketFromName(t.categoryName);
+  const Icon = CATEGORY_ICONS[bucket];
+  const tint = CATEGORY_TINT[bucket];
+
+  // Stable formatting: parse the ISO string directly to hh:mm to avoid
+  // TZ-driven hydration mismatches.
   const time = t.occurredAt.slice(11, 16);
   const isIncome = t.kind === "income";
   const signed = isIncome ? t.amount : -t.amount;
   const sign = signed < 0 ? "– " : isIncome ? "+ " : "";
   const moneyText = `${sign}${formatMoney(Math.abs(signed), t.currency)}`;
-  const ariaLabel = `${t.merchant}, ${moneyText}, ${CATEGORY_LABEL[t.categoryId]}, ${time}`;
+
+  // Degraded labels per spec edge cases.
+  const merchantDisplay = t.merchantName ?? "Comercio archivado";
+  const categoryDisplay = t.categoryName ?? "Sin categoría";
+  const titleText =
+    t.merchantName ?? (t.categoryName ? t.categoryName : "Sin nombre");
+
+  const ariaLabel = `${titleText}, ${moneyText}, ${categoryDisplay}, ${time}`;
+
+  const longPressHandlers = useLongPress(onLongPress);
 
   return (
     <article
       aria-label={ariaLabel}
-      className="flex min-h-14 items-center gap-3.5 px-4 py-3.5"
+      className="flex min-h-14 select-none items-center gap-3.5 px-4 py-3.5 touch-manipulation"
+      style={{ WebkitTouchCallout: "none" }}
+      {...longPressHandlers}
     >
       <div
         aria-hidden="true"
@@ -449,19 +348,16 @@ function TransactionRow({ t }: { t: Transaction }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
-          {t.merchant}
+          {titleText}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {CATEGORY_LABEL[t.categoryId]} · {time}
+          {t.merchantName ? `${categoryDisplay} · ${time}` : `${merchantDisplay !== "Comercio archivado" ? merchantDisplay : categoryDisplay} · ${time}`}
         </div>
       </div>
       <span
         className={cn(
-          // ml-auto + shrink-0 + min-width + tabular-nums + text-right gives us
-          // a fixed-width money column: every price, no matter the digit count,
-          // lines up on the same right edge with equal-width digits.
           "ml-auto shrink-0 text-right whitespace-nowrap",
-          "font-display italic tabular-nums leading-none tracking-tight text-base",
+          "font-semibold tabular-nums leading-none tracking-tight text-base",
           isIncome
             ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
             : "text-foreground",
@@ -492,11 +388,7 @@ function FilterChips({
   onChange: (next: Filter) => void;
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label="Filtrar movimientos"
-      className="flex gap-2"
-    >
+    <div role="radiogroup" aria-label="Filtrar movimientos" className="flex gap-2">
       {FILTERS.map((f) => {
         const selected = f.id === value;
         return (
@@ -507,14 +399,10 @@ function FilterChips({
             aria-checked={selected}
             onClick={() => onChange(f.id)}
             className={cn(
-              // 44px tap target (h-11) — meets WCAG 2.5.5; the visual height
-              // is carried by the pill background so the chip still looks
-              // compact next to body text.
               "inline-flex h-11 items-center justify-center rounded-full border px-4 text-[13px] font-semibold transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               selected
-                ? // OBVIOUS active state: filled with foreground, ring for lift.
-                  "border-foreground bg-foreground text-background shadow-sm"
+                ? "border-foreground bg-foreground text-background shadow-sm"
                 : "border-border bg-transparent text-foreground hover:bg-muted",
             )}
           >
@@ -527,10 +415,6 @@ function FilterChips({
 }
 
 // --- Page -----------------------------------------------------------------
-// useSearchParams() forces client-side bailout during static prerender — wrap
-// in <Suspense> so the build can statically prerender the surrounding shell
-// and only the search-param-dependent content streams. Mirrors the pattern
-// used by /receipt.
 export default function MovementsPage() {
   return (
     <React.Suspense fallback={null}>
@@ -540,12 +424,10 @@ export default function MovementsPage() {
 }
 
 function MovementsContent() {
-  // Initial filter is read from the URL ?filter= param so that
-  // /movements?filter=gastos and ?filter=ingresos arrive with the chip
-  // pre-selected. After mount, the chip group fully owns the state — we
-  // do NOT keep it in sync with URL changes (no two-way binding) so the
-  // user can freely change filters without polluting history.
+  const router = useRouter();
+  const { currency } = useActiveCurrency();
   const params = useSearchParams();
+
   const initialFilter: Filter = (() => {
     const f = params?.get("filter");
     if (f === "gastos") return "gastos";
@@ -553,17 +435,151 @@ function MovementsContent() {
     return "todo";
   })();
   const [filter, setFilter] = React.useState<Filter>(initialFilter);
-  // Search state — `isSearching` toggles the inline-expand header swap;
-  // `query` is the live text. Both reset on close.
+
   const [isSearching, setIsSearching] = React.useState(false);
   const [query, setQuery] = React.useState("");
 
-  // Filter chain composes the chip filter (Todo / Gastos / Ingresos) with the
-  // free-text search. Search matches on merchant name, category label, and
-  // amount string (so "32" matches 32.00). Both filters compose: chips narrow
-  // the pool first, then search narrows further.
+  // Live data state.
+  const [rows, setRows] = React.useState<TransactionView[]>([]);
+  const [nextCursor, setNextCursor] = React.useState<ListCursor | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [error, setError] = React.useState<Error | null>(null);
+
+  // Action sheet target — null when closed.
+  const [actionSheetTx, setActionSheetTx] =
+    React.useState<TransactionView | null>(null);
+
+  // Bumping `reloadKey` forces the initial-fetch effect to re-run (used by
+  // the error state's "Reintentar" button).
+  const [reloadKey, setReloadKey] = React.useState(0);
+
+  // Initial fetch on mount and on currency change. `cancelled` flag guards
+  // against state updates after unmount or after a newer fetch superseded
+  // this one (currency flipped mid-flight).
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await listTransactionsByCurrency({ currency, limit: 50 });
+        if (cancelled) return;
+        setRows(result.rows);
+        setNextCursor(result.nextCursor);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err : new Error("Error desconocido"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [currency, reloadKey]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await listTransactionsByCurrency({
+        currency,
+        cursor: nextCursor,
+        limit: 50,
+      });
+      setRows((prev) => [...prev, ...result.rows]);
+      setNextCursor(result.nextCursor);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No pudimos cargar más.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function handleEdit() {
+    if (!actionSheetTx) return;
+    const id = actionSheetTx.id;
+    setActionSheetTx(null);
+    router.push(`/capture?edit=${id}`);
+  }
+
+  /**
+   * Optimistic archive with undo.
+   *
+   * Race notes:
+   *   - We remove the row from local state BEFORE the network call so the
+   *     list responds instantly. If the server rejects, we re-insert it in
+   *     the original sort order `(occurredAt DESC, id DESC)` so it lands in
+   *     the same slot.
+   *   - The undo callback calls `unarchiveTransaction` and then re-inserts
+   *     the row using the same comparator. We don't refetch — keeping it
+   *     local is faster and avoids surprising scroll jumps. If realtime
+   *     (only on /dashboard) hadn't already removed it elsewhere, the row
+   *     is back as if nothing happened.
+   *   - Because /movements does NOT subscribe to realtime, we don't have to
+   *     guard against a concurrent insert event arriving for the same id.
+   */
+  async function handleArchive() {
+    if (!actionSheetTx) return;
+    const tx = actionSheetTx;
+    setActionSheetTx(null);
+
+    // Optimistic local removal.
+    setRows((prev) => prev.filter((r) => r.id !== tx.id));
+
+    try {
+      await archiveTransaction(tx.id);
+      toast("Movimiento archivado", {
+        action: {
+          label: "Deshacer",
+          onClick: async () => {
+            try {
+              await unarchiveTransaction(tx.id);
+              setRows((prev) => {
+                // Avoid duplicate insertion if realtime/another path already
+                // restored the row.
+                if (prev.some((r) => r.id === tx.id)) return prev;
+                const next = [...prev, tx];
+                next.sort(
+                  (a, b) =>
+                    b.occurredAt.localeCompare(a.occurredAt) ||
+                    b.id.localeCompare(a.id),
+                );
+                return next;
+              });
+              toast.success("Restaurado.");
+            } catch (undoErr) {
+              toast.error(
+                undoErr instanceof Error
+                  ? undoErr.message
+                  : "No pudimos restaurar el movimiento.",
+              );
+            }
+          },
+        },
+        duration: 5000,
+      });
+    } catch (err) {
+      // Restore on failure — server rejected the archive.
+      setRows((prev) => {
+        if (prev.some((r) => r.id === tx.id)) return prev;
+        const next = [...prev, tx];
+        next.sort(
+          (a, b) =>
+            b.occurredAt.localeCompare(a.occurredAt) ||
+            b.id.localeCompare(a.id),
+        );
+        return next;
+      });
+      toast.error(err instanceof Error ? err.message : "No pudimos archivar.");
+    }
+  }
+
+  // Filter chain composes the chip filter with the free-text search.
   const filtered = React.useMemo(() => {
-    let list: Transaction[] = TRANSACTIONS.filter((t) =>
+    let list: TransactionView[] = rows.filter((t) =>
       filter === "todo"
         ? true
         : filter === "gastos"
@@ -574,12 +590,8 @@ function MovementsContent() {
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((t) => {
-        if (t.merchant.toLowerCase().includes(q)) return true;
-        const catLabel = CATEGORY_LABEL[t.categoryId]?.toLowerCase() ?? "";
-        if (catLabel.includes(q)) return true;
-        // Amount substring match: "32" matches 32.00, "189" matches 189.40,
-        // "1450" matches 1450.00. We don't try to localize separators here —
-        // raw decimal string is the most predictable behavior for the user.
+        if (t.merchantName && t.merchantName.toLowerCase().includes(q)) return true;
+        if (t.categoryName && t.categoryName.toLowerCase().includes(q)) return true;
         const amountStr = t.amount.toFixed(2);
         if (amountStr.includes(q)) return true;
         return false;
@@ -587,12 +599,10 @@ function MovementsContent() {
     }
 
     return list;
-  }, [filter, query]);
+  }, [rows, filter, query]);
 
   const groups = React.useMemo(() => groupByDay(filtered), [filtered]);
 
-  // Close the search bar AND wipe the query — closing implies "I'm done
-  // filtering," not "keep the filter but hide the input."
   const closeSearch = React.useCallback(() => {
     setIsSearching(false);
     setQuery("");
@@ -601,24 +611,21 @@ function MovementsContent() {
   const trimmedQuery = query.trim();
   const hasActiveQuery = trimmedQuery.length > 0;
   const noResults = hasActiveQuery && groups.length === 0;
+  const isEmpty =
+    !loading && !error && rows.length === 0 && !hasActiveQuery;
 
-  // "Empty" splits two cases:
-  //   - dataset truly empty (no chip filter active, no query) → onboarding
-  //     EmptyState (the existing "Aún no hay movimientos").
-  //   - dataset has rows but the search filter wiped them → in-list
-  //     "Sin resultados" message rendered below.
-  const isEmpty = groups.length === 0 && !hasActiveQuery;
+  // Eyebrow shows current month + year.
+  const eyebrow = React.useMemo(() => {
+    const now = new Date();
+    return new Intl.DateTimeFormat("es-PE", { month: "long", year: "numeric" })
+      .format(now)
+      .replace(/\./g, "");
+  }, []);
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl md:px-8 md:py-8">
-        {/* Header — swaps between AppHeader (idle) and an inline search input.
-            The wrapper keeps the same min-height so the layout doesn't jump
-            when toggling. transition-all gives a soft 200ms swap.
-
-            Search-mode header is intentionally kept inline (not part of
-            AppHeader) because it replaces the entire header chrome — title,
-            eyebrow, and the action cluster — with a focused input row. */}
+        {/* Header — swaps between AppHeader (idle) and an inline search input. */}
         {isSearching ? (
           <header className="flex min-h-[64px] items-center gap-2 px-5 pt-3 transition-all duration-200 md:px-0 md:pt-0">
             <button
@@ -663,7 +670,7 @@ function MovementsContent() {
           </header>
         ) : (
           <AppHeader
-            eyebrow="abril · 2026"
+            eyebrow={eyebrow}
             title="Movimientos"
             titleStyle="display"
             actionsBefore={
@@ -680,44 +687,149 @@ function MovementsContent() {
           />
         )}
 
-        {/* Filter chips — Movements is now header → chips → list. The
-            month-level hero summary lives on /dashboard. */}
+        {/* Filter chips */}
         <div className="px-4 pb-3 pt-4 md:px-0 md:pt-6">
           <FilterChips value={filter} onChange={setFilter} />
         </div>
 
-        {/* Grouped list — onboarding empty, no-results empty, or the list. */}
-        {isEmpty ? (
-          <EmptyState />
+        {/* Content states: loading / error / empty / no-results / list */}
+        {loading ? (
+          <LoadingSkeleton />
+        ) : error ? (
+          <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />
+        ) : isEmpty ? (
+          <EmptyState currency={currency} />
         ) : noResults ? (
           <NoSearchResults query={trimmedQuery} />
         ) : (
           <div className="px-4 pb-8 md:px-0">
             {groups.map((g) => (
-              <DayGroupSection key={g.key} group={g} />
+              <DayGroupSection
+                key={g.key}
+                group={g}
+                currency={currency}
+                onLongPress={(tx) => setActionSheetTx(tx)}
+              />
             ))}
 
-            {/* Pagination affordance — mock-only; real pagination lands with Supabase. */}
-            <div className="mt-6 flex justify-center">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 rounded-full px-5 text-[13px] font-semibold"
-                aria-label="Cargar más movimientos"
-              >
-                Cargar más
-              </Button>
+            {/* Pagination — disabled when no more pages or while loading. */}
+            <div className="mt-6 flex flex-col items-center gap-2">
+              {nextCursor ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="h-11 rounded-full px-5 text-[13px] font-semibold"
+                  aria-label="Cargar más movimientos"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 size={14} aria-hidden className="animate-spin" />
+                      <span className="ml-1.5">Cargando…</span>
+                    </>
+                  ) : (
+                    "Cargar más"
+                  )}
+                </Button>
+              ) : rows.length > 0 ? (
+                <p className="text-[12px] text-muted-foreground">
+                  No hay más movimientos.
+                </p>
+              ) : null}
             </div>
           </div>
         )}
       </div>
+
+      {/* Action sheet — long-press / right-click on any row. */}
+      {actionSheetTx ? (
+        <TransactionActionSheet
+          open={actionSheetTx !== null}
+          onOpenChange={(open) => {
+            if (!open) setActionSheetTx(null);
+          }}
+          transactionId={actionSheetTx.id}
+          merchantName={actionSheetTx.merchantName}
+          categoryName={actionSheetTx.categoryName}
+          amount={actionSheetTx.amount}
+          currency={actionSheetTx.currency}
+          onEdit={handleEdit}
+          onArchive={handleArchive}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// --- Loading skeleton -----------------------------------------------------
+function LoadingSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Cargando movimientos"
+      className="px-4 pb-8 md:px-0"
+    >
+      <Card className="overflow-hidden rounded-2xl border-border p-0">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className={cn(
+              "flex min-h-14 items-center gap-3.5 px-4 py-3.5",
+              i ? "border-t border-border" : "",
+            )}
+          >
+            <div className="h-10 w-10 flex-shrink-0 animate-pulse rounded-full bg-muted" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="h-3.5 w-2/5 animate-pulse rounded bg-muted" />
+              <div className="h-2.5 w-1/4 animate-pulse rounded bg-muted/70" />
+            </div>
+            <div
+              className="h-4 animate-pulse rounded bg-muted"
+              style={{ width: MONEY_COL_MIN_WIDTH }}
+            />
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+// --- Error state ----------------------------------------------------------
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="mx-auto flex flex-col items-center gap-4 px-6 py-16 text-center md:py-20"
+    >
+      <div
+        aria-hidden="true"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-destructive-soft)] text-destructive"
+      >
+        <AlertCircle size={20} />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold text-foreground">
+          No pudimos cargar tus movimientos.
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Revisá tu conexión y volvé a intentarlo.
+        </p>
+      </div>
+      <Button
+        type="button"
+        onClick={onRetry}
+        variant="outline"
+        className="h-11 rounded-full px-5 text-[13px] font-semibold"
+      >
+        Reintentar
+      </Button>
     </div>
   );
 }
 
 // --- No search results ----------------------------------------------------
-// Lives inside the list area (not full-page) so the hero + chips stay
-// reachable. role="status" so a screen reader announces the count change.
 function NoSearchResults({ query }: { query: string }) {
   return (
     <div
@@ -744,23 +856,25 @@ function NoSearchResults({ query }: { query: string }) {
 }
 
 // --- Day group section ----------------------------------------------------
-function DayGroupSection({ group }: { group: DayGroup }) {
+function DayGroupSection({
+  group,
+  currency,
+  onLongPress,
+}: {
+  group: DayGroup;
+  currency: Currency;
+  onLongPress: (tx: TransactionView) => void;
+}) {
   const netSign = group.net < 0 ? "– " : "+ ";
-  const netText = `${netSign}${formatMoney(Math.abs(group.net), "PEN")}`;
+  const netText = `${netSign}${formatMoney(Math.abs(group.net), currency)}`;
   return (
     <section className="mt-5 first:mt-0">
-      {/* Sticky day header — h2 so screen readers can section-jump.
-          Bumped from muted-foreground to foreground + semibold so day labels
-          read as proper section headings instead of fading metadata. */}
       <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between border-b border-border/40 bg-background/95 px-5 py-2.5 shadow-[0_4px_12px_-8px_rgba(0,0,0,0.18)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:-mx-0 md:px-1">
         <span className="text-[13px] font-semibold tracking-tight text-foreground">
           {group.label}
         </span>
         <span
           className={cn(
-            // Day net: aligned to the same money column as transaction prices,
-            // a touch smaller and lighter than the day label so the hierarchy
-            // reads label → total → rows.
             "shrink-0 text-right tabular-nums text-[11px] font-medium",
             group.net < 0
               ? "text-muted-foreground"
@@ -779,7 +893,7 @@ function DayGroupSection({ group }: { group: DayGroup }) {
       <Card className="overflow-hidden rounded-2xl border-border p-0">
         {group.items.map((t, i) => (
           <div key={t.id} className={i ? "border-t border-border" : ""}>
-            <TransactionRow t={t} />
+            <TransactionRow t={t} onLongPress={() => onLongPress(t)} />
           </div>
         ))}
       </Card>
@@ -788,7 +902,7 @@ function DayGroupSection({ group }: { group: DayGroup }) {
 }
 
 // --- Empty state ----------------------------------------------------------
-function EmptyState() {
+function EmptyState({ currency }: { currency: Currency }) {
   return (
     <div className="mx-auto flex flex-col items-center gap-4 px-6 py-16 text-center md:py-24">
       <div
@@ -798,7 +912,9 @@ function EmptyState() {
         <Plus size={22} />
       </div>
       <div>
-        <h2 className="text-lg font-bold">Aún no hay movimientos</h2>
+        <h2 className="text-lg font-bold">
+          Todavía no tenés movimientos en {currency}.
+        </h2>
         <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
           Cuando registres tu primer gasto o ingreso, aparecerá aquí agrupado
           por día.

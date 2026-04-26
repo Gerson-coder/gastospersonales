@@ -5,7 +5,7 @@
  * Movements can render the same vertical "Este mes" hero card.
  *
  * Behavior:
- *   - NETO is the centered hero (font-display italic, oversized).
+ *   - NETO is the centered hero (sans + tabular-nums, oversized).
  *   - Two secondary KPI cells (Gasto / Ingreso) below a thin separator.
  *   - When `onFilterChange` is provided, the cells become tappable buttons.
  *     They toggle: tapping the active filter again returns to "all".
@@ -175,9 +175,8 @@ function HeroKpi({
       </span>
       <span
         className={cn(
-          "font-display italic leading-none tracking-tight text-[22px] md:text-[26px] tabular-nums whitespace-nowrap",
+          "font-semibold leading-none tracking-tight text-[22px] md:text-[26px] tabular-nums whitespace-nowrap",
           numberColor,
-          pressed && "font-semibold",
         )}
         style={{
           fontFeatureSettings: '"tnum","lnum"',
@@ -292,8 +291,8 @@ export function MonthSummaryCard({
       </div>
 
       {/* HERO: NETO. The single most important number — "how am I doing this
-          month?". Centered, oversized, font-display italic. Renders as <dl>
-          for semantic structure (label + value pair, not a control). */}
+          month?". Centered, oversized, uses sans + tabular-nums. Renders as
+          <dl> for semantic structure (label + value pair, not a control). */}
       <dl className="mt-6 flex flex-col items-center text-center md:mt-8">
         <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
           <span
@@ -307,7 +306,7 @@ export function MonthSummaryCard({
         </dt>
         <dd
           className={cn(
-            "mt-2 font-display italic leading-[0.95] tracking-tight tabular-nums whitespace-nowrap",
+            "mt-2 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap",
             "text-[40px] md:text-[56px]",
             netColor,
           )}
