@@ -229,6 +229,21 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   other: "Otros",
 };
 
+// Subtle, unified tint palette — same map shared with Dashboard, Movements,
+// and Settings. High lightness + low chroma per hue, NOT a rainbow.
+const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
+  food: { bg: "bg-[oklch(0.92_0.04_30)]", text: "text-[oklch(0.45_0.10_30)]" },
+  transport: { bg: "bg-[oklch(0.92_0.03_220)]", text: "text-[oklch(0.45_0.10_220)]" },
+  market: { bg: "bg-[oklch(0.92_0.04_280)]", text: "text-[oklch(0.45_0.10_280)]" },
+  health: { bg: "bg-[oklch(0.92_0.04_10)]", text: "text-[oklch(0.50_0.12_10)]" },
+  fun: { bg: "bg-[oklch(0.92_0.04_310)]", text: "text-[oklch(0.45_0.10_310)]" },
+  utilities: { bg: "bg-[oklch(0.92_0.04_70)]", text: "text-[oklch(0.45_0.10_70)]" },
+  home: { bg: "bg-[oklch(0.92_0.04_162)]", text: "text-[oklch(0.45_0.10_162)]" },
+  edu: { bg: "bg-[oklch(0.92_0.03_180)]", text: "text-[oklch(0.45_0.10_180)]" },
+  work: { bg: "bg-[oklch(0.92_0.03_140)]", text: "text-[oklch(0.45_0.10_140)]" },
+  other: { bg: "bg-[oklch(0.92_0_95)]", text: "text-[oklch(0.45_0_95)]" },
+};
+
 const PERIOD_OPTIONS: { id: Period; label: string }[] = [
   { id: "month", label: "Mes actual" },
   { id: "q3", label: "Últimos 3 meses" },
@@ -454,13 +469,14 @@ function CategoryBars({
     <ul className="flex flex-col gap-3.5">
       {items.map((c) => {
         const Icon = CATEGORY_ICONS[c.id];
+        const tint = CATEGORY_TINT[c.id];
         const widthPct = (c.value / max) * 100;
         const amt = (c.value / 100) * total;
         return (
           <li key={c.id} className="grid grid-cols-[28px_1fr_auto] items-center gap-3">
             <span
               aria-hidden="true"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+              className={`flex h-7 w-7 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
             >
               <Icon size={14} />
             </span>
@@ -675,6 +691,7 @@ function InsightCard({ item }: { item: InsightItem }) {
 // ─── Top movement row ─────────────────────────────────────────────────────
 function TopMovementRow({ t, rank }: { t: Transaction; rank: number }) {
   const Icon = CATEGORY_ICONS[t.categoryId];
+  const tint = CATEGORY_TINT[t.categoryId];
   return (
     <div className="flex items-center gap-3.5 px-4 py-3">
       <span
@@ -685,7 +702,7 @@ function TopMovementRow({ t, rank }: { t: Transaction; rank: number }) {
       </span>
       <span
         aria-hidden="true"
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
       >
         <Icon size={16} />
       </span>
