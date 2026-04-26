@@ -1,109 +1,53 @@
-// TODO: wire to supabase.auth.signOut() in Batch C (mvp-foundations auth flow).
-// TODO: persist prefs server-side once Batch C lands; localStorage is a stop-gap.
+// TODO: wire to Supabase accounts table once Batch C lands. CRUD operations land in a later change.
 /**
- * Settings route — Lumi
+ * Accounts route — Lumi
  *
- * Mobile-first settings screen. All persisted prefs live in localStorage under
- * the key `lumi-prefs`. Reading localStorage during render is unsafe under SSR
- * (Next.js renders this on the server before hydration), so the page mounts
- * with DEFAULT_PREFS and hydrates from storage in a post-mount effect.
+ * Focused payment-accounts screen. The previous "/accounts" page held the full
+ * settings panel; that lives now under "/settings". Users reach Settings via
+ * the gear icon in the top-right header here.
  *
- * NOTE: Sits inside the (tabs) route group. The shared tab layout is wired by
- * the orchestrator in a later step. Theme switching depends on a
- * `<ThemeProvider>` from next-themes mounted at the root layout — until that's
- * wired the radio still updates state, but `setTheme` is a no-op outside a
- * provider. We import the hook unconditionally; next-themes returns safe
- * defaults when no provider is present.
+ * Mobile-first, desktop max-w-3xl centered. All data is mocked until Batch C
+ * (Supabase) lands.
  */
 
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import {
-  ChevronRight,
-  Pencil,
-  Wallet,
+  Banknote,
   CreditCard,
-  Building2,
-  Tag,
-  Utensils,
-  Car,
-  ShoppingCart,
-  Heart,
-  Film,
-  Zap,
-  Home as HomeIcon,
-  GraduationCap,
-  Briefcase,
-  Circle,
-  LogOut,
-  Info,
-  Globe,
-  Clock,
+  Landmark,
+  ChevronRight,
+  Plus,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
-type ThemeChoice = "system" | "light" | "dark";
-
-type Prefs = {
-  currency: Currency;
-  theme: ThemeChoice;
-};
-
 type AccountKind = "cash" | "card" | "bank";
+
 type Account = {
   id: string;
   label: string;
   currency: Currency;
   kind: AccountKind;
-};
-
-type CategoryId =
-  | "food"
-  | "transport"
-  | "market"
-  | "health"
-  | "fun"
-  | "utilities"
-  | "home"
-  | "edu"
-  | "work"
-  | "other";
-
-type Category = {
-  id: CategoryId;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
+  balance: number;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────
-const PREFS_KEY = "lumi-prefs";
-const DEFAULT_PREFS: Prefs = {
-  currency: "PEN",
-  theme: "system",
-};
-
-// Hardcoded for now; package.json import would couple build to a server module.
-const APP_VERSION = "0.1.0";
-
-// Mock data — same shape used elsewhere in the Lumi app.
-// TODO: replace with Supabase-backed accounts/categories in Batch C.
+// Mock data — same shape that Supabase will hand us in Batch C.
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "a1", label: "Efectivo", currency: "PEN", kind: "cash" },
-  { id: "a2", label: "BCP Soles", currency: "PEN", kind: "bank" },
-  { id: "a3", label: "Visa BBVA", currency: "PEN", kind: "card" },
-  { id: "a4", label: "BCP Dólares", currency: "USD", kind: "bank" },
+  { id: "a1", label: "Efectivo", currency: "PEN", kind: "cash", balance: 320.5 },
+  { id: "a2", label: "BCP Soles", currency: "PEN", kind: "bank", balance: 4820.75 },
+  { id: "a3", label: "Visa BBVA", currency: "PEN", kind: "card", balance: -640.2 },
+  { id: "a4", label: "BCP Dólares", currency: "USD", kind: "bank", balance: 1250 },
 ];
 
 const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
@@ -116,91 +60,61 @@ const ACCOUNT_KIND_ICON: Record<
   AccountKind,
   React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>
 > = {
-  cash: Wallet,
+  cash: Banknote,
   card: CreditCard,
-  bank: Building2,
+  bank: Landmark,
 };
 
-const MOCK_CATEGORIES: Category[] = [
-  { id: "food", label: "Comida", icon: Utensils },
-  { id: "transport", label: "Transporte", icon: Car },
-  { id: "market", label: "Mercado", icon: ShoppingCart },
-  { id: "health", label: "Salud", icon: Heart },
-  { id: "fun", label: "Entretenimiento", icon: Film },
-  { id: "utilities", label: "Servicios", icon: Zap },
-  { id: "home", label: "Hogar", icon: HomeIcon },
-  { id: "edu", label: "Educación", icon: GraduationCap },
-  { id: "work", label: "Trabajo", icon: Briefcase },
-  { id: "other", label: "Otros", icon: Circle },
-];
+/**
+ * Warm-neutral tints for account icons. Mirrors the Dashboard/Movements
+ * `CATEGORY_TINT` palette technique (subtle oklch washes) but keeps the
+ * accounts screen visually calmer than the rainbow categories list.
+ */
+const ACCOUNT_TINT: Record<AccountKind, string> = {
+  cash: "bg-[oklch(0.92_0.04_70)] text-[oklch(0.45_0.10_70)]",
+  card: "bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]",
+  bank: "bg-[oklch(0.92_0.03_140)] text-[oklch(0.45_0.10_140)]",
+};
 
-// User identity placeholders — replaced by Supabase session data in Batch C.
-const USER_NAME = "Ana Bermúdez";
-const USER_EMAIL = "gerson@lumi.app";
-const USER_INITIALS = USER_NAME.split(" ")
-  .map((p) => p[0])
-  .slice(0, 2)
-  .join("")
-  .toUpperCase();
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function formatBalance(amount: number, currency: Currency): string {
+  const symbol = currency === "PEN" ? "S/" : "$";
+  const formatted = new Intl.NumberFormat("es-PE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amount));
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${symbol} ${formatted}`;
+}
+
+/**
+ * Sum balances per currency. Mixing PEN + USD into a single number is wrong,
+ * so we surface them side-by-side. When Supabase lands we'll convert via the
+ * user's preferred currency, but for now keep them honest and separate.
+ */
+function totalsByCurrency(accounts: Account[]): Record<Currency, number> {
+  return accounts.reduce(
+    (acc, a) => {
+      acc[a.currency] += a.balance;
+      return acc;
+    },
+    { PEN: 0, USD: 0 } as Record<Currency, number>,
+  );
+}
 
 // ─── Page ──────────────────────────────────────────────────────────────────
-export default function SettingsPage() {
-  const [prefs, setPrefs] = React.useState<Prefs>(DEFAULT_PREFS);
-  const [hydrated, setHydrated] = React.useState(false);
+export default function AccountsPage() {
+  const totals = React.useMemo(() => totalsByCurrency(MOCK_ACCOUNTS), []);
 
-  // next-themes returns sane defaults outside a provider, so calling this at
-  // the top level is safe even if RootLayout has not mounted ThemeProvider yet.
-  const { setTheme } = useTheme();
-
-  // Hydrate prefs from localStorage AFTER mount — never during SSR.
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(PREFS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Prefs>;
-        setPrefs((p) => ({ ...p, ...parsed }));
-      }
-    } catch {
-      // Corrupted JSON or quota error — ignore and stay on defaults.
-    }
-    setHydrated(true);
-  }, []);
-
-  // Persist prefs whenever they change AFTER hydration. Skipping pre-hydration
-  // writes prevents the default values from clobbering whatever was on disk.
-  React.useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-    } catch {
-      // Quota exceeded or storage disabled — nothing actionable here.
-    }
-  }, [prefs, hydrated]);
-
-  function handleCurrencyChange(value: string) {
-    if (value === "PEN" || value === "USD") {
-      setPrefs((p) => ({ ...p, currency: value }));
-    }
-  }
-
-  function handleThemeChange(value: string) {
-    if (value === "system" || value === "light" || value === "dark") {
-      setPrefs((p) => ({ ...p, theme: value }));
-      // No-op outside a ThemeProvider; harmless.
-      setTheme(value);
-    }
-  }
-
-  function handleEditProfile() {
+  function handleEditAccount(label: string) {
     toast("Próximamente", {
-      description: "La edición de perfil llega en la próxima fase.",
+      description: `La edición de "${label}" llega en la próxima fase.`,
     });
   }
 
-  function handleSignOut() {
-    // TODO: wire to supabase.auth.signOut() in Batch C.
+  function handleAddAccount() {
     toast("Próximamente", {
-      description: "Auth llega en la próxima fase.",
+      description: "Agregar cuentas llega en la próxima fase.",
     });
   }
 
@@ -208,65 +122,63 @@ export default function SettingsPage() {
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
-        <header>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Tu cuenta
-          </p>
-          <h1 className="mt-1 text-2xl font-bold md:text-3xl">Ajustes</h1>
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Tu dinero
+            </p>
+            <h1 className="mt-1 text-2xl font-bold md:text-3xl">Cuentas</h1>
+          </div>
+          <Link
+            href="/settings"
+            aria-label="Abrir ajustes"
+            className={cn(
+              "inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground",
+              "transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+            )}
+          >
+            <SettingsIcon size={18} aria-hidden="true" />
+          </Link>
         </header>
 
-        {/* Profile */}
-        <SettingsSection title="Perfil" headingId="settings-profile">
+        {/* Totals summary */}
+        <section aria-labelledby="accounts-total" className="mt-2">
+          <h2
+            id="accounts-total"
+            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          >
+            Saldo total
+          </h2>
           <Card className="rounded-2xl border-border p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
-              <div
-                aria-hidden="true"
-                className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-lg font-bold"
-              >
-                {USER_INITIALS}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-semibold">{USER_NAME}</div>
-                <div className="truncate text-xs text-muted-foreground">{USER_EMAIL}</div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleEditProfile}
-                aria-label="Editar perfil"
-                className="min-h-11 rounded-full px-4"
-              >
-                <Pencil size={14} aria-hidden="true" />
-                <span className="ml-1">Editar</span>
-              </Button>
+            <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <TotalRow label="Soles" amount={totals.PEN} currency="PEN" />
+              <Separator className="md:hidden" />
+              <TotalRow label="Dólares" amount={totals.USD} currency="USD" />
             </div>
           </Card>
-        </SettingsSection>
+        </section>
 
-        {/* Cuentas */}
-        <SettingsSection title="Cuentas" headingId="settings-accounts">
+        {/* Accounts list */}
+        <section aria-labelledby="accounts-list" className="mt-8">
+          <h2
+            id="accounts-list"
+            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          >
+            Tus cuentas
+          </h2>
           <Card className="overflow-hidden rounded-2xl border-border p-0">
             <ul className="divide-y divide-border" role="list">
               {MOCK_ACCOUNTS.map((account) => {
                 const KindIcon = ACCOUNT_KIND_ICON[account.kind];
                 return (
                   <li key={account.id}>
-                    <Link
-                      href={`/settings/accounts/${account.id}`}
-                      aria-disabled
-                      onClick={(e) => {
-                        // Destinations don't exist yet; surface the placeholder.
-                        e.preventDefault();
-                        toast("Próximamente", {
-                          description: "El detalle de cuenta llega pronto.",
-                        });
-                      }}
-                      className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                    >
+                    <div className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3">
                       <div
                         aria-hidden="true"
-                        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"
+                        className={cn(
+                          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl",
+                          ACCOUNT_TINT[account.kind],
+                        )}
                       >
                         <KindIcon size={18} aria-hidden />
                       </div>
@@ -275,212 +187,52 @@ export default function SettingsPage() {
                           {account.label}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
-                          {account.currency} · {ACCOUNT_KIND_LABEL[account.kind]}
+                          {ACCOUNT_KIND_LABEL[account.kind]} · {account.currency}
                         </div>
                       </div>
-                      <ChevronRight
-                        size={16}
-                        className="text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </Card>
-        </SettingsSection>
-
-        {/* Categorías */}
-        <SettingsSection title="Categorías" headingId="settings-categories">
-          <Card className="overflow-hidden rounded-2xl border-border p-0">
-            <ul className="divide-y divide-border" role="list">
-              {MOCK_CATEGORIES.map((category) => {
-                const CategoryIcon = category.icon;
-                return (
-                  <li key={category.id}>
-                    <Link
-                      href={`/settings/categories/${category.id}`}
-                      aria-disabled
-                      onClick={(e) => {
-                        e.preventDefault();
-                        toast("Próximamente", {
-                          description: "El detalle de categoría llega pronto.",
-                        });
-                      }}
-                      className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                    >
-                      <div
-                        aria-hidden="true"
-                        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span
+                          className={cn(
+                            "text-[14px] font-semibold tabular-nums",
+                            account.balance < 0 && "text-destructive",
+                          )}
+                        >
+                          {formatBalance(account.balance, account.currency)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // Destinations don't exist yet; surface the placeholder.
+                          e.preventDefault();
+                          handleEditAccount(account.label);
+                        }}
+                        aria-label={`Editar ${account.label}`}
+                        className={cn(
+                          "ml-2 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground",
+                          "transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:outline-none",
+                        )}
                       >
-                        <CategoryIcon size={16} aria-hidden />
-                      </div>
-                      <div className="min-w-0 flex-1 text-[14px] font-semibold">
-                        {category.label}
-                      </div>
-                      <Tag
-                        size={14}
-                        className="text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <ChevronRight
-                        size={16}
-                        className="text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    </Link>
+                        <ChevronRight size={16} aria-hidden="true" />
+                      </button>
+                    </div>
                   </li>
                 );
               })}
             </ul>
           </Card>
-        </SettingsSection>
+        </section>
 
-        {/* Preferencias */}
-        <SettingsSection title="Preferencias" headingId="settings-preferences">
-          <Card className="rounded-2xl border-border p-5">
-            {/* Currency */}
-            <fieldset>
-              <legend className="text-[13px] font-semibold">
-                Moneda principal
-              </legend>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                La moneda default para mostrar y registrar.
-              </p>
-              <RadioGroup
-                value={prefs.currency}
-                onValueChange={handleCurrencyChange}
-                aria-label="Moneda principal"
-                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
-              >
-                <PrefRadio value="PEN" label="PEN · Sol peruano" hint="S/" />
-                <PrefRadio value="USD" label="USD · Dólar" hint="$" />
-              </RadioGroup>
-            </fieldset>
-
-            <Separator className="my-5" />
-
-            {/* Theme */}
-            <fieldset>
-              <legend className="text-[13px] font-semibold">Tema</legend>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Sistema sigue lo que tenés configurado en tu dispositivo.
-              </p>
-              <RadioGroup
-                value={prefs.theme}
-                onValueChange={handleThemeChange}
-                aria-label="Tema de la aplicación"
-                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
-              >
-                <PrefRadio value="system" label="Sistema" />
-                <PrefRadio value="light" label="Claro" />
-                <PrefRadio value="dark" label="Oscuro" />
-              </RadioGroup>
-            </fieldset>
-
-            <Separator className="my-5" />
-
-            {/* Locale + Timezone (read-only) */}
-            <dl className="grid gap-3">
-              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
-                <div className="flex items-center gap-3">
-                  <Globe
-                    size={16}
-                    className="text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <dt className="text-[13px] font-semibold">Idioma</dt>
-                </div>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
-                  es-PE
-                </dd>
-              </div>
-              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
-                <div className="flex items-center gap-3">
-                  <Clock
-                    size={16}
-                    className="text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <dt className="text-[13px] font-semibold">Zona horaria</dt>
-                </div>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
-                  America/Lima
-                </dd>
-              </div>
-            </dl>
-          </Card>
-        </SettingsSection>
-
-        {/* Sobre la app */}
-        <SettingsSection title="Sobre la app" headingId="settings-about">
-          <Card className="overflow-hidden rounded-2xl border-border p-0">
-            <div className="flex items-center gap-3 px-4 py-4">
-              <Info
-                size={16}
-                className="text-muted-foreground"
-                aria-hidden="true"
-              />
-              <span className="text-[13px] font-semibold">Versión</span>
-              <span className="ml-auto text-[13px] tabular-nums text-muted-foreground">
-                {APP_VERSION}
-              </span>
-            </div>
-            <Separator />
-            <ul className="divide-y divide-border" role="list">
-              <li>
-                <Link
-                  href="/legal/terms"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toast("Próximamente", {
-                      description: "Los términos llegan en la próxima fase.",
-                    });
-                  }}
-                  className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                >
-                  Términos y condiciones
-                  <ChevronRight
-                    size={16}
-                    className="ml-auto text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/legal/privacy"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toast("Próximamente", {
-                      description: "La política llega en la próxima fase.",
-                    });
-                  }}
-                  className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                >
-                  Política de privacidad
-                  <ChevronRight
-                    size={16}
-                    className="ml-auto text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </Link>
-              </li>
-            </ul>
-          </Card>
-        </SettingsSection>
-
-        {/* Sign out */}
-        <div className="mt-8">
+        {/* Add account */}
+        <div className="mt-6">
           <Button
             type="button"
-            variant="destructive"
-            onClick={handleSignOut}
+            onClick={handleAddAccount}
+            aria-label="Agregar cuenta"
             className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
           >
-            <LogOut size={16} aria-hidden="true" />
-            <span className="ml-1">Cerrar sesión</span>
+            <Plus size={16} aria-hidden="true" />
+            <span className="ml-1">Agregar cuenta</span>
           </Button>
         </div>
       </div>
@@ -489,56 +241,28 @@ export default function SettingsPage() {
 }
 
 // ─── Subcomponents ─────────────────────────────────────────────────────────
-function SettingsSection({
-  title,
-  headingId,
-  children,
-}: {
-  title: string;
-  headingId: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section aria-labelledby={headingId} className="mt-8">
-      <h2
-        id={headingId}
-        className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
-      >
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function PrefRadio({
-  value,
+function TotalRow({
   label,
-  hint,
+  amount,
+  currency,
 }: {
-  value: string;
   label: string;
-  hint?: string;
+  amount: number;
+  currency: Currency;
 }) {
-  const id = `pref-${value}`;
   return (
-    <Label
-      htmlFor={id}
-      className={cn(
-        "flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-[14px] font-medium transition-colors",
-        "hover:bg-muted has-[[data-checked]]:border-primary has-[[data-checked]]:bg-[var(--color-primary-soft)]",
-      )}
-    >
-      <RadioGroupItem id={id} value={value} />
-      <span className="flex-1">{label}</span>
-      {hint ? (
-        <span
-          aria-hidden="true"
-          className="text-[13px] tabular-nums text-muted-foreground"
-        >
-          {hint}
-        </span>
-      ) : null}
-    </Label>
+    <div className="flex items-baseline justify-between gap-3 md:flex-col md:items-start md:gap-1">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-xl font-bold tabular-nums md:text-2xl",
+          amount < 0 && "text-destructive",
+        )}
+      >
+        {formatBalance(amount, currency)}
+      </span>
+    </div>
   );
 }

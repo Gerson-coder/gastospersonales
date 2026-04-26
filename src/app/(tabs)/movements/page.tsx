@@ -288,6 +288,61 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   other: "Otros",
 };
 
+// ─── Unified category tint palette ────────────────────────────────────────
+// Subtle tints (high lightness, low chroma) so the list reads as a coherent
+// taxonomy instead of an arcoíris. Mirrors the Dashboard polish palette.
+// Local Lumi categories `home` and `edu` map to the closest spec entries
+// (`utilities` and `education`) so we avoid emitting Tailwind classes that
+// don't exist at build time.
+const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
+  food: {
+    bg: "bg-[oklch(0.92_0.04_30)]",
+    text: "text-[oklch(0.45_0.10_30)]",
+  },
+  transport: {
+    bg: "bg-[oklch(0.92_0.03_220)]",
+    text: "text-[oklch(0.45_0.10_220)]",
+  },
+  market: {
+    bg: "bg-[oklch(0.92_0.04_280)]",
+    text: "text-[oklch(0.45_0.10_280)]",
+  },
+  health: {
+    bg: "bg-[oklch(0.92_0.04_10)]",
+    text: "text-[oklch(0.50_0.12_10)]",
+  },
+  fun: {
+    bg: "bg-[oklch(0.92_0.04_310)]",
+    text: "text-[oklch(0.45_0.10_310)]",
+  },
+  utilities: {
+    bg: "bg-[oklch(0.92_0.04_70)]",
+    text: "text-[oklch(0.45_0.10_70)]",
+  },
+  home: {
+    bg: "bg-[oklch(0.92_0.04_70)]",
+    text: "text-[oklch(0.45_0.10_70)]",
+  },
+  edu: {
+    bg: "bg-[oklch(0.92_0.03_180)]",
+    text: "text-[oklch(0.45_0.10_180)]",
+  },
+  work: {
+    bg: "bg-[oklch(0.92_0.03_140)]",
+    text: "text-[oklch(0.45_0.10_140)]",
+  },
+  other: {
+    bg: "bg-[oklch(0.92_0_95)]",
+    text: "text-[oklch(0.45_0_95)]",
+  },
+};
+
+// Shared min-width for any money column (transaction prices + day net) so
+// every value lands on the same right edge regardless of digit count.
+// Combined with `tabular-nums`, digits become equal-width and align as a
+// proper column.
+const MONEY_COL_MIN_WIDTH = "108px";
+
 // ─── Money formatting ─────────────────────────────────────────────────────
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
 function formatMoney(amount: number, currency: Currency = "PEN"): string {
@@ -361,6 +416,7 @@ function groupByDay(txns: Transaction[]): DayGroup[] {
 // ─── Transaction row ──────────────────────────────────────────────────────
 function TransactionRow({ t }: { t: Transaction }) {
   const Icon = CATEGORY_ICONS[t.categoryId];
+  const tint = CATEGORY_TINT[t.categoryId];
   // Stable formatting: parse the ISO string directly to hh:mm to avoid TZ-driven
   // hydration mismatches. Mock data is local-naive; we treat it as wall-clock.
   // TODO: replace with proper TZ-aware formatting once Batch B/C lands.
@@ -378,12 +434,16 @@ function TransactionRow({ t }: { t: Transaction }) {
     >
       <div
         aria-hidden="true"
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+        className={cn(
+          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+          tint.bg,
+          tint.text,
+        )}
       >
         <Icon size={20} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-semibold leading-tight">
+        <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
           {t.merchant}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
@@ -392,12 +452,19 @@ function TransactionRow({ t }: { t: Transaction }) {
       </div>
       <span
         className={cn(
-          "font-display italic tabular-nums leading-none tracking-tight whitespace-nowrap text-base",
+          // ml-auto + shrink-0 + min-width + tabular-nums + text-right gives us
+          // a fixed-width money column: every price, no matter the digit count,
+          // lines up on the same right edge with equal-width digits.
+          "ml-auto shrink-0 text-right whitespace-nowrap",
+          "font-display italic tabular-nums leading-none tracking-tight text-base",
           isIncome
             ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
             : "text-foreground",
         )}
-        style={{ fontFeatureSettings: '"tnum","lnum"' }}
+        style={{
+          fontFeatureSettings: '"tnum","lnum"',
+          minWidth: MONEY_COL_MIN_WIDTH,
+        }}
       >
         {moneyText}
       </span>
@@ -420,34 +487,41 @@ function MonthSummary({
       <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         Este mes · abril
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Gastado
+      <div className="mt-3 grid grid-cols-3 gap-4">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Gasto
           </div>
-          <div className="mt-1 font-display italic tabular-nums leading-none tracking-tight text-lg text-foreground">
+          <div
+            className="mt-1 font-display italic leading-none tracking-tight text-lg text-foreground tabular-nums"
+            style={{ fontFeatureSettings: '"tnum","lnum"' }}
+          >
             {formatMoney(spent, "PEN")}
           </div>
         </div>
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Ingresos
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Ingreso
           </div>
-          <div className="mt-1 font-display italic tabular-nums leading-none tracking-tight text-lg text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]">
+          <div
+            className="mt-1 font-display italic leading-none tracking-tight text-lg text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)] tabular-nums"
+            style={{ fontFeatureSettings: '"tnum","lnum"' }}
+          >
             + {formatMoney(income, "PEN")}
           </div>
         </div>
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Neto
           </div>
           <div
             className={cn(
-              "mt-1 font-display italic tabular-nums leading-none tracking-tight text-lg",
+              "mt-1 font-display italic leading-none tracking-tight text-lg tabular-nums",
               net < 0
                 ? "text-destructive"
                 : "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]",
             )}
+            style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
             {net < 0 ? "– " : "+ "}
             {formatMoney(Math.abs(net), "PEN")}
@@ -546,7 +620,9 @@ export default function MovementsPage() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
               abril · 2026
             </div>
-            <h1 className="mt-1 text-[22px] font-bold md:text-3xl">Movimientos</h1>
+            <h1 className="mt-1 font-display italic leading-none tracking-tight text-[28px] font-semibold text-foreground md:text-4xl">
+              Movimientos
+            </h1>
           </div>
           <button
             type="button"
@@ -597,15 +673,28 @@ function DayGroupSection({ group }: { group: DayGroup }) {
   const netSign = group.net < 0 ? "– " : "+ ";
   const netText = `${netSign}${formatMoney(Math.abs(group.net), "PEN")}`;
   return (
-    <section className="mt-4 first:mt-0">
-      {/* Sticky day header — h2 so screen readers can section-jump. */}
-      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between bg-background/95 px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-0 md:px-1">
-        <span>{group.label}</span>
+    <section className="mt-5 first:mt-0">
+      {/* Sticky day header — h2 so screen readers can section-jump.
+          Bumped from muted-foreground to foreground + semibold so day labels
+          read as proper section headings instead of fading metadata. */}
+      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between bg-background/95 px-5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-0 md:px-1">
+        <span className="text-[13px] font-semibold tracking-tight text-foreground">
+          {group.label}
+        </span>
         <span
           className={cn(
-            "font-mono text-[11px] tabular-nums",
-            group.net < 0 ? "text-foreground" : "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]",
+            // Day net: aligned to the same money column as transaction prices,
+            // a touch smaller and lighter than the day label so the hierarchy
+            // reads label → total → rows.
+            "shrink-0 text-right tabular-nums text-[11px] font-medium",
+            group.net < 0
+              ? "text-muted-foreground"
+              : "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]",
           )}
+          style={{
+            fontFeatureSettings: '"tnum","lnum"',
+            minWidth: MONEY_COL_MIN_WIDTH,
+          }}
           aria-label={`Neto del día ${netText}`}
         >
           {netText}

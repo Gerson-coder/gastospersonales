@@ -18,8 +18,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Settings as SettingsIcon } from "lucide-react";
+
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useUserName } from "@/lib/use-user-name";
 
 import { DEFAULT_ITEMS, type TabBarItem } from "./TabBar";
 
@@ -39,6 +42,7 @@ export function Sidebar({
   className,
 }: SidebarProps): React.ReactElement {
   const pathname = usePathname();
+  const { name, hydrated } = useUserName();
 
   // Split items: regular nav rows vs the primary "Capturar" action.
   const regularItems = items.filter((i) => !i.primary);
@@ -137,10 +141,34 @@ export function Sidebar({
         ) : null}
       </nav>
 
-      {/* Footer */}
-      <div className="px-5 py-4 text-[11px] font-medium text-muted-foreground/80">
-        <div>v0.1.0</div>
-        <div className="mt-0.5">© Lumi</div>
+      {/* Footer: greeting + settings shortcut + version */}
+      <div className="space-y-3 px-3 py-4">
+        <Link
+          href="/settings"
+          aria-current={isItemActive(pathname, "/settings") ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
+            "transition-colors duration-150 ease-out",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            isItemActive(pathname, "/settings")
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
+        >
+          <span
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-foreground font-semibold"
+            aria-hidden="true"
+          >
+            {hydrated && name ? name.trim().charAt(0).toUpperCase() : "?"}
+          </span>
+          <span className="min-w-0 flex-1 truncate font-semibold">
+            {hydrated ? (name ?? "Sin nombre") : " "}
+          </span>
+          <SettingsIcon size={16} aria-hidden="true" />
+        </Link>
+        <div className="px-3 text-[11px] font-medium text-muted-foreground/70">
+          v0.1.0 · © Lumi
+        </div>
       </div>
     </aside>
   );

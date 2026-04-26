@@ -1,8 +1,19 @@
-import { redirect } from "next/navigation";
+// TODO: server-side redirect via Supabase session in Batch C; for now this is client-side localStorage gate.
+"use client";
 
-// Pre-auth: el / redirige al preview del dashboard.
-// Cuando aterrice Batch C (auth), esto pasa a redirigir a /login si no hay
-// sesión, y a /capture si la hay (capture es el caso del 95% del uso).
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
 export default function Home() {
-  redirect("/dashboard");
+  const router = useRouter();
+  useEffect(() => {
+    let target = "/dashboard";
+    try {
+      if (!window.localStorage.getItem("lumi-user-name")) target = "/login";
+    } catch {
+      /* ignore */
+    }
+    router.replace(target);
+  }, [router]);
+  return null;
 }

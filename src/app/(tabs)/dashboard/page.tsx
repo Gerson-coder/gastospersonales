@@ -25,6 +25,7 @@ import {
   Circle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { useUserName } from "@/lib/use-user-name";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -99,18 +100,25 @@ const TRANSACTIONS: Transaction[] = [
   },
 ];
 
-const MONTH_DAILY = [
-  12, 18, 8, 22, 6, 42, 15, 28, 10, 16, 32, 9, 24, 18, 14, 38, 12, 20, 8, 16,
-  28, 42, 18, 24,
+// Last 7 days of spend (Mon → Sun); today is the rightmost bar.
+// Realistic-ish PEN amounts — stable, deterministic.
+const WEEK_SPEND: { label: string; value: number }[] = [
+  { label: "Lun", value: 28 },
+  { label: "Mar", value: 64 },
+  { label: "Mié", value: 18 },
+  { label: "Jue", value: 92 },
+  { label: "Vie", value: 145 },
+  { label: "Sáb", value: 210 },
+  { label: "Dom", value: 76 },
 ];
 
 const TOP_CATEGORIES = [
-  { id: "fun", label: "Entretenimiento", value: 32, color: "var(--color-chart-2)" },
-  { id: "food", label: "Comida", value: 22, color: "var(--color-chart-1)" },
-  { id: "transport", label: "Transporte", value: 16, color: "var(--color-chart-3)" },
-  { id: "market", label: "Mercado", value: 12, color: "var(--color-chart-4)" },
-  { id: "utilities", label: "Servicios", value: 10, color: "var(--color-chart-5)" },
-  { id: "other", label: "Otros", value: 8, color: "var(--color-chart-6)" },
+  { id: "fun" as CategoryId, label: "Entretenimiento", value: 32, color: "var(--color-chart-2)" },
+  { id: "food" as CategoryId, label: "Comida", value: 22, color: "var(--color-chart-1)" },
+  { id: "transport" as CategoryId, label: "Transporte", value: 16, color: "var(--color-chart-3)" },
+  { id: "market" as CategoryId, label: "Mercado", value: 12, color: "var(--color-chart-4)" },
+  { id: "utilities" as CategoryId, label: "Servicios", value: 10, color: "var(--color-chart-5)" },
+  { id: "other" as CategoryId, label: "Otros", value: 8, color: "var(--color-chart-6)" },
 ];
 
 const CATEGORY_ICONS: Record<
@@ -140,6 +148,21 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   edu: "Educación",
   work: "Trabajo",
   other: "Otros",
+};
+
+// Subtle, unified tint palette — same hue family as Lumi (warm + emerald accents),
+// high lightness + low chroma so nothing screams. NOT a rainbow.
+const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
+  food: { bg: "bg-[oklch(0.92_0.04_30)]", text: "text-[oklch(0.45_0.10_30)]" },
+  transport: { bg: "bg-[oklch(0.92_0.03_220)]", text: "text-[oklch(0.45_0.10_220)]" },
+  market: { bg: "bg-[oklch(0.92_0.04_280)]", text: "text-[oklch(0.45_0.10_280)]" },
+  health: { bg: "bg-[oklch(0.92_0.04_10)]", text: "text-[oklch(0.50_0.12_10)]" },
+  fun: { bg: "bg-[oklch(0.92_0.04_310)]", text: "text-[oklch(0.45_0.10_310)]" },
+  utilities: { bg: "bg-[oklch(0.92_0.04_70)]", text: "text-[oklch(0.45_0.10_70)]" },
+  home: { bg: "bg-[oklch(0.92_0.04_162)]", text: "text-[oklch(0.45_0.10_162)]" },
+  edu: { bg: "bg-[oklch(0.92_0.03_180)]", text: "text-[oklch(0.45_0.10_180)]" },
+  work: { bg: "bg-[oklch(0.92_0.03_140)]", text: "text-[oklch(0.45_0.10_140)]" },
+  other: { bg: "bg-[oklch(0.92_0_95)]", text: "text-[oklch(0.45_0_95)]" },
 };
 
 // ─── Money formatting ─────────────────────────────────────────────────────
@@ -238,22 +261,25 @@ function DonutChart({
       ))}
       <text
         x="21"
-        y="20.5"
+        y="19.6"
         textAnchor="middle"
-        fontSize="6"
+        fontSize="5.4"
         className="fill-foreground"
         fontFamily="var(--font-display)"
         fontStyle="italic"
+        style={{ fontFeatureSettings: '"tnum","lnum"' }}
       >
         {formatMoney(total, currency)}
       </text>
       <text
         x="21"
-        y="25"
+        y="25.2"
         textAnchor="middle"
-        fontSize="2.5"
-        className="fill-muted-foreground"
+        fontSize="2.4"
+        letterSpacing="0.18"
+        className="fill-muted-foreground uppercase"
         fontFamily="var(--font-sans)"
+        fontWeight="600"
       >
         gastado este mes
       </text>
@@ -261,28 +287,28 @@ function DonutChart({
   );
 }
 
-function SparkArea({ points, height = 90 }: { points: number[]; height?: number }) {
-  const max = Math.max(...points);
-  const min = Math.min(...points);
+// Weekly bar chart — last 7 days of spend. Today's bar (last) uses primary color,
+// prior days use a soft muted tint. Hand-rolled SVG, unique gradient ids.
+function WeeklyBars({
+  data,
+  height = 140,
+  currency = "PEN",
+}: {
+  data: { label: string; value: number }[];
+  height?: number;
+  currency?: Currency;
+}) {
   const w = 320;
-  const range = max - min || 1;
-  const stepX = w / (points.length - 1);
-  const path = points
-    .map(
-      (p, i) =>
-        `${i === 0 ? "M" : "L"} ${(i * stepX).toFixed(1)} ${(
-          height -
-          8 -
-          ((p - min) / range) * (height - 16)
-        ).toFixed(1)}`,
-    )
-    .join(" ");
-  const area = `${path} L ${w} ${height} L 0 ${height} Z`;
-  const lastY = (
-    height -
-    8 -
-    ((points[points.length - 1] - min) / range) * (height - 16)
-  ).toFixed(1);
+  const padX = 10;
+  const padTop = 18;
+  const padBottom = 26;
+  const innerW = w - padX * 2;
+  const innerH = height - padTop - padBottom;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const slot = innerW / data.length;
+  const barW = Math.min(28, slot * 0.55);
+  const todayIdx = data.length - 1;
+
   return (
     <svg
       width="100%"
@@ -290,43 +316,97 @@ function SparkArea({ points, height = 90 }: { points: number[]; height?: number 
       viewBox={`0 0 ${w} ${height}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="Gasto diario del mes"
+      aria-label="Gasto de los últimos 7 días"
     >
       <defs>
-        {/* Unique id to avoid collisions with other SVGs on the page */}
-        <linearGradient id="lumi-dashboard-spark-grad" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0" />
+        <linearGradient id="lumi-dashboard-week-today" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="1" />
+          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="lumi-dashboard-week-other" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-muted-foreground)" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="var(--color-muted-foreground)" stopOpacity="0.18" />
         </linearGradient>
       </defs>
-      <path d={area} fill="url(#lumi-dashboard-spark-grad)" />
-      <path
-        d={path}
-        fill="none"
-        stroke="var(--color-primary)"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
+
+      {/* Faint baseline */}
+      <line
+        x1={padX}
+        x2={w - padX}
+        y1={padTop + innerH + 0.5}
+        y2={padTop + innerH + 0.5}
+        stroke="var(--color-border)"
+        strokeWidth="1"
       />
-      <circle cx={w} cy={lastY} r="3" fill="var(--color-primary)" />
+
+      {data.map((d, i) => {
+        const h = (d.value / max) * innerH;
+        const x = padX + slot * i + (slot - barW) / 2;
+        const y = padTop + (innerH - h);
+        const isToday = i === todayIdx;
+        const fill = isToday
+          ? "url(#lumi-dashboard-week-today)"
+          : "url(#lumi-dashboard-week-other)";
+        return (
+          <g key={d.label}>
+            <rect
+              x={x}
+              y={y}
+              width={barW}
+              height={Math.max(2, h)}
+              rx={6}
+              ry={6}
+              fill={fill}
+            />
+            {isToday && (
+              <text
+                x={x + barW / 2}
+                y={y - 6}
+                textAnchor="middle"
+                fontSize="9"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                className="fill-foreground"
+                style={{ fontFeatureSettings: '"tnum","lnum"' }}
+              >
+                {formatMoney(d.value, currency)}
+              </text>
+            )}
+            <text
+              x={x + barW / 2}
+              y={padTop + innerH + 16}
+              textAnchor="middle"
+              fontSize="9"
+              fontWeight={isToday ? 700 : 500}
+              className={isToday ? "fill-foreground" : "fill-muted-foreground"}
+              fontFamily="var(--font-sans)"
+            >
+              {d.label}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
 
 function TransactionRow({ t }: { t: Transaction }) {
   const Icon = CATEGORY_ICONS[t.categoryId];
+  const tint = CATEGORY_TINT[t.categoryId];
   // Stable formatting: parse the ISO string directly to hh:mm to avoid TZ-driven
   // hydration mismatches. Mock data is local-naive; we treat it as wall-clock.
   const time = t.occurredAt.slice(11, 16);
   const isIncome = t.kind === "income";
   return (
-    <div className="flex items-center gap-3.5 px-4 py-3.5">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]">
+    <div className="flex items-center gap-4 px-5 py-4">
+      <div
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
+      >
         <Icon size={20} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-semibold">{t.merchant}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
+        <div className="truncate text-[15px] font-semibold leading-snug">{t.merchant}</div>
+        <div className="mt-1 text-xs text-muted-foreground">
           {CATEGORY_LABEL[t.categoryId]} · {time}
         </div>
       </div>
@@ -344,11 +424,17 @@ function TransactionRow({ t }: { t: Transaction }) {
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [currency, setCurrency] = React.useState<Currency>("PEN");
+  const { name, hydrated } = useUserName();
   const balance = 4820.1;
   const spent = 2180.4;
   const income = 4200.0;
   const delta = -0.08;
   const recent = TRANSACTIONS.slice(0, 5);
+  const weekTotal = WEEK_SPEND.reduce((a, d) => a + d.value, 0);
+
+  // Greeting: defaults to "Hola" until hydration completes; then "Hola, {name}"
+  // when a name is stored. Avoids a hydration mismatch flicker.
+  const greeting = hydrated && name ? `Hola, ${name}` : "Hola";
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
@@ -359,7 +445,7 @@ export default function DashboardPage() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
               abril · 2026
             </div>
-            <h1 className="mt-1 text-[22px] font-bold md:text-3xl">Hola, Ana</h1>
+            <h1 className="mt-1.5 text-[22px] font-bold leading-tight md:text-3xl">{greeting}</h1>
           </div>
           <div className="flex gap-2">
             <button
@@ -385,7 +471,7 @@ export default function DashboardPage() {
         </header>
 
         {/* Hero balance */}
-        <Card className="relative mx-4 mt-5 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8 md:p-8">
+        <Card className="relative mx-4 mt-6 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8 md:p-10">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -398,19 +484,19 @@ export default function DashboardPage() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
               Disponible · abril
             </div>
-            <div className="mt-1.5">
+            <div className="mt-3">
               <MoneyDisplay amount={balance} currency={currency} size="hero" />
             </div>
-            <div className="mt-4 flex gap-6">
+            <div className="mt-7 flex gap-7 md:gap-10">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Gastado
                 </div>
-                <div className="mt-1">
+                <div className="mt-2">
                   <MoneyDisplay amount={spent} currency={currency} size="sm" />
                 </div>
                 <div
-                  className={`mt-1 text-[11px] font-semibold ${
+                  className={`mt-1.5 text-[11px] font-semibold tabular-nums ${
                     delta < 0
                       ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
                       : "text-destructive"
@@ -424,7 +510,7 @@ export default function DashboardPage() {
                 <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   Ingresos
                 </div>
-                <div className="mt-1">
+                <div className="mt-2">
                   <MoneyDisplay
                     amount={income}
                     currency={currency}
@@ -433,7 +519,7 @@ export default function DashboardPage() {
                     showSign
                   />
                 </div>
-                <div className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                <div className="mt-1.5 text-[11px] font-semibold text-muted-foreground tabular-nums">
                   1 transacción
                 </div>
               </div>
@@ -441,77 +527,87 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        {/* Desktop grid wrapper: Donut + Sparkline side by side on md+ */}
+        {/* Desktop grid wrapper: Weekly bars + Donut side by side on md+ */}
         <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
-          {/* Spark area */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-4 md:mx-0 md:mt-0 md:p-6">
-            <div className="flex items-baseline justify-between px-1 pb-2">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Día a día
+          {/* Weekly bars (replaces daily sparkline) */}
+          <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
+            <div className="flex items-baseline justify-between pb-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  Esta semana
+                </div>
+                <div className="mt-1 text-sm font-semibold tabular-nums">
+                  {formatMoney(weekTotal, currency)}{" "}
+                  <span className="font-medium text-muted-foreground">en 7 días</span>
+                </div>
               </div>
-              <div className="text-[11px] font-medium text-muted-foreground">
-                24 días · {formatMoney(spent, currency)}
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <span
+                  className="h-2 w-2 rounded-sm bg-primary"
+                  aria-hidden="true"
+                />
+                hoy
               </div>
             </div>
-            <SparkArea points={MONTH_DAILY} height={100} />
-            <div className="flex justify-between px-1 pt-1 text-[10px] font-medium text-muted-foreground">
-              <span>1</span>
-              <span>8</span>
-              <span>15</span>
-              <span>22</span>
-              <span>hoy</span>
-            </div>
+            <WeeklyBars data={WEEK_SPEND} height={150} currency={currency} />
           </Card>
 
           {/* Donut */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6 md:max-w-md">
-            <div className="mb-3 flex items-baseline justify-between">
+          <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
+            <div className="mb-5 flex items-baseline justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Distribución
               </div>
               <button
                 type="button"
-                className="min-h-11 text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                Ver todo
+                Ver todo →
               </button>
             </div>
-            <div className="flex items-center gap-5">
+            <div className="flex flex-col items-center gap-6 md:flex-row md:items-center md:gap-7">
               <DonutChart
                 segments={TOP_CATEGORIES}
                 total={spent}
                 currency={currency}
-                size={150}
+                size={160}
               />
-              <div className="flex-1 space-y-1.5 text-xs md:grid md:grid-cols-2 md:gap-x-4 md:gap-y-1.5 md:space-y-0">
-                {TOP_CATEGORIES.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 rounded-sm"
-                        style={{ background: s.color }}
-                        aria-hidden="true"
-                      />
-                      {s.label}
-                    </span>
-                    <span className="font-mono font-medium tabular-nums">{s.value}%</span>
-                  </div>
-                ))}
+              <div className="flex-1 space-y-2.5 text-xs md:grid md:grid-cols-2 md:gap-x-5 md:gap-y-2.5 md:space-y-0">
+                {TOP_CATEGORIES.map((s) => {
+                  const tint = CATEGORY_TINT[s.id];
+                  const Icon = CATEGORY_ICONS[s.id];
+                  return (
+                    <div key={s.id} className="flex items-center justify-between gap-3">
+                      <span className="inline-flex min-w-0 items-center gap-2.5">
+                        <span
+                          className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${tint.bg} ${tint.text}`}
+                          aria-hidden="true"
+                        >
+                          <Icon size={13} />
+                        </span>
+                        <span className="truncate">{s.label}</span>
+                      </span>
+                      <span className="font-mono font-medium tabular-nums text-muted-foreground">
+                        {s.value}%
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </Card>
 
           {/* Recent transactions */}
           <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2">
-            <div className="flex items-baseline justify-between px-4 pb-1.5 pt-3">
+            <div className="flex items-baseline justify-between px-5 pb-3 pt-5">
               <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                 Últimas transacciones
               </div>
               <button
                 type="button"
-                className="min-h-11 text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                Ver todas
+                Ver todas →
               </button>
             </div>
             <div>
