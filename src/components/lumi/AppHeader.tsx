@@ -1,32 +1,28 @@
 "use client";
 
 /**
- * AppHeader — shared top header for all (tabs) screens.
+ * AppHeader — shared title chrome for all (tabs) screens.
  *
- * Lives at the top of Dashboard, Movements, Insights, Accounts. Hosts the
- * eyebrow/title cluster on the left and a compact action cluster on the right
- * (settings shortcut, theme toggle, profile menu).
+ * Lives at the top of Dashboard, Movements, Insights, Accounts, Settings,
+ * Profile. Hosts the eyebrow/title cluster on the left and an optional
+ * `actionsBefore` slot on the right (used by Movements for the search
+ * trigger). Per-screen money toggles (e.g. PEN/USD on Dashboard) live
+ * INSIDE their respective hero cards.
  *
- * Sizing rationale:
- *   - All action buttons render at h-9 (36px) so the cluster reads as a tight
- *     secondary control row rather than a chunky toolbar.
+ * The persistent action cluster (Ajustes / Tema / Perfil) is NOT here —
+ * it's rendered once by `TabsTopBar` in `(tabs)/layout.tsx` so it does
+ * not unmount-remount on every navigation. The right padding on the
+ * inner div reserves space for that floating cluster on mobile so the
+ * page title never slides under it.
  *
  * Title style:
  *   - "page" → regular bold 22/30, used for context-heavy screens (Dashboard,
  *     Accounts) where the title is a label, not a hero.
  *   - "display" → font-display italic 28/36, used for hero pages (Movements,
  *     Insights) where the title carries character.
- *
- * Per-screen money toggles (e.g. PEN/USD on Dashboard) live INSIDE their
- * respective hero cards, not in the header — this keeps the header chrome
- * predictable across tabs.
  */
 
 import * as React from "react";
-import Link from "next/link";
-import { Settings as SettingsIcon } from "lucide-react";
-import { ThemeToggle } from "@/components/lumi/ThemeToggle";
-import { ProfileMenu } from "@/components/lumi/ProfileMenu";
 import { cn } from "@/lib/utils";
 
 export interface AppHeaderProps {
@@ -36,7 +32,7 @@ export interface AppHeaderProps {
   title: string;
   /** Optional className override on the outer wrapper */
   className?: string;
-  /** Optional element inserted RIGHT before the action cluster (e.g. search). */
+  /** Optional element inserted RIGHT of the title (e.g. search trigger). */
   actionsBefore?: React.ReactNode;
   /** Title styling: "page" (regular bold) or "display" (font-display italic). */
   titleStyle?: "page" | "display";
@@ -52,11 +48,14 @@ export function AppHeader({
   return (
     <header
       className={cn(
-        "flex items-center justify-between gap-3 px-5 pt-3 md:px-0 md:pt-0",
+        // pr-44 reserves room on mobile for the fixed TabsTopBar pill
+        // (~160px wide). Desktop has plenty of horizontal real estate so
+        // we drop the reservation at md+.
+        "flex items-center justify-between gap-3 px-5 pr-44 pt-3 md:px-0 md:pr-0 md:pt-0",
         className,
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {eyebrow ? (
           <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             {eyebrow}
@@ -73,18 +72,11 @@ export function AppHeader({
           {title}
         </h1>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {actionsBefore}
-        <Link
-          href="/settings"
-          aria-label="Abrir ajustes"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <SettingsIcon className="h-5 w-5" aria-hidden="true" />
-        </Link>
-        <ThemeToggle className="h-9 w-9" />
-        <ProfileMenu />
-      </div>
+      {actionsBefore ? (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {actionsBefore}
+        </div>
+      ) : null}
     </header>
   );
 }

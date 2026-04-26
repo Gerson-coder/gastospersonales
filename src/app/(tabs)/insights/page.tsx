@@ -63,6 +63,11 @@ type CategoryId =
 
 type Period = "month" | "q3" | "year";
 
+// Local time-window for the "Comparativa mensual" card. Independent from the
+// page-level `Period` because users may want to scope the bar chart while
+// keeping the rest of the page on the current month.
+type CompareRange = "3m" | "6m";
+
 type Transaction = {
   id: string;
   amount: number;
@@ -517,6 +522,235 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
   );
 }
 
+// ─── Range chips for the Comparativa mensual card ────────────────────────
+const COMPARE_RANGE_OPTIONS: { id: CompareRange; label: string; months: number }[] = [
+  { id: "3m", label: "3M", months: 3 },
+  { id: "6m", label: "6M", months: 6 },
+];
+
+function CompareRangeChips({
+  value,
+  onChange,
+}: {
+  value: CompareRange;
+  onChange: (r: CompareRange) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Rango de meses a comparar"
+      className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 p-0.5"
+    >
+      {COMPARE_RANGE_OPTIONS.map((opt) => {
+        const selected = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(opt.id)}
+            className={cn(
+              "inline-flex h-6 min-w-9 items-center justify-center rounded-full px-2 text-[11px] font-semibold tabular-nums transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Comparativa mensual card ─────────────────────────────────────────────
+/**
+ * Composes:
+ *   1) A hero stat row: average monthly spend across the visible window in
+ *      font-display italic + a DeltaChip vs the prior equally-sized window.
+ *   2) Local 3M/6M range chips so the user can scope the bar chart without
+ *      affecting the rest of the page (page-level period stays independent).
+ *   3) A deterministic footer micro-insight surfacing ONE pattern from the
+ *      visible months (longest streak, peak month, falling streak, etc.).
+ *
+ * Why deterministic rotation: SSR + no client-only randomness. We pick the
+ * insight that matches the data shape, falling through a small priority list
+ * so the same visible window always shows the same line — predictable, no
+ * hydration mismatch risk.
+ */
+function MonthCompareCard({
+  allMonths,
+  currency,
+}: {
+  allMonths: MonthTotal[];
+  currency: Currency;
+}) {
+  const [range, setRange] = React.useState<CompareRange>("6m");
+
+  // Slice the visible window AND a same-sized prior window for the delta.
+  // We clamp to whatever data exists so a 6-month range still works on a
+  // shorter dataset (no negative-index slicing).
+  const { visibleMonths, priorMonths } = React.useMemo(() => {
+    const opt = COMPARE_RANGE_OPTIONS.find((o) => o.id === range);
+    const n = opt ? opt.months : 6;
+    const clamped = Math.min(n, allMonths.length);
+    const visible = allMonths.slice(-clamped);
+    const priorEnd = allMonths.length - clamped;
+    const prior =
+      priorEnd > 0 ? allMonths.slice(Math.max(0, priorEnd - clamped), priorEnd) : [];
+    return { visibleMonths: visible, priorMonths: prior };
+  }, [allMonths, range]);
+
+  const avgSpent =
+    visibleMonths.reduce((acc, m) => acc + m.spent, 0) / Math.max(visibleMonths.length, 1);
+  const priorAvg =
+    priorMonths.length > 0
+      ? priorMonths.reduce((acc, m) => acc + m.spent, 0) / priorMonths.length
+      : undefined;
+  const deltaPctInt =
+    priorAvg !== undefined && priorAvg > 0
+      ? Math.round(((avgSpent - priorAvg) / priorAvg) * 100)
+      : undefined;
+  // Semantic tone: spending less is "positive" for the user.
+  const deltaTone: "positive" | "negative" | "neutral" =
+    deltaPctInt === undefined
+      ? "neutral"
+      : deltaPctInt < 0
+        ? "positive"
+        : deltaPctInt > 0
+          ? "negative"
+          : "neutral";
+
+  // Micro-insight: pick deterministically from a priority list. Each branch
+  // checks if its pattern is meaningful given the visible data; the first
+  // truthy branch wins. This keeps the line stable per render.
+  const microInsight = React.useMemo<string | null>(() => {
+    if (visibleMonths.length < 2) return null;
+
+    // 1) Falling streak: how many CONSECUTIVE most-recent months have a
+    //    strictly lower spent than the previous month.
+    let falling = 0;
+    for (let i = visibleMonths.length - 1; i > 0; i--) {
+      if (visibleMonths[i].spent < visibleMonths[i - 1].spent) falling++;
+      else break;
+    }
+    if (falling >= 2) {
+      return `Tu gasto viene bajando ${falling} meses seguidos. Buen ritmo.`;
+    }
+
+    // 2) Rising streak.
+    let rising = 0;
+    for (let i = visibleMonths.length - 1; i > 0; i--) {
+      if (visibleMonths[i].spent > visibleMonths[i - 1].spent) rising++;
+      else break;
+    }
+    if (rising >= 2) {
+      return `Llevas ${rising} meses subiendo el gasto. Ojo.`;
+    }
+
+    // 3) Peak month callout.
+    const peak = visibleMonths.reduce((p, m) => (m.spent > p.spent ? m : p));
+    const peakLabel = peak.label.charAt(0).toUpperCase() + peak.label.slice(1);
+    return `${peakLabel} fue tu mes más fuerte: ${formatMoneyCompact(peak.spent, currency)}.`;
+  }, [visibleMonths, currency]);
+
+  const DeltaIcon =
+    deltaPctInt === undefined || deltaPctInt === 0
+      ? Minus
+      : deltaPctInt < 0
+        ? TrendingDown
+        : TrendingUp;
+  const deltaPalette =
+    deltaTone === "positive"
+      ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
+      : deltaTone === "negative"
+        ? "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]"
+        : "bg-muted text-muted-foreground";
+
+  return (
+    <Card className="relative mx-4 mt-4 overflow-hidden rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
+      {/* Subtle top accent bar — visual differentiation from sibling cards
+          without a heavy frame. Keeps the Lumi calm vibe (primary tint, low
+          opacity, 2px). */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent 0%, var(--color-primary) 50%, transparent 100%)",
+          opacity: 0.5,
+        }}
+      />
+
+      <div className="flex items-start justify-between gap-3 pb-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Comparativa mensual
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Promedio
+            </span>
+            <span
+              className="font-display italic leading-none tracking-tight tabular-nums text-[26px] md:text-[30px]"
+              style={{ fontFeatureSettings: '"tnum","lnum"' }}
+            >
+              {formatMoney(avgSpent, currency)}
+            </span>
+          </div>
+          {deltaPctInt !== undefined && (
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums whitespace-nowrap",
+                  deltaPalette,
+                )}
+              >
+                <DeltaIcon size={12} aria-hidden="true" strokeWidth={2.5} />
+                {Math.abs(deltaPctInt)}%
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                vs período anterior
+              </span>
+            </div>
+          )}
+        </div>
+        <CompareRangeChips value={range} onChange={setRange} />
+      </div>
+
+      <MonthBars months={visibleMonths} currency={currency} />
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-sm"
+            style={{ background: "var(--color-muted)" }}
+          />
+          Ingreso
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-sm"
+            style={{ background: "var(--color-primary)" }}
+          />
+          Gasto
+        </span>
+      </div>
+
+      {microInsight && (
+        <p className="mt-3 border-t border-border/60 pt-3 text-[12px] leading-snug text-muted-foreground">
+          {microInsight}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 // ─── Category horizontal bars ─────────────────────────────────────────────
 function CategoryBars({
   items,
@@ -819,13 +1053,6 @@ export default function InsightsPage() {
   const current = MONTH_TOTALS[CURRENT_INDEX];
   const previous = MONTH_TOTALS[PREV_INDEX];
 
-  // Slice months according to selected period.
-  const visibleMonths = React.useMemo(() => {
-    if (period === "month") return MONTH_TOTALS.slice(-3);
-    if (period === "q3") return MONTH_TOTALS.slice(-3);
-    return MONTH_TOTALS;
-  }, [period]);
-
   // Auto-generated observation cards (mock — derived from constants only).
   const insights: InsightItem[] = React.useMemo(() => {
     const food = CATEGORY_BREAKDOWN.find((c) => c.id === "food");
@@ -917,35 +1144,7 @@ export default function InsightsPage() {
         {/* Charts grid */}
         <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
           {/* Cross-month comparison */}
-          <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
-            <div className="flex items-baseline justify-between pb-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Comparativa mensual
-              </div>
-              <div className="text-[11px] font-medium text-muted-foreground">
-                {visibleMonths.length} meses
-              </div>
-            </div>
-            <MonthBars months={visibleMonths} currency={currency} />
-            <div className="mt-3 flex items-center gap-4 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 rounded-sm"
-                  style={{ background: "var(--color-muted)" }}
-                />
-                Ingreso
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="h-2 w-2 rounded-sm"
-                  style={{ background: "var(--color-primary)" }}
-                />
-                Gasto
-              </span>
-            </div>
-          </Card>
+          <MonthCompareCard allMonths={MONTH_TOTALS} currency={currency} />
 
           {/* Spending velocity */}
           <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
