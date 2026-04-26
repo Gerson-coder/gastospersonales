@@ -755,7 +755,7 @@ export default function InsightsPage() {
           : `Bajaste ${pct}% el gasto en Comida`,
         body: up
           ? "Subió el ticket promedio en delivery — buen momento para revisar suscripciones."
-          : "Cocinaste más en casa esta semana. Seguí así.",
+          : "Cocinaste más en casa esta semana. Sigue así.",
         tone: up ? "negative" : "positive",
         Icon: up ? TrendingUp : TrendingDown,
       });
@@ -772,15 +772,15 @@ export default function InsightsPage() {
             : `Transporte bajó ${pct}%`,
         body: stable
           ? "Misma frecuencia de viajes que el mes anterior."
-          : "Revisá si hay un patrón nuevo (más viajes nocturnos, otra zona).",
+          : "Revisa si hay un patrón nuevo (más viajes nocturnos, otra zona).",
         tone: stable ? "neutral" : transport.delta > 0 ? "negative" : "positive",
         Icon: Car,
       });
     }
     items.push({
       id: "savings",
-      title: `Llevás ${formatMoney(saved, currency)} ahorrados — ${savedPct.toFixed(0)}% del ingreso`,
-      body: "Mantenés un margen sano para abril. Buen ritmo.",
+      title: `Llevas ${formatMoney(saved, currency)} ahorrados — ${savedPct.toFixed(0)}% de los ingresos`,
+      body: "Mantienes un margen sano para abril. Buen ritmo.",
       tone: "positive",
       Icon: PiggyBank,
     });
@@ -793,7 +793,7 @@ export default function InsightsPage() {
       body:
         current.spent < previous.spent
           ? "La mayor reducción se observa en entretenimiento."
-          : "Revisá las categorías que más subieron.",
+          : "Revisa las categorías que más subieron.",
       tone: current.spent < previous.spent ? "positive" : "negative",
       Icon: Sparkles,
     });

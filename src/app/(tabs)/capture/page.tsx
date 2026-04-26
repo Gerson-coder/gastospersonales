@@ -473,7 +473,7 @@ export default function CapturePage() {
           <button
             type="button"
             onClick={() => setAccountDrawerOpen(true)}
-            aria-label={`Cuenta ${account.label}, tocá para cambiar`}
+            aria-label={`Cuenta ${account.label}, toca para cambiar`}
             aria-haspopup="dialog"
             aria-expanded={accountDrawerOpen}
             className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -512,7 +512,7 @@ export default function CapturePage() {
 
         {/* Hint */}
         <p className="px-4 pt-3 text-center text-[11px] text-muted-foreground">
-          {ready ? "Tocá Guardar o elegí otra categoría" : "Tipeá el monto"}
+          {ready ? "Toca Guardar o elige otra categoría" : "Escribe el monto"}
         </p>
 
         {/* Keypad */}
@@ -570,7 +570,7 @@ export default function CapturePage() {
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Elegí una categoría</DrawerTitle>
+            <DrawerTitle>Elige una categoría</DrawerTitle>
             <DrawerDescription id="capture-category-desc">
               Guardar {ready ? display : "el movimiento"} en una categoría.
             </DrawerDescription>
@@ -621,7 +621,7 @@ export default function CapturePage() {
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Elegí una cuenta</DrawerTitle>
+            <DrawerTitle>Elige una cuenta</DrawerTitle>
             <DrawerDescription id="capture-account-desc">
               Cuenta o método de pago para este movimiento.
             </DrawerDescription>

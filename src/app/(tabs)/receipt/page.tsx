@@ -141,8 +141,8 @@ function confidenceFromScore(score: number): Confidence {
 }
 
 const CONFIDENCE_COPY: Record<Confidence, { label: string; hint: string }> = {
-  high: { label: "Confianza alta", hint: "Lo leí bien — revisá nomás." },
-  medium: { label: "Confianza media", hint: "Revisá un par de campos." },
+  high: { label: "Confianza alta", hint: "Lo leí bien — solo revisa." },
+  medium: { label: "Confianza media", hint: "Revisa un par de campos." },
   low: { label: "Confianza baja", hint: "Te conviene corregir antes de guardar." },
 };
 
@@ -352,7 +352,7 @@ function FailedState({ onRetry }: { onRetry: () => void }) {
       <div className="text-center">
         <h1 className="text-lg font-semibold">No pude leer el ticket</h1>
         <p className="mt-1 max-w-[28ch] text-sm text-muted-foreground">
-          La foto salió borrosa o muy oscura. Probá de nuevo con buena luz.
+          La foto salió borrosa o muy oscura. Prueba de nuevo con buena luz.
         </p>
       </div>
       <div className="flex gap-2">
@@ -459,7 +459,7 @@ function ReceiptContent() {
             Lo que leí
           </div>
           <h1 className="mt-1 font-display text-3xl italic leading-tight">
-            Revisá los datos
+            Revisa los datos
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             {CONFIDENCE_COPY[confidence].hint}
@@ -697,7 +697,7 @@ function ReceiptContent() {
           <SheetHeader className="sr-only">
             <SheetTitle>Foto del ticket</SheetTitle>
             <SheetDescription>
-              Vista ampliada del ticket. Pulsá ESC o el botón Cerrar para volver.
+              Vista ampliada del ticket. Pulsa ESC o el botón Cerrar para volver.
             </SheetDescription>
           </SheetHeader>
           <div className="relative flex h-full w-full items-center justify-center p-4">
@@ -729,7 +729,7 @@ function ReceiptContent() {
           <DrawerHeader>
             <DrawerTitle>Elegir categoría</DrawerTitle>
             <DrawerDescription>
-              Sugerí: {CATEGORY_LABEL[MOCK_OCR.suggested_category]}
+              Sugerencia: {CATEGORY_LABEL[MOCK_OCR.suggested_category]}
             </DrawerDescription>
           </DrawerHeader>
           <div className="grid grid-cols-2 gap-2 px-4 sm:grid-cols-3">
@@ -781,7 +781,7 @@ function ReceiptContent() {
           <SheetHeader>
             <SheetTitle id="discard-title">¿Descartar el ticket?</SheetTitle>
             <SheetDescription id="discard-desc">
-              Vas a perder los datos leídos. Esto no se puede deshacer.
+              Perderás los datos leídos. Esto no se puede deshacer.
             </SheetDescription>
           </SheetHeader>
           <SheetFooter className="flex-row gap-2">

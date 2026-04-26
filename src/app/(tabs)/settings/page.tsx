@@ -180,7 +180,7 @@ export default function SettingsPage() {
   function handleSignOut() {
     // TODO: wire to supabase.auth.signOut() in Batch C.
     toast("Próximamente", {
-      description: "Auth llega en la próxima fase.",
+      description: "La autenticación llega en la próxima fase.",
     });
   }
 
@@ -313,7 +313,7 @@ export default function SettingsPage() {
             <fieldset>
               <legend className="text-[13px] font-semibold">Tema</legend>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Sistema sigue lo que tenés configurado en tu dispositivo.
+                Sistema sigue lo que tienes configurado en tu dispositivo.
               </p>
               <RadioGroup
                 value={prefs.theme}

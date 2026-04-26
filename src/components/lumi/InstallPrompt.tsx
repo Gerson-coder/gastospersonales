@@ -118,9 +118,9 @@ export function InstallPrompt() {
           <Download className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-foreground">Instalá Lumi</p>
+          <p className="font-semibold text-foreground">Instala Lumi</p>
           <p className="text-sm text-muted-foreground">
-            Tenelo a un toque desde tu pantalla principal.
+            Tenlo a un toque desde tu pantalla principal.
           </p>
         </div>
         <Button size="sm" onClick={handleInstall} className="h-10 shrink-0 px-4">
@@ -147,7 +147,7 @@ export function InstallPrompt() {
               Instalar Lumi en iOS
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Apple no permite el botón directo — son 3 pasos en Safari:
+              Apple no permite el botón directo. Son 3 pasos en Safari:
             </p>
             <ol className="mt-5 space-y-4 text-sm text-foreground">
               <li className="flex items-start gap-3">
@@ -155,7 +155,7 @@ export function InstallPrompt() {
                   1
                 </span>
                 <span>
-                  Tocá el botón{" "}
+                  Toca el botón{" "}
                   <Share
                     className="inline-block h-4 w-4 align-text-bottom"
                     aria-hidden="true"
@@ -168,7 +168,7 @@ export function InstallPrompt() {
                   2
                 </span>
                 <span>
-                  Deslizá hacia abajo y tocá{" "}
+                  Desliza hacia abajo y toca{" "}
                   <strong>&quot;Agregar a la pantalla principal&quot;</strong>{" "}
                   <Plus
                     className="inline-block h-4 w-4 align-text-bottom"
@@ -182,7 +182,7 @@ export function InstallPrompt() {
                   3
                 </span>
                 <span>
-                  Tocá <strong>&quot;Agregar&quot;</strong> arriba a la derecha. Listo.
+                  Toca <strong>&quot;Agregar&quot;</strong> arriba a la derecha. Listo.
                 </span>
               </li>
             </ol>

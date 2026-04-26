@@ -816,7 +816,7 @@ function EmptyState() {
       <div>
         <h2 className="text-lg font-bold">Aún no hay movimientos</h2>
         <p className="mt-1.5 max-w-xs text-sm text-muted-foreground">
-          Cuando registres tu primer gasto o ingreso, va a aparecer acá agrupado
+          Cuando registres tu primer gasto o ingreso, aparecerá aquí agrupado
           por día.
         </p>
       </div>

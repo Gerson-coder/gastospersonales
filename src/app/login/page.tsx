@@ -75,7 +75,7 @@ export default function LoginPage() {
             a Lumi
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-            ¿Cómo te llamás? Te lo voy a llamar así desde acá.
+            ¿Cómo te llamas? Así te llamaremos desde aquí.
           </p>
 
           <form
@@ -122,14 +122,14 @@ export default function LoginPage() {
                   role="alert"
                   className="text-[13px] font-medium text-destructive"
                 >
-                  Necesito un nombre para arrancar.
+                  Necesito un nombre para comenzar.
                 </p>
               ) : (
                 <p
                   id="login-name-hint"
                   className="text-[12px] leading-relaxed text-muted-foreground"
                 >
-                  Después podés cambiarlo.
+                  Puedes cambiarlo después.
                 </p>
               )}
             </div>
@@ -142,11 +142,11 @@ export default function LoginPage() {
                 "transition-transform active:scale-[0.99]",
               )}
             >
-              Empezar
+              Comenzar
             </Button>
 
             <p className="pt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
-              Al continuar, aceptás los{" "}
+              Al continuar, aceptas los{" "}
               <a
                 href="#"
                 className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
