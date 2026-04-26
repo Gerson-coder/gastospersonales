@@ -473,6 +473,97 @@ function TransactionRow({ t }: { t: Transaction }) {
 }
 
 // ─── Hero summary (this month) ────────────────────────────────────────────
+// Mock month-over-month deltas. Real values land with Supabase + FX (Batch B/C).
+// Convention: positive `delta` = "good" for the user's wallet (gasto bajó, ingreso
+// subió, ahorro mayor). The chip color follows that semantic, not the raw sign.
+const MOCK_DELTAS = {
+  spent: { pct: -12, label: "vs marzo" },
+  income: { pct: 18, label: "vs marzo" },
+  net: { pct: 24, label: "vs marzo" },
+} as const;
+
+/**
+ * Tiny KPI cell used in the hero. All three cells share the same shape, the
+ * same right-aligned numeric column (text-right + tabular-nums + a forced
+ * sign prefix), and the same delta chip slot — so the digits land on three
+ * vertical right edges and the labels sit on the same baseline.
+ *
+ * Sign handling fixes the original misalignment: GASTO had no prefix while
+ * INGRESO/NETO had "+ ", which pushed each column's first digit to a
+ * different x. By right-aligning the number AND giving every kind an explicit
+ * sign character ("−" for expense, "+" for income, "+/−" for net), every
+ * column ends on the same right edge and the eye reads a clean grid.
+ */
+function HeroKpi({
+  label,
+  amount,
+  variant,
+  forceSign,
+  delta,
+  deltaPositive,
+}: {
+  label: string;
+  amount: number;
+  variant: "expense" | "income" | "neutral-positive" | "neutral-negative";
+  /** Always render this sign before the number; pass "" to omit. */
+  forceSign: "+" | "−" | "";
+  /** e.g. "−12% vs marzo" */
+  delta: string;
+  /** Whether the delta reads as "good news" (drives the chip palette). */
+  deltaPositive: boolean;
+}) {
+  const colorClass =
+    variant === "income" || variant === "neutral-positive"
+      ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
+      : variant === "neutral-negative"
+        ? "text-destructive"
+        : "text-foreground";
+
+  const chipClass = deltaPositive
+    ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
+    : "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]";
+
+  return (
+    <div className="min-w-0 text-right">
+      <div className="flex items-center justify-end gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "inline-block h-1.5 w-1.5 rounded-full",
+            variant === "income" || variant === "neutral-positive"
+              ? "bg-[oklch(0.65_0.16_162)]"
+              : variant === "neutral-negative"
+                ? "bg-destructive"
+                : "bg-foreground/40",
+          )}
+        />
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-2 font-display italic leading-none tracking-tight text-[20px] md:text-[22px] tabular-nums whitespace-nowrap",
+          colorClass,
+        )}
+        style={{ fontFeatureSettings: '"tnum","lnum"' }}
+      >
+        {forceSign}
+        {forceSign ? " " : ""}
+        {formatMoney(amount, "PEN")}
+      </div>
+      <div className="mt-2 flex justify-end">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-tight tabular-nums",
+            chipClass,
+          )}
+        >
+          {delta}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function MonthSummary({
   spent,
   income,
@@ -482,51 +573,45 @@ function MonthSummary({
   income: number;
   net: number;
 }) {
+  const netPositive = net >= 0;
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-6 md:p-6">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+    <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-6 md:p-10">
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
         Este mes · abril
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-4">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Gasto
-          </div>
-          <div
-            className="mt-1 font-display italic leading-none tracking-tight text-lg text-foreground tabular-nums"
-            style={{ fontFeatureSettings: '"tnum","lnum"' }}
-          >
-            {formatMoney(spent, "PEN")}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Ingreso
-          </div>
-          <div
-            className="mt-1 font-display italic leading-none tracking-tight text-lg text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)] tabular-nums"
-            style={{ fontFeatureSettings: '"tnum","lnum"' }}
-          >
-            + {formatMoney(income, "PEN")}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Neto
-          </div>
-          <div
-            className={cn(
-              "mt-1 font-display italic leading-none tracking-tight text-lg tabular-nums",
-              net < 0
-                ? "text-destructive"
-                : "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]",
-            )}
-            style={{ fontFeatureSettings: '"tnum","lnum"' }}
-          >
-            {net < 0 ? "– " : "+ "}
-            {formatMoney(Math.abs(net), "PEN")}
-          </div>
-        </div>
+      {/*
+        Three equal columns, every cell right-aligned, every number
+        tabular-nums with a forced sign prefix. This is the alignment fix
+        (Approach C + B): grid-cols-3 with explicit equal-width tracks,
+        text-right per cell, and a sign character on every value so the digits
+        land on the same right edge column-to-column.
+      */}
+      <div className="mt-5 grid grid-cols-3 gap-3 md:mt-6 md:gap-6">
+        <HeroKpi
+          label="Gasto"
+          amount={spent}
+          variant="expense"
+          forceSign="−"
+          delta={`${MOCK_DELTAS.spent.pct}% ${MOCK_DELTAS.spent.label}`}
+          deltaPositive={MOCK_DELTAS.spent.pct < 0}
+        />
+        <HeroKpi
+          label="Ingreso"
+          amount={income}
+          variant="income"
+          forceSign="+"
+          delta={`+${MOCK_DELTAS.income.pct}% ${MOCK_DELTAS.income.label}`}
+          deltaPositive={MOCK_DELTAS.income.pct >= 0}
+        />
+        <HeroKpi
+          label="Neto"
+          amount={Math.abs(net)}
+          variant={netPositive ? "neutral-positive" : "neutral-negative"}
+          forceSign={netPositive ? "+" : "−"}
+          delta={`+${MOCK_DELTAS.net.pct}% ${MOCK_DELTAS.net.label}`}
+          deltaPositive={netPositive}
+        />
       </div>
     </Card>
   );
@@ -550,7 +635,7 @@ function FilterChips({
     <div
       role="radiogroup"
       aria-label="Filtrar movimientos"
-      className="flex gap-1.5"
+      className="flex gap-2"
     >
       {FILTERS.map((f) => {
         const selected = f.id === value;
@@ -562,10 +647,14 @@ function FilterChips({
             aria-checked={selected}
             onClick={() => onChange(f.id)}
             className={cn(
-              "inline-flex h-9 min-w-11 items-center rounded-full border px-3.5 text-xs font-semibold transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              // 44px tap target (h-11) — meets WCAG 2.5.5; the visual height
+              // is carried by the pill background so the chip still looks
+              // compact next to body text.
+              "inline-flex h-11 items-center justify-center rounded-full border px-4 text-[13px] font-semibold transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               selected
-                ? "border-foreground bg-foreground text-background"
+                ? // OBVIOUS active state: filled with foreground, ring for lift.
+                  "border-foreground bg-foreground text-background shadow-sm"
                 : "border-border bg-transparent text-foreground hover:bg-muted",
             )}
           >
@@ -627,7 +716,9 @@ export default function MovementsPage() {
           <button
             type="button"
             aria-label="Buscar movimientos"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // 44px tap target with a subtle border so the affordance reads
+            // even on a tinted background (dark mode hero card behind it).
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <Search size={18} aria-hidden="true" />
           </button>
@@ -637,7 +728,7 @@ export default function MovementsPage() {
         <MonthSummary spent={spent} income={income} net={net} />
 
         {/* Filter chips */}
-        <div className="px-4 pb-2 pt-4 md:px-0">
+        <div className="px-4 pb-3 pt-6 md:px-0 md:pt-8">
           <FilterChips value={filter} onChange={setFilter} />
         </div>
 
@@ -677,7 +768,7 @@ function DayGroupSection({ group }: { group: DayGroup }) {
       {/* Sticky day header — h2 so screen readers can section-jump.
           Bumped from muted-foreground to foreground + semibold so day labels
           read as proper section headings instead of fading metadata. */}
-      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between bg-background/95 px-5 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-0 md:px-1">
+      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between border-b border-border/40 bg-background/95 px-5 py-2.5 shadow-[0_4px_12px_-8px_rgba(0,0,0,0.18)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:-mx-0 md:px-1">
         <span className="text-[13px] font-semibold tracking-tight text-foreground">
           {group.label}
         </span>
