@@ -1,3 +1,4 @@
+import { InstallPrompt } from "@/components/lumi/InstallPrompt";
 import { Sidebar } from "@/components/lumi/Sidebar";
 import { TabBar } from "@/components/lumi/TabBar";
 
@@ -11,6 +12,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
       <Sidebar />
       <main className="flex-1 pb-24 md:pb-8 md:pl-64">{children}</main>
       <TabBar />
+      <InstallPrompt />
     </div>
   );
 }
