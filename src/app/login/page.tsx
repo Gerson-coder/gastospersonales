@@ -22,7 +22,6 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -47,10 +46,10 @@ const SUPABASE_ENABLED =
 // copy. Anything not listed falls through to the generic message so unknown
 // Supabase error strings (which we URL-encode raw) never leak to the UI.
 const ERROR_MESSAGES: Record<string, string> = {
-  missing_code: "El enlace no es válido. Pedí uno nuevo.",
+  missing_code: "El enlace no es válido. Pide uno nuevo.",
   auth_disabled: "El inicio de sesión no está activo en este entorno.",
 };
-const GENERIC_ERROR = "No pudimos iniciarte sesión. Probá de nuevo.";
+const GENERIC_ERROR = "No pudimos iniciarte sesión. Inténtalo de nuevo.";
 
 // Cooldown between magic-link resends. Long enough to discourage spamming
 // the SMTP queue, short enough that a user who just cleared their inbox can
@@ -83,30 +82,18 @@ function LoginInner() {
       <HeroGlow />
 
       <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
-        {/* Brand mark */}
-        <div className="mb-12 md:mb-8">
-          <Image
-            src="/brand/lumi-wordmark.svg"
-            alt="Lumi"
-            width={120}
-            height={38}
-            priority
-            className="text-foreground"
-          />
-        </div>
-
         <section
           aria-labelledby="login-heading"
           className="animate-in fade-in slide-in-from-bottom-2 duration-500"
         >
-          <h1
-            id="login-heading"
-            className="font-display text-[40px] italic leading-[1.05] tracking-tight md:text-4xl"
-          >
-            Bienvenido
-            <br />
-            a Lumi
-          </h1>
+          <div className="text-center">
+            <h1
+              id="login-heading"
+              className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
+            >
+              Bienvenido a Lumi
+            </h1>
+          </div>
 
           {errorMessage ? (
             <div
@@ -151,18 +138,7 @@ function LoginShell() {
   return (
     <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
       <HeroGlow />
-      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
-        <div className="mb-12 md:mb-8">
-          <Image
-            src="/brand/lumi-wordmark.svg"
-            alt="Lumi"
-            width={120}
-            height={38}
-            priority
-            className="text-foreground"
-          />
-        </div>
-      </div>
+      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8" />
     </main>
   );
 }
@@ -218,7 +194,7 @@ function NameOnlyForm() {
 
   return (
     <>
-      <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+      <p className="mt-3 text-center text-[15px] leading-relaxed text-muted-foreground">
         ¿Cómo te llamas? Así te llamaremos desde aquí.
       </p>
 
@@ -361,12 +337,12 @@ function EmailMagicLinkForm() {
         },
       });
       if (error) {
-        setServerError("No pudimos enviar el enlace. Probá de nuevo.");
+        setServerError("No pudimos enviar el enlace. Inténtalo de nuevo.");
         return false;
       }
       return true;
     } catch {
-      setServerError("No pudimos enviar el enlace. Probá de nuevo.");
+      setServerError("No pudimos enviar el enlace. Inténtalo de nuevo.");
       return false;
     }
   }
@@ -433,19 +409,19 @@ function EmailMagicLinkForm() {
 
           <h2
             id="magic-link-sent-heading"
-            className="mt-5 font-display text-[28px] italic leading-[1.1] tracking-tight text-foreground md:text-[32px]"
+            className="mt-5 font-sans text-2xl font-bold leading-tight tracking-tight text-foreground md:text-[28px]"
           >
-            Te enviamos un link
+            Te enviamos un enlace
           </h2>
 
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-            Revisá tu correo en
+            Revisa tu correo en
           </p>
           <p className="mt-1 break-all text-[15px] font-semibold tracking-tight text-foreground">
             {trimmed}
           </p>
           <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-            y tocá el enlace para entrar.
+            y toca el enlace para entrar.
           </p>
 
           {serverError ? (
@@ -497,7 +473,7 @@ function EmailMagicLinkForm() {
         </div>
 
         <p className="mt-5 px-2 text-center text-[12px] leading-relaxed text-muted-foreground">
-          Si no lo ves en unos minutos, revisá la carpeta de spam o promociones.
+          Si no lo ves en unos minutos, revisa la carpeta de spam o promociones.
         </p>
       </section>
     );
@@ -505,7 +481,7 @@ function EmailMagicLinkForm() {
 
   return (
     <>
-      <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+      <p className="mt-3 text-center text-[15px] leading-relaxed text-muted-foreground">
         Te enviamos un enlace mágico a tu email. Sin contraseñas.
       </p>
 
@@ -534,7 +510,7 @@ function EmailMagicLinkForm() {
             autoFocus
             required
             maxLength={254}
-            placeholder="vos@email.com"
+            placeholder="tu@email.com"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -554,14 +530,14 @@ function EmailMagicLinkForm() {
               role="alert"
               className="text-[13px] font-medium text-destructive"
             >
-              Ingresá un email válido.
+              Ingresa un email válido.
             </p>
           ) : (
             <p
               id="login-email-hint"
               className="text-[12px] leading-relaxed text-muted-foreground"
             >
-              No vas a tener que recordar contraseñas.
+              No tienes que recordar contraseñas.
             </p>
           )}
           {serverError ? (

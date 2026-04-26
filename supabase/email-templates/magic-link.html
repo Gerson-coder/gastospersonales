@@ -16,7 +16,7 @@
   <body style="margin:0; padding:0; background-color:#f6f5f1; -webkit-text-size-adjust:100%;">
     <!-- Hidden preheader: shows up in inbox preview pane -->
     <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f6f5f1;">
-      Tu enlace para entrar a Lumi. Vence pronto, así que no lo dejes para después.
+      Tu enlace para entrar a Lumi. Vence pronto, no lo dejes para después.
     </div>
 
     <!-- Outer wrapper -->
@@ -48,14 +48,14 @@
                 </table>
 
                 <!-- Headline -->
-                <h1 style="margin:0 0 12px 0; font-family: Georgia, 'Times New Roman', serif; font-style:italic; font-size:30px; line-height:1.15; letter-spacing:-0.02em; color:#1c1c1a; text-align:center; font-weight:400;">
-                  Te enviamos un link
+                <h1 style="margin:0 0 12px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size:28px; line-height:1.2; letter-spacing:-0.02em; color:#1c1c1a; text-align:center; font-weight:700;">
+                  Te enviamos un enlace
                 </h1>
 
                 <!-- Body copy -->
                 <p style="margin:0 0 28px 0; font-size:15px; line-height:1.55; color:#5b5b55; text-align:center;">
-                  Tocá el botón de abajo para entrar a Lumi.
-                  Es de un solo uso, así que tocalo desde el dispositivo en el que querés iniciar sesión.
+                  Toca el botón de abajo para entrar a Lumi.
+                  Es de un solo uso, ábrelo desde el dispositivo en el que quieres iniciar sesión.
                 </p>
 
                 <!-- CTA button (bulletproof button pattern) -->
@@ -75,7 +75,7 @@
 
                 <!-- Fallback link -->
                 <p style="margin:28px 0 0 0; font-size:13px; line-height:1.55; color:#7a7a72; text-align:center;">
-                  Si el botón no funciona, copiá y pegá este enlace en tu navegador:
+                  Si el botón no funciona, copia y pega este enlace en tu navegador:
                 </p>
                 <p style="margin:8px 0 0 0; font-size:12px; line-height:1.5; color:#15805a; text-align:center; word-break:break-all;">
                   <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#15805a; text-decoration:underline;">{{ .ConfirmationURL }}</a>
@@ -90,7 +90,7 @@
 
                 <!-- Security note -->
                 <p style="margin:24px 0 0 0; font-size:12px; line-height:1.6; color:#8a8a82; text-align:center;">
-                  Si no pediste este correo, podés ignorarlo. Nadie va a poder iniciar sesión sin tocar este link.
+                  Si no pediste este correo, ignóralo. Nadie podrá iniciar sesión sin abrir este enlace.
                 </p>
                 <!--
                   Supabase exposes the link expiry through the .SiteURL/.ConfirmationURL
@@ -131,16 +131,16 @@
   2. Pegar este HTML en el campo de body
   3. Verificar que las variables {{ .ConfirmationURL }}, {{ .SiteURL }} y {{ .Email }}
      queden intactas — Supabase las reemplaza al enviar.
-  4. Save. Probá enviando un magic link a tu correo y verificando recepción
+  4. Save. Prueba enviando un magic link a tu correo y verifica recepción
      en Gmail (web + iOS), Apple Mail y Outlook.
 
   NOTAS:
   - Color brand (#15805a) elegido para aproximar el primary oklch(0.53 0.17 162)
-    del proyecto (verde esmeralda Lumi). Cambialo si tu paleta evoluciona.
+    del proyecto (verde esmeralda Lumi). Cámbialo si tu paleta evoluciona.
   - El fondo "#f6f5f1" replica el bg cálido warm-tinted del light mode.
   - No hay imágenes externas a propósito: muchos clients bloquean por defecto.
   - El icono de check usa entity HTML (&#10004;) en vez de emoji para evitar
     inconsistencias entre Outlook (que no renderiza emojis bien) y mobile.
-  - Si querés agregar el wordmark SVG real, hay que hostearlo y aceptar que
+  - Si quieres agregar el wordmark SVG real, hay que hostearlo y aceptar que
     algunos usuarios verán el alt text — preferimos texto plano.
 -->
