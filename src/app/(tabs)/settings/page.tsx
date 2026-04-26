@@ -1,5 +1,6 @@
 // TODO: wire profile/categories/prefs to Supabase once Batch C lands.
-// TODO: wire sign-out button to supabase.auth.signOut() in Batch C.
+// TODO: replace USER_EMAIL placeholder with the email from the Supabase session
+// once we have a `useSession` hook.
 /**
  * Settings route — Lumi
  *
@@ -55,8 +56,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
+
+// Same runtime feature flag as /login: do we have a real Supabase project
+// configured? Next inlines NEXT_PUBLIC_* at build time, so this is a literal
+// in the browser bundle.
+const SUPABASE_ENABLED =
+  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // ─── Types ────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -243,9 +254,18 @@ export default function SettingsPage() {
     }
   }
 
-  function handleConfirmSignOut() {
-    // TODO: when Supabase auth lands (Batch C), this becomes
-    // supabase.auth.signOut() + router.push('/login') after the session cookie clears.
+  async function handleConfirmSignOut() {
+    // Best-effort: tear down the Supabase session if envs are wired. If the
+    // call fails (network, expired token) we still want the local sign-out to
+    // proceed so the user is not stranded on Settings.
+    if (SUPABASE_ENABLED) {
+      try {
+        const supabase = createSupabaseClient();
+        await supabase.auth.signOut();
+      } catch {
+        /* ignore — local sign-out still proceeds */
+      }
+    }
     clearName();
     setSignOutOpen(false);
     router.push("/login");
