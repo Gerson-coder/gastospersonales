@@ -8,8 +8,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -68,8 +66,6 @@ export function ThemeToggle({ className }: { className?: string }) {
         <TriggerIcon className="h-5 w-5" aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[180px]">
-        <DropdownMenuLabel>Tema</DropdownMenuLabel>
-        <DropdownMenuSeparator />
         {OPTIONS.map(({ value, label, Icon }) => {
           const selected = mounted && currentValue === value;
           return (
