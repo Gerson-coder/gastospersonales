@@ -48,10 +48,10 @@ export function AppHeader({
   return (
     <header
       className={cn(
-        // pr-44 reserves room on mobile for the fixed TabsTopBar pill
-        // (~160px wide). Desktop has plenty of horizontal real estate so
-        // we drop the reservation at md+.
-        "flex items-center justify-between gap-3 px-5 pr-44 pt-3 md:px-0 md:pr-0 md:pt-0",
+        // pr-32 reserves room on mobile for the fixed TabsTopBar icons
+        // (now icon-only after un-pilling, ~110px wide). Desktop has plenty
+        // of horizontal real estate so we drop the reservation at md+.
+        "flex items-center justify-between gap-3 px-5 pr-32 pt-3 md:px-0 md:pr-0 md:pt-0",
         className,
       )}
     >
@@ -63,10 +63,10 @@ export function AppHeader({
         ) : null}
         <h1
           className={cn(
-            "leading-tight",
+            "leading-tight truncate",
             titleStyle === "display"
-              ? "mt-1 text-[28px] md:text-4xl tracking-tight font-bold"
-              : "mt-1.5 text-[22px] font-bold md:text-3xl",
+              ? "mt-1 text-[22px] md:text-4xl tracking-tight font-bold"
+              : "mt-1.5 text-[17px] font-bold md:text-3xl",
           )}
         >
           {title}
