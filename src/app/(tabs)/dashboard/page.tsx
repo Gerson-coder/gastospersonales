@@ -11,7 +11,6 @@
 
 import * as React from "react";
 import {
-  Plus,
   Camera,
   User,
   UtensilsCrossed,
@@ -25,7 +24,6 @@ import {
   Briefcase,
   Circle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -527,24 +525,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* FAB cluster — mobile only (sidebar provides desktop primary action) */}
-      <div className="md:hidden">
-        <button
-          type="button"
-          aria-label="Escanear factura con la cámara"
-          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-[18px] z-20 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Camera size={20} aria-hidden="true" />
-        </button>
-        <Button
-          aria-label="Registrar nuevo movimiento"
-          className="fixed bottom-[calc(22px+env(safe-area-inset-bottom))] right-[18px] z-20 h-[60px] rounded-full px-6 text-base font-bold transition-transform active:scale-95"
-          style={{ boxShadow: "var(--shadow-fab)" }}
-        >
-          <Plus size={22} strokeWidth={2.5} className="mr-1" aria-hidden="true" />
-          Registrar
-        </Button>
-      </div>
+      {/* Camera FAB — mobile only. The TabBar's center "Capturar" handles the
+          primary capture; this is the alternative path (snap a receipt photo).
+          Sidebar shows the same alternative on desktop, so this hides at md+. */}
+      <button
+        type="button"
+        aria-label="Escanear factura con la cámara"
+        className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+      >
+        <Camera size={20} aria-hidden="true" />
+      </button>
     </div>
   );
 }

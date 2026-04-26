@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Plus, Share, X } from "lucide-react";
+import { Download, Plus, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -10,8 +10,6 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
-
-const DISMISS_KEY = "lumi-install-dismissed";
 
 type IosNavigator = Navigator & { standalone?: boolean };
 
@@ -27,40 +25,62 @@ function isIosDevice(): boolean {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
 }
 
+/**
+ * InstallPrompt
+ *
+ * Persistent install nudge. The card stays visible on every page until the
+ * app is detected as running standalone (PWA installed). There is NO
+ * "dismiss" button by design — we want every user to install Lumi.
+ *
+ * Detection of installed state:
+ *   - Android Chrome / Edge / Brave: `display-mode: standalone` media query
+ *     flips to true after install, even before app is reopened.
+ *   - iOS Safari: `navigator.standalone === true` ONLY when launched from
+ *     the home-screen icon (not in regular Safari tab). So iOS users
+ *     continue to see the card in the browser even after installing — but
+ *     once they open the app from the home screen, the card never renders.
+ *   - We also listen for the `appinstalled` event to flip immediately.
+ *
+ * The card also re-checks the standalone flag when the page regains
+ * visibility (so reopening the browser tab after an install hides it).
+ */
 export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] =
     React.useState<BeforeInstallPromptEvent | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
   const [standalone, setStandalone] = React.useState(false);
   const [isIos, setIsIos] = React.useState(false);
-  const [dismissed, setDismissed] = React.useState(false);
   const [showIosHelp, setShowIosHelp] = React.useState(false);
 
   React.useEffect(() => {
     setStandalone(isStandaloneMode());
     setIsIos(isIosDevice());
-    try {
-      if (window.localStorage.getItem(DISMISS_KEY) === "1") setDismissed(true);
-    } catch {
-      // ignore — private mode etc.
-    }
     setHydrated(true);
 
-    const handler = (e: Event) => {
+    const handlePrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
-    window.addEventListener("beforeinstallprompt", handler);
-
-    const installedHandler = () => {
+    const handleInstalled = () => {
       setDeferredPrompt(null);
       setStandalone(true);
     };
-    window.addEventListener("appinstalled", installedHandler);
+    const handleVisibility = () => {
+      // Re-check on tab focus — catches Android post-install where
+      // display-mode flips while the user was on the install prompt.
+      if (document.visibilityState === "visible") {
+        setStandalone(isStandaloneMode());
+      }
+    };
+
+    window.addEventListener("beforeinstallprompt", handlePrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handler);
-      window.removeEventListener("appinstalled", installedHandler);
+      window.removeEventListener("beforeinstallprompt", handlePrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -76,16 +96,7 @@ export function InstallPrompt() {
     }
   };
 
-  const handleDismiss = () => {
-    setDismissed(true);
-    try {
-      window.localStorage.setItem(DISMISS_KEY, "1");
-    } catch {
-      // ignore
-    }
-  };
-
-  if (!hydrated || standalone || dismissed) return null;
+  if (!hydrated || standalone) return null;
   // Show only if we either have a Chrome prompt OR we're on iOS Safari.
   if (!deferredPrompt && !isIos) return null;
 
@@ -97,7 +108,7 @@ export function InstallPrompt() {
         className={cn(
           "fixed left-4 right-4 z-40",
           "bottom-28 md:bottom-6 md:left-auto md:right-6 md:max-w-sm",
-          "flex items-start gap-3 rounded-2xl border border-border bg-card p-4 shadow-card",
+          "flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-card",
         )}
       >
         <div
@@ -112,19 +123,9 @@ export function InstallPrompt() {
             Tenelo a un toque desde tu pantalla principal.
           </p>
         </div>
-        <div className="flex flex-col gap-1">
-          <Button size="sm" onClick={handleInstall} className="h-9 px-3">
-            {isIos && !deferredPrompt ? "Cómo" : "Instalar"}
-          </Button>
-          <button
-            type="button"
-            onClick={handleDismiss}
-            aria-label="No mostrar más"
-            className="grid h-7 place-items-center rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
+        <Button size="sm" onClick={handleInstall} className="h-10 shrink-0 px-4">
+          {isIos && !deferredPrompt ? "Cómo" : "Instalar"}
+        </Button>
       </div>
 
       {showIosHelp && (
