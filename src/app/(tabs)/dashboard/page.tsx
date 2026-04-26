@@ -12,7 +12,6 @@
 import * as React from "react";
 import {
   Camera,
-  User,
   UtensilsCrossed,
   Car,
   ShoppingCart,
@@ -27,7 +26,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { ThemeToggle } from "@/components/lumi/ThemeToggle";
+import { AppHeader } from "@/components/lumi/AppHeader";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 
@@ -592,36 +591,13 @@ export default function DashboardPage() {
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
         {/* Header */}
-        <header className="flex items-center justify-between px-5 pt-3 md:px-0 md:pt-0">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              abril · 2026
-            </div>
-            <h1 className="mt-1.5 text-[22px] font-bold leading-tight md:text-3xl">{greeting}</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
-              aria-label={`Cambiar moneda (actualmente ${currency})`}
-              aria-pressed={currency === "USD"}
-              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-border bg-card px-4 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span aria-hidden="true">
-                {currency === "PEN" ? "S/" : "$"}
-              </span>
-              <span className="ml-1 text-muted-foreground font-medium">{currency}</span>
-            </button>
-            <ThemeToggle />
-            <button
-              type="button"
-              aria-label="Abrir perfil"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <User size={18} aria-hidden="true" />
-            </button>
-          </div>
-        </header>
+        <AppHeader
+          eyebrow="abril · 2026"
+          title={greeting}
+          titleStyle="page"
+          currency={currency}
+          onCurrencyToggle={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
+        />
 
         {/* Hero balance */}
         <Card className="relative mx-4 mt-6 overflow-hidden rounded-3xl border-border p-6 md:mx-0 md:mt-8 md:p-10">

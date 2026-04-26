@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { AppHeader } from "@/components/lumi/AppHeader";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -122,24 +123,24 @@ export default function AccountsPage() {
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
-        <header className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Tu dinero
-            </p>
-            <h1 className="mt-1 text-2xl font-bold md:text-3xl">Cuentas</h1>
-          </div>
-          <Link
-            href="/settings"
-            aria-label="Abrir ajustes"
-            className={cn(
-              "inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground",
-              "transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-            )}
-          >
-            <SettingsIcon size={18} aria-hidden="true" />
-          </Link>
-        </header>
+        <AppHeader
+          eyebrow="Tu dinero"
+          title="Cuentas"
+          titleStyle="page"
+          className="px-0 pt-0"
+          actionsBefore={
+            <Link
+              href="/settings"
+              aria-label="Abrir ajustes"
+              className={cn(
+                "inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground",
+                "transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              )}
+            >
+              <SettingsIcon size={16} aria-hidden="true" />
+            </Link>
+          }
+        />
 
         {/* Totals summary */}
         <section aria-labelledby="accounts-total" className="mt-2">

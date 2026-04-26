@@ -43,16 +43,18 @@ import {
   Wallet,
   CreditCard,
   Landmark,
+  StickyNote,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Drawer,
   DrawerContent,
   DrawerDescription,
+  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
@@ -271,6 +273,10 @@ export default function CapturePage() {
   const [note, setNote] = React.useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
+  // Note drawer — opens on demand from the chip strip. `noteDraft` holds the
+  // in-progress text so the user can cancel without committing.
+  const [noteDrawerOpen, setNoteDrawerOpen] = React.useState(false);
+  const [noteDraft, setNoteDraft] = React.useState("");
   // Saved state — { ts } is stamped in handleSave (post-mount, not during
   // render) to keep SSR output stable.
   const [saved, setSaved] = React.useState<{ ts: number } | null>(null);
@@ -342,6 +348,30 @@ export default function CapturePage() {
     [kind],
   );
 
+  const openNoteDrawer = React.useCallback(() => {
+    // Prefill the draft with the saved note so editing feels natural.
+    setNoteDraft(note);
+    setNoteDrawerOpen(true);
+  }, [note]);
+
+  const handleSaveNote = React.useCallback(() => {
+    const trimmed = noteDraft.trim();
+    setNote(trimmed);
+    setNoteDrawerOpen(false);
+  }, [noteDraft]);
+
+  const handleClearNote = React.useCallback((e: React.MouseEvent) => {
+    // Stop propagation so we don't also open the drawer when the user taps
+    // the small ✕ inside the note chip.
+    e.stopPropagation();
+    setNote("");
+  }, []);
+
+  const noteExcerpt = React.useMemo(() => {
+    if (!note) return "";
+    return note.length > 24 ? `${note.slice(0, 24)}…` : note;
+  }, [note]);
+
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"
     : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)} en ${category.label}, cuenta ${account.label}`;
@@ -398,15 +428,27 @@ export default function CapturePage() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
-            aria-label={`Cambiar moneda (actualmente ${currency})`}
-            aria-pressed={currency === "USD"}
-            className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-border bg-card px-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {currency}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
+              aria-label={`Cambiar moneda (actualmente ${currency})`}
+              aria-pressed={currency === "USD"}
+              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-border bg-card px-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {currency}
+            </button>
+            {/* Camera shortcut — relocated from a floating FAB so it stops
+                covering the keypad. Routes to the receipt-scan flow. */}
+            <button
+              type="button"
+              onClick={() => router.push("/receipt")}
+              aria-label="Escanear ticket en su lugar"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Camera size={18} aria-hidden="true" />
+            </button>
+          </div>
         </header>
 
         {/* Amount display */}
@@ -497,23 +539,50 @@ export default function CapturePage() {
             <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
           </button>
 
-          <div>
-            <Label
-              htmlFor="capture-note"
-              className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+          {/* Note chip — empty: a small "+ Nota" affordance; filled: shows the
+              excerpt with an inline ✕ to clear. Tapping the chip (anywhere
+              outside the ✕) opens the note drawer. */}
+          {note ? (
+            <button
+              type="button"
+              onClick={openNoteDrawer}
+              aria-label={`Editar nota: ${note}`}
+              aria-haspopup="dialog"
+              aria-expanded={noteDrawerOpen}
+              className="flex h-11 w-full items-center gap-2 rounded-full border border-foreground bg-foreground pl-3 pr-1.5 text-left text-[13px] font-semibold text-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Nota (opcional)
-            </Label>
-            <Input
-              id="capture-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Cinépolis con Vale"
-              maxLength={80}
-              autoComplete="off"
-              className="mt-1.5 h-11 rounded-2xl border-border bg-card text-[13px]"
-            />
-          </div>
+              <StickyNote size={14} aria-hidden="true" className="flex-shrink-0" />
+              <span className="flex-1 truncate">Nota: «{noteExcerpt}»</span>
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Quitar nota"
+                onClick={handleClearNote}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setNote("");
+                  }
+                }}
+                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-background/15 text-background transition-colors hover:bg-background/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X size={14} aria-hidden="true" />
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openNoteDrawer}
+              aria-label="Agregar nota opcional"
+              aria-haspopup="dialog"
+              aria-expanded={noteDrawerOpen}
+              className="inline-flex h-11 items-center gap-2 self-start rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <StickyNote size={14} aria-hidden="true" />
+              + Nota
+            </button>
+          )}
         </section>
 
         {/* Hint */}
@@ -559,15 +628,67 @@ export default function CapturePage() {
         </div>
       </div>
 
-      {/* Camera FAB — alt path (scan receipt). Sits above the TabBar. */}
-      <button
-        type="button"
-        onClick={() => router.push("/receipt")}
-        aria-label="Escanear ticket con la cámara"
-        className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-[18px] z-20 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[var(--shadow-card)] transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      {/* Note drawer — small modal sheet to add or edit the optional note.
+          Lives outside the form flow so the textarea autoFocus only fires when
+          the drawer opens. */}
+      <Drawer
+        open={noteDrawerOpen}
+        onOpenChange={(open) => {
+          setNoteDrawerOpen(open);
+          if (!open) {
+            // Discard the in-progress draft when the user closes the drawer
+            // any way other than tapping Guardar.
+            setNoteDraft(note);
+          }
+        }}
       >
-        <Camera size={20} aria-hidden="true" />
-      </button>
+        <DrawerContent
+          aria-describedby="capture-note-desc"
+          className="bg-background"
+        >
+          <DrawerHeader>
+            <DrawerTitle>Agregar nota</DrawerTitle>
+            <DrawerDescription id="capture-note-desc">
+              Detalle opcional para recordar este movimiento.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-2">
+            <Label htmlFor="capture-note-textarea" className="sr-only">
+              Nota opcional
+            </Label>
+            <textarea
+              id="capture-note-textarea"
+              autoFocus
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="Una nota opcional…"
+              maxLength={200}
+              rows={4}
+              className="w-full resize-none rounded-2xl border border-border bg-card px-3 py-2.5 text-[14px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <div className="mt-1 text-right text-[11px] text-muted-foreground tabular-nums">
+              {noteDraft.length}/200
+            </div>
+          </div>
+          <DrawerFooter className="flex-col gap-2">
+            <Button
+              type="button"
+              onClick={handleSaveNote}
+              disabled={noteDraft.trim().length === 0}
+              className="h-12 w-full rounded-full text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Guardar
+            </Button>
+            <button
+              type="button"
+              onClick={() => setNoteDrawerOpen(false)}
+              className="h-10 w-full rounded-full text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Cancelar
+            </button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
       {/* Category drawer — full grid */}
       <Drawer open={categoryDrawerOpen} onOpenChange={setCategoryDrawerOpen}>

@@ -44,6 +44,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { AppHeader } from "@/components/lumi/AppHeader";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -332,15 +333,7 @@ function HeroMetric({
 
   return (
     <Card className="rounded-3xl border-border p-6 md:p-8">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse at 80% 0%, oklch(0.72 0.18 162 / 0.10) 0%, transparent 60%)",
-        }}
-      />
-      <div className="relative">
+      <div>
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Gasto vs ingreso · abril
         </div>
@@ -830,12 +823,11 @@ export default function InsightsPage() {
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
         {/* Header */}
-        <header className="px-5 pt-3 md:px-0 md:pt-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            abril · 2026
-          </div>
-          <h1 className="mt-1 text-[22px] font-bold md:text-3xl">Análisis</h1>
-        </header>
+        <AppHeader
+          eyebrow="abril · 2026"
+          title="Análisis"
+          titleStyle="display"
+        />
 
         {/* Period selector */}
         <div className="mt-4 px-4 md:mt-6 md:px-0">

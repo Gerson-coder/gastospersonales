@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AppHeader } from "@/components/lumi/AppHeader";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -745,76 +746,73 @@ export default function MovementsPage() {
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl md:px-8 md:py-8">
-        {/* Header — swaps between title+search-icon and inline search input.
+        {/* Header — swaps between AppHeader (idle) and an inline search input.
             The wrapper keeps the same min-height so the layout doesn't jump
-            when toggling. transition-all gives a soft 200ms swap. */}
-        <header className="flex min-h-[64px] items-center gap-2 px-5 pt-3 transition-all duration-200 md:px-0 md:pt-0">
-          {isSearching ? (
-            <>
-              <button
-                type="button"
-                onClick={closeSearch}
-                aria-label="Cerrar búsqueda"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <ArrowLeft size={18} aria-hidden="true" />
-              </button>
-              <div className="relative flex-1">
-                <Search
-                  size={16}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                />
-                <Input
-                  type="search"
-                  inputMode="search"
-                  autoComplete="off"
-                  autoFocus
-                  aria-label="Buscar movimientos"
-                  placeholder="Buscar por nombre, categoría o monto"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") closeSearch();
-                  }}
-                  className="h-11 rounded-full border-border bg-muted pl-9 pr-10 text-[14px]"
-                />
-                {query.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setQuery("")}
-                    aria-label="Borrar búsqueda"
-                    className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <X size={16} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="flex w-full items-center justify-between">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  abril · 2026
-                </div>
-                <h1 className="mt-1 font-display italic leading-none tracking-tight text-[28px] font-semibold text-foreground md:text-4xl">
-                  Movimientos
-                </h1>
-              </div>
+            when toggling. transition-all gives a soft 200ms swap.
+
+            Search-mode header is intentionally kept inline (not part of
+            AppHeader) because it replaces the entire header chrome — title,
+            eyebrow, and the action cluster — with a focused input row. */}
+        {isSearching ? (
+          <header className="flex min-h-[64px] items-center gap-2 px-5 pt-3 transition-all duration-200 md:px-0 md:pt-0">
+            <button
+              type="button"
+              onClick={closeSearch}
+              aria-label="Cerrar búsqueda"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <ArrowLeft size={18} aria-hidden="true" />
+            </button>
+            <div className="relative flex-1">
+              <Search
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                type="search"
+                inputMode="search"
+                autoComplete="off"
+                autoFocus
+                aria-label="Buscar movimientos"
+                placeholder="Buscar por nombre, categoría o monto"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") closeSearch();
+                }}
+                className="h-11 rounded-full border-border bg-muted pl-9 pr-10 text-[14px]"
+              />
+              {query.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Borrar búsqueda"
+                  className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </header>
+        ) : (
+          <AppHeader
+            eyebrow="abril · 2026"
+            title="Movimientos"
+            titleStyle="display"
+            actionsBefore={
               <button
                 type="button"
                 onClick={() => setIsSearching(true)}
                 aria-label="Buscar movimientos"
                 aria-expanded={false}
-                // 44px tap target with a subtle border so the affordance reads
-                // even on a tinted background (dark mode hero card behind it).
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <Search size={18} aria-hidden="true" />
+                <Search size={16} aria-hidden="true" />
               </button>
-            </div>
-          )}
-        </header>
+            }
+          />
+        )}
 
         {/* Month summary hero — intentionally based on the FULL dataset, not
             the filtered/searched view. The hero is a month-level summary, not
