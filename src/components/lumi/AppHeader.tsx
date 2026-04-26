@@ -36,6 +36,13 @@ export interface AppHeaderProps {
   actionsBefore?: React.ReactNode;
   /** Title styling: "page" (regular bold) or "display" (larger bold sans). */
   titleStyle?: "page" | "display";
+  /**
+   * Optional element inserted LEFT of the eyebrow/title cluster — typically a
+   * small avatar circle so the greeting reads as "[avatar] Hola, {name}".
+   * Display-only: the clickable profile entry-point still lives in the
+   * persistent right-cluster (`TabsTopBar` → `ProfileMenu`).
+   */
+  avatar?: React.ReactNode;
 }
 
 export function AppHeader({
@@ -44,6 +51,7 @@ export function AppHeader({
   className,
   actionsBefore,
   titleStyle = "page",
+  avatar,
 }: AppHeaderProps) {
   return (
     <header
@@ -55,22 +63,25 @@ export function AppHeader({
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
-        {eyebrow ? (
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            {eyebrow}
-          </div>
-        ) : null}
-        <h1
-          className={cn(
-            "leading-tight truncate",
-            titleStyle === "display"
-              ? "mt-1 text-[22px] md:text-4xl tracking-tight font-bold"
-              : "mt-1.5 text-[17px] font-bold md:text-3xl",
-          )}
-        >
-          {title}
-        </h1>
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        {avatar ? <div className="shrink-0">{avatar}</div> : null}
+        <div className="min-w-0 flex-1">
+          {eyebrow ? (
+            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              {eyebrow}
+            </div>
+          ) : null}
+          <h1
+            className={cn(
+              "leading-tight truncate",
+              titleStyle === "display"
+                ? "mt-1 text-[22px] md:text-4xl tracking-tight font-bold"
+                : "mt-1.5 text-[17px] font-bold md:text-3xl",
+            )}
+          >
+            {title}
+          </h1>
+        </div>
       </div>
       {actionsBefore ? (
         <div className="flex items-center gap-1.5 shrink-0">

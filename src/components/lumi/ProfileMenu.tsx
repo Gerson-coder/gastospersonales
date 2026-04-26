@@ -16,6 +16,7 @@ import {
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
+import { UserAvatarCircle } from "@/components/lumi/UserAvatarCircle";
 import { cn } from "@/lib/utils";
 
 const SUPABASE_ENABLED =
@@ -58,13 +59,12 @@ export function ProfileMenu({ className }: { className?: string }) {
       <DropdownMenuTrigger
         aria-label="Abrir perfil"
         className={cn(
-          "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground",
-          "text-[13px] font-semibold transition-colors hover:bg-border",
+          "inline-flex shrink-0 rounded-full transition-colors hover:opacity-90",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className,
         )}
       >
-        <span aria-hidden="true">{initial}</span>
+        <UserAvatarCircle size="md" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-[240px] p-2">
         {/* Identity header */}

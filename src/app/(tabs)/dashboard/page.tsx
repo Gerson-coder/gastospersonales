@@ -43,6 +43,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import { UserAvatarCircle } from "@/components/lumi/UserAvatarCircle";
 import { MonthSummaryCard } from "@/components/lumi/MonthSummaryCard";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { cn } from "@/lib/utils";
@@ -1037,6 +1038,7 @@ export default function DashboardPage() {
         <AppHeader
           title={greeting}
           titleStyle="page"
+          avatar={<UserAvatarCircle size="sm" />}
           actionsBefore={<CurrencySwitch />}
         />
 
