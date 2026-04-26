@@ -17,17 +17,22 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Home,
   List,
   Plus,
+  Check,
   BarChart3,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import {
+  captureActionBus,
+  useCaptureCanSave,
+} from "@/lib/capture-action-bus";
 
 export type TabBarItem = {
   href: string;
@@ -69,6 +74,12 @@ export function TabBar({
   className,
 }: TabBarProps): React.ReactElement {
   const pathname = usePathname();
+  const router = useRouter();
+  // While the user is on /capture, the center FAB doubles as the Save
+  // confirmation: icon swaps to ✓, click triggers handleSave() via the
+  // action bus, and disabled state mirrors the page's `ready` flag.
+  const isCapture = pathname === "/capture";
+  const canSave = useCaptureCanSave();
 
   return (
     <nav
@@ -92,24 +103,47 @@ export function TabBar({
           const Icon = item.icon;
 
           if (item.primary) {
+            // On /capture the center button is the Save action (✓). On any
+            // other route it's a navigation link to /capture (+). We render
+            // a <button> in both cases so the click handler can branch —
+            // the Link semantics are preserved via aria-label + manual
+            // router.push for the navigation case.
+            const PrimaryIcon = isCapture ? Check : Plus;
+            const disabled = isCapture && !canSave;
+            const ariaLabel = isCapture
+              ? "Guardar movimiento"
+              : item.label;
+            const handlePrimaryClick = () => {
+              if (isCapture) {
+                captureActionBus.triggerSave();
+              } else {
+                router.push(item.href);
+              }
+            };
+
             return (
               <li
                 key={item.href}
                 className="flex items-center justify-center"
               >
-                <Link
-                  href={item.href}
-                  aria-label={item.label}
+                <button
+                  type="button"
+                  onClick={handlePrimaryClick}
+                  disabled={disabled}
+                  aria-label={ariaLabel}
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "relative -mt-5 inline-flex h-[60px] w-[60px] items-center justify-center rounded-full",
                     "bg-primary text-primary-foreground",
                     "transition-transform duration-150 ease-out active:scale-95",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    disabled && "cursor-not-allowed opacity-50 active:scale-100",
                   )}
-                  style={{ boxShadow: "var(--shadow-fab)" }}
+                  style={
+                    disabled ? undefined : { boxShadow: "var(--shadow-fab)" }
+                  }
                 >
-                  <Icon
+                  <PrimaryIcon
                     size={26}
                     strokeWidth={2.6}
                     aria-hidden="true"
@@ -122,7 +156,7 @@ export function TabBar({
                       {item.badge > 99 ? "99+" : item.badge}
                     </span>
                   ) : null}
-                </Link>
+                </button>
               </li>
             );
           }

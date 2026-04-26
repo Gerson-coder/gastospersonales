@@ -10,7 +10,7 @@
  * font weight — and avoids re-deriving the initial in two places.
  *
  * Sizes:
- *   - "sm" (28px) — sized to sit next to a 17px greeting in the header.
+ *   - "sm" (24px) — sized to sit next to a 14px greeting in the header.
  *   - "md" (36px) — sized to match the 9x9 ProfileMenu trigger pill.
  *
  * Hydration: the initial flips from "?" to the real letter once `useUserName`
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 export type UserAvatarCircleSize = "sm" | "md";
 
 const SIZE_CLASSES: Record<UserAvatarCircleSize, string> = {
-  sm: "h-7 w-7 text-[12px]",
+  sm: "h-6 w-6 text-[11px]",
   md: "h-9 w-9 text-[13px]",
 };
 

@@ -76,7 +76,7 @@ export function AppHeader({
               "leading-tight truncate",
               titleStyle === "display"
                 ? "mt-1 text-[22px] md:text-4xl tracking-tight font-bold"
-                : "mt-1.5 text-[17px] font-bold md:text-3xl",
+                : "mt-0 text-[14px] font-medium md:text-2xl md:font-semibold",
             )}
           >
             {title}

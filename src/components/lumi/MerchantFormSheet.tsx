@@ -146,7 +146,7 @@ export function MerchantFormSheet(props: Props) {
           className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-md"
         >
           <SheetHeader className="px-0">
-            <SheetTitle id={titleId}>{title}</SheetTitle>
+            <SheetTitle id={titleId} className="font-sans not-italic text-base font-semibold">{title}</SheetTitle>
             <SheetDescription>{description}</SheetDescription>
           </SheetHeader>
 
@@ -197,7 +197,7 @@ export function MerchantFormSheet(props: Props) {
       >
         <form onSubmit={handleSubmit} aria-busy={submitting}>
           <SheetHeader className="px-0">
-            <SheetTitle id={titleId}>{title}</SheetTitle>
+            <SheetTitle id={titleId} className="font-sans not-italic text-base font-semibold">{title}</SheetTitle>
             <SheetDescription>{description}</SheetDescription>
           </SheetHeader>
 

@@ -47,7 +47,6 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent,
@@ -72,6 +71,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MerchantPicker } from "@/components/lumi/MerchantPicker";
 import { useOnline } from "@/hooks/use-online";
 import { useSession } from "@/lib/use-session";
+import { captureActionBus } from "@/lib/capture-action-bus";
 
 // Demo-mode flag — when env vars are absent, fall back to the inline
 // MOCK_ACCOUNTS rather than hitting Supabase. Mirrors the same gate used by
@@ -679,6 +679,24 @@ function CapturePageInner() {
     categories,
   ]);
 
+  // FAB-as-save bridge — while /capture is mounted, the bottom-nav center
+  // button (rendered in the (tabs) layout) takes over save responsibility:
+  // it shows a ✓ icon and calls handleSave(). We register both the handler
+  // and a `ready` flag mirroring the EXACT disabled rules the legacy
+  // "Guardar gasto" button used (`!ready || submitting || hydrating || !online`),
+  // so the FAB visually matches the same enabled/disabled state.
+  React.useEffect(() => {
+    const ready = !submitting && !hydrating && online && amount > 0;
+    captureActionBus.setSaveHandler(() => {
+      handleSave();
+    }, ready);
+    return () => {
+      // Clear on unmount/navigation so the FAB on other tabs doesn't keep
+      // a stale closure pointing at an unmounted handler.
+      captureActionBus.setSaveHandler(null, false);
+    };
+  }, [handleSave, submitting, hydrating, online, amount]);
+
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {
       setCategoryId(id);
@@ -959,54 +977,35 @@ function CapturePageInner() {
           <Keypad onPress={press} />
         </div>
 
-        {/* Save action */}
-        <div className="mt-2 flex flex-col gap-2 px-4 pt-2">
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={!ready || submitting || hydrating || !online}
-            aria-label={saveAriaLabel}
-            aria-busy={submitting}
-            className={cn(
-              "h-14 w-full rounded-full text-base font-bold transition-transform",
-              "active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50",
-            )}
-            style={
-              ready && !submitting && !hydrating && online
-                ? { boxShadow: "var(--shadow-fab)" }
-                : undefined
-            }
-          >
-            {submitting ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 size={18} aria-hidden="true" className="animate-spin" />
-                <span>Guardando…</span>
-              </span>
-            ) : editId ? (
-              "Guardar cambios"
-            ) : kind === "income" ? (
-              "Guardar ingreso"
-            ) : (
-              "Guardar gasto"
-            )}
-          </Button>
-
-          <button
-            type="button"
-            onClick={() => setCategoryDrawerOpen(true)}
-            disabled={!ready || submitting || hydrating}
-            aria-haspopup="dialog"
-            aria-expanded={categoryDrawerOpen}
-            className={cn(
-              "h-10 w-full rounded-full text-[13px] font-semibold text-muted-foreground transition-colors",
-              "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-            )}
-          >
-            Más opciones
-          </button>
-        </div>
+        {/* Save is now driven by the bottom-nav center FAB (✓ when on
+            /capture). The legacy in-page "Guardar gasto/ingreso" button was
+            removed in favour of that single primary action — keeps the
+            keypad screen calm and the thumb anchored on the bottom bar.
+            We expose `saveAriaLabel` to the FAB via `captureActionBus`
+            indirectly: the screen-reader label here doubles as a hidden
+            announcement for the live region below when amount changes. */}
+        <p className="sr-only" aria-live="polite">
+          {saveAriaLabel}
+        </p>
       </div>
+
+      {/* Submitting overlay — when handleSave is in flight (Supabase ACK
+          pending), block interaction behind a translucent veil with a
+          centred Loader2. Replaces the spinner that used to live inside
+          the in-page Save button. */}
+      {submitting ? (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Guardando movimiento"
+          className="absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px]"
+        >
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-[13px] font-semibold text-foreground shadow-[var(--shadow-float)]">
+            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
+            <span>Guardando…</span>
+          </div>
+        </div>
+      ) : null}
 
       {/* Category drawer — full grid */}
       <Drawer open={categoryDrawerOpen} onOpenChange={setCategoryDrawerOpen}>
@@ -1015,7 +1014,13 @@ function CapturePageInner() {
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Elige una categoría</DrawerTitle>
+            {/* Override DrawerTitle's default `font-heading` (italic
+                Instrument Serif from the design tokens) — the capture
+                surface is sans-only so the picker title doesn't read
+                like a different app. */}
+            <DrawerTitle className="font-sans not-italic text-base font-semibold">
+              Elige una categoría
+            </DrawerTitle>
             <DrawerDescription id="capture-category-desc">
               Guardar {ready ? display : "el movimiento"} en una categoría.
             </DrawerDescription>
@@ -1079,7 +1084,9 @@ function CapturePageInner() {
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Elige una cuenta</DrawerTitle>
+            <DrawerTitle className="font-sans not-italic text-base font-semibold">
+              Elige una cuenta
+            </DrawerTitle>
             <DrawerDescription id="capture-account-desc">
               Cuenta o método de pago para este movimiento.
             </DrawerDescription>

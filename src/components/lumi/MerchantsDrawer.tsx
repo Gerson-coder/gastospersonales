@@ -169,7 +169,7 @@ export function MerchantsDrawer({
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Comercios de {categoryName}</DrawerTitle>
+            <DrawerTitle className="font-sans not-italic text-base font-semibold">Comercios de {categoryName}</DrawerTitle>
             <DrawerDescription id="merchants-drawer-desc">
               Elige dónde ocurrió este movimiento o crea uno nuevo.
             </DrawerDescription>
