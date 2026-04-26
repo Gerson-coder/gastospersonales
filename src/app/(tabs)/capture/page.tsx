@@ -331,7 +331,39 @@ function CategoryChip({
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────
+// Top-level export wraps the real page in Suspense so `useSearchParams()`
+// (used inside CapturePageInner to read `?edit=<id>`) doesn't bail static
+// rendering. Next 15+/16 requires `useSearchParams()` to live under a
+// Suspense ancestor during prerender — without it the build fails with
+// "missing-suspense-with-csr-bailout". The fallback is a minimal shell
+// that doesn't itself call useSearchParams, just a hydration placeholder.
 export default function CapturePage() {
+  return (
+    <React.Suspense fallback={<CapturePageFallback />}>
+      <CapturePageInner />
+    </React.Suspense>
+  );
+}
+
+// Minimal loading shell — matches the real page's outer chrome (full-height
+// background, mobile-first centred column) so the swap-in feels stable.
+// MUST NOT call useSearchParams or any other hook that bails static render.
+function CapturePageFallback() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8"
+    >
+      <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col items-center justify-center gap-3 px-6 text-muted-foreground">
+        <Loader2 size={20} aria-hidden="true" className="animate-spin" />
+        <span className="text-[13px]">Cargando…</span>
+      </div>
+    </div>
+  );
+}
+
+function CapturePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");

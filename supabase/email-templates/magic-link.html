@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title>Tu enlace para entrar a Lumi</title>
+    <!--[if mso]>
+      <style type="text/css">
+        table, td, div, h1, p { font-family: Arial, sans-serif !important; }
+      </style>
+    <![endif]-->
+  </head>
+  <body style="margin:0; padding:0; background-color:#f6f5f1; -webkit-text-size-adjust:100%;">
+    <!-- Hidden preheader: shows up in inbox preview pane -->
+    <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f6f5f1;">
+      Tu enlace para entrar a Lumi. Vence pronto, así que no lo dejes para después.
+    </div>
+
+    <!-- Outer wrapper -->
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f6f5f1;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+
+          <!-- Brand wordmark -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%;">
+            <tr>
+              <td align="center" style="padding:0 0 20px 0; font-family: 'Helvetica Neue', Arial, sans-serif; font-size:22px; font-weight:700; letter-spacing:-0.01em; color:#1a3d33;">
+                Lumi
+              </td>
+            </tr>
+          </table>
+
+          <!-- Card -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:16px; border:1px solid #e7e5dc; box-shadow:0 1px 2px rgba(20,30,25,0.04);">
+            <tr>
+              <td style="padding:40px 32px 32px 32px; font-family: 'Helvetica Neue', Arial, sans-serif; color:#1c1c1a;">
+
+                <!-- Icon badge — text-only so it renders in every client -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 24px auto;">
+                  <tr>
+                    <td align="center" valign="middle" width="56" height="56" style="background-color:#e6f4ed; border-radius:28px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:24px; font-weight:700; color:#1a8a5f; line-height:56px; text-align:center;">
+                      &#10004;
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Headline -->
+                <h1 style="margin:0 0 12px 0; font-family: Georgia, 'Times New Roman', serif; font-style:italic; font-size:30px; line-height:1.15; letter-spacing:-0.02em; color:#1c1c1a; text-align:center; font-weight:400;">
+                  Te enviamos un link
+                </h1>
+
+                <!-- Body copy -->
+                <p style="margin:0 0 28px 0; font-size:15px; line-height:1.55; color:#5b5b55; text-align:center;">
+                  Tocá el botón de abajo para entrar a Lumi.
+                  Es de un solo uso, así que tocalo desde el dispositivo en el que querés iniciar sesión.
+                </p>
+
+                <!-- CTA button (bulletproof button pattern) -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
+                  <tr>
+                    <td align="center" bgcolor="#15805a" style="border-radius:12px; background-color:#15805a;">
+                      <a
+                        href="{{ .ConfirmationURL }}"
+                        target="_blank"
+                        style="display:inline-block; padding:14px 32px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:15px; font-weight:600; line-height:1.2; color:#ffffff; text-decoration:none; border-radius:12px; background-color:#15805a; mso-padding-alt:0;"
+                      >
+                        Entrar a Lumi
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Fallback link -->
+                <p style="margin:28px 0 0 0; font-size:13px; line-height:1.55; color:#7a7a72; text-align:center;">
+                  Si el botón no funciona, copiá y pegá este enlace en tu navegador:
+                </p>
+                <p style="margin:8px 0 0 0; font-size:12px; line-height:1.5; color:#15805a; text-align:center; word-break:break-all;">
+                  <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#15805a; text-decoration:underline;">{{ .ConfirmationURL }}</a>
+                </p>
+
+                <!-- Divider -->
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:32px;">
+                  <tr>
+                    <td style="border-top:1px solid #ececdf; line-height:1px; font-size:1px; height:1px;">&nbsp;</td>
+                  </tr>
+                </table>
+
+                <!-- Security note -->
+                <p style="margin:24px 0 0 0; font-size:12px; line-height:1.6; color:#8a8a82; text-align:center;">
+                  Si no pediste este correo, podés ignorarlo. Nadie va a poder iniciar sesión sin tocar este link.
+                </p>
+                <!--
+                  Supabase exposes the link expiry through the .SiteURL/.ConfirmationURL
+                  helpers but does NOT consistently expose a "minutes" variable across
+                  all template versions. If you want to surface the expiry, configure
+                  it in Supabase Dashboard → Authentication → Providers → Email →
+                  "OTP expiry" and replace the line below with something like:
+                  "Este enlace vence en 60 minutos." (hardcode the value to match
+                  whatever you set in the dashboard).
+                -->
+                <p style="margin:6px 0 0 0; font-size:12px; line-height:1.6; color:#8a8a82; text-align:center;">
+                  Por seguridad, este enlace vence en poco tiempo.
+                </p>
+
+              </td>
+            </tr>
+          </table>
+
+          <!-- Footer -->
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; width:100%;">
+            <tr>
+              <td align="center" style="padding:24px 16px 0 16px; font-family:'Helvetica Neue', Arial, sans-serif; font-size:11px; line-height:1.6; color:#9a9a90;">
+                Lumi &middot; Tus finanzas, tranquilas.<br />
+                Este correo fue enviado a {{ .Email }}.
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+
+<!--
+  USO:
+  1. Supabase Dashboard → Authentication → Email Templates → "Magic Link"
+  2. Pegar este HTML en el campo de body
+  3. Verificar que las variables {{ .ConfirmationURL }}, {{ .SiteURL }} y {{ .Email }}
+     queden intactas — Supabase las reemplaza al enviar.
+  4. Save. Probá enviando un magic link a tu correo y verificando recepción
+     en Gmail (web + iOS), Apple Mail y Outlook.
+
+  NOTAS:
+  - Color brand (#15805a) elegido para aproximar el primary oklch(0.53 0.17 162)
+    del proyecto (verde esmeralda Lumi). Cambialo si tu paleta evoluciona.
+  - El fondo "#f6f5f1" replica el bg cálido warm-tinted del light mode.
+  - No hay imágenes externas a propósito: muchos clients bloquean por defecto.
+  - El icono de check usa entity HTML (&#10004;) en vez de emoji para evitar
+    inconsistencias entre Outlook (que no renderiza emojis bien) y mobile.
+  - Si querés agregar el wordmark SVG real, hay que hostearlo y aceptar que
+    algunos usuarios verán el alt text — preferimos texto plano.
+-->

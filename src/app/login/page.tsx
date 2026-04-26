@@ -24,7 +24,8 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +55,7 @@ const GENERIC_ERROR = "No pudimos iniciarte sesión. Probá de nuevo.";
 // Cooldown between magic-link resends. Long enough to discourage spamming
 // the SMTP queue, short enough that a user who just cleared their inbox can
 // retry without rage-quitting.
-const RESEND_COOLDOWN_SECONDS = 60;
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function LoginPage() {
   // useSearchParams() forces this subtree to be client-rendered, so wrap the
@@ -390,7 +391,10 @@ function EmailMagicLinkForm() {
     setIsSubmitting(true);
     const ok = await sendMagicLink();
     setIsSubmitting(false);
-    if (ok) setCooldown(RESEND_COOLDOWN_SECONDS);
+    if (ok) {
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      toast.success("Correo reenviado");
+    }
   }
 
   function handleReset() {
@@ -400,68 +404,102 @@ function EmailMagicLinkForm() {
     setCooldown(0);
   }
 
+  // When the sent card mounts, move focus to the resend button so screen
+  // readers announce the new state and keyboard users land on the primary
+  // action without a rogue Tab.
+  const resendBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    if (sent && resendBtnRef.current) {
+      resendBtnRef.current.focus();
+    }
+  }, [sent]);
+
   if (sent) {
     return (
-      <div className="mt-9 space-y-5" aria-live="polite">
-        <div className="rounded-2xl border border-border bg-[var(--color-primary-soft)] p-5 text-[var(--color-primary-soft-foreground)]">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/50">
-            <Mail size={18} aria-hidden="true" />
+      <section
+        role="status"
+        aria-live="polite"
+        aria-labelledby="magic-link-sent-heading"
+        className="mt-9 animate-in fade-in slide-in-from-bottom-2 duration-500"
+      >
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-card md:p-7">
+          {/* Icon badge — soft brand circle so the success reads at a glance */}
+          <div
+            aria-hidden="true"
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+          >
+            <MailCheck size={26} strokeWidth={2} />
           </div>
-          <p className="mt-4 text-[15px] font-semibold leading-snug">
-            Te enviamos un enlace a tu email.
+
+          <h2
+            id="magic-link-sent-heading"
+            className="mt-5 font-display text-[28px] italic leading-[1.1] tracking-tight text-foreground md:text-[32px]"
+          >
+            Te enviamos un link
+          </h2>
+
+          <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+            Revisá tu correo en
           </p>
-          <p className="mt-2 text-[13px] leading-relaxed">
-            Tocá el enlace para entrar. Si no lo ves, revisá la carpeta de spam.
-          </p>
-          <p className="mt-4 break-all text-[14px] font-semibold tracking-tight">
+          <p className="mt-1 break-all text-[15px] font-semibold tracking-tight text-foreground">
             {trimmed}
           </p>
+          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
+            y tocá el enlace para entrar.
+          </p>
+
           {serverError ? (
             <p
               role="alert"
-              className="mt-3 text-[13px] font-medium text-destructive"
+              className="mt-4 text-[13px] font-medium text-destructive"
             >
               {serverError}
             </p>
           ) : null}
+
+          <div className="mt-6 flex flex-col gap-3">
+            <Button
+              ref={resendBtnRef}
+              type="button"
+              variant="secondary"
+              onClick={handleResend}
+              disabled={cooldown > 0 || isSubmitting}
+              aria-live="polite"
+              className={cn(
+                "h-11 w-full rounded-xl text-[14px] font-semibold",
+                "transition-transform active:scale-[0.99]",
+              )}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2
+                    size={16}
+                    className="mr-2 animate-spin"
+                    aria-hidden="true"
+                  />
+                  Reenviando…
+                </>
+              ) : cooldown > 0 ? (
+                `Reenviar en ${cooldown}s`
+              ) : (
+                "Reenviar correo"
+              )}
+            </Button>
+
+            <button
+              type="button"
+              onClick={handleReset}
+              className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              ¿No es tu correo? <span className="underline">Cambiar</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={handleResend}
-            disabled={cooldown > 0 || isSubmitting}
-            className={cn(
-              "h-11 w-full rounded-xl text-[14px] font-semibold",
-              "transition-transform active:scale-[0.99]",
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-                Reenviando…
-              </>
-            ) : cooldown > 0 ? (
-              `Reenviar en ${cooldown}s`
-            ) : (
-              "Reenviar enlace"
-            )}
-          </Button>
-
-          <button
-            type="button"
-            onClick={handleReset}
-            className="self-center text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            Cambiar email
-          </button>
-        </div>
-      </div>
+        <p className="mt-5 px-2 text-center text-[12px] leading-relaxed text-muted-foreground">
+          Si no lo ves en unos minutos, revisá la carpeta de spam o promociones.
+        </p>
+      </section>
     );
   }
 
