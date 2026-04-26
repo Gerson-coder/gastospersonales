@@ -368,9 +368,15 @@ function HeroMetric({
 
 // ─── Cross-month comparison bar chart ─────────────────────────────────────
 function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Currency }) {
+  const currentIdx = months.length - 1;
+  // null = no explicit selection → falls back to the most recent month so the
+  // chart always shows a value above the active bar without forcing user input.
+  const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
+  const activeIdx = selectedIdx ?? currentIdx;
+
   const w = 320;
   const h = 160;
-  const padTop = 16;
+  const padTop = 22;
   const padBottom = 28;
   const padX = 8;
   const innerW = w - padX * 2;
@@ -380,7 +386,9 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
   const barW = Math.min(14, slot * 0.32);
   const gap = 4;
 
-  const ariaLabel = `Comparativa de gasto e ingreso de los últimos ${months.length} meses. Mes actual: ${formatMoneyCompact(months[months.length - 1].spent, currency)} de gasto.`;
+  const toggle = (i: number) => {
+    setSelectedIdx((curr) => (curr === i ? null : i));
+  };
 
   return (
     <svg
@@ -389,8 +397,19 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
       viewBox={`0 0 ${w} ${h}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label={ariaLabel}
+      aria-label="Comparativa mensual de gastos — tocá un mes para ver el monto"
     >
+      <defs>
+        <linearGradient id="lumi-insights-month-current" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="1" />
+          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="lumi-insights-month-selected" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-foreground)" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="var(--color-foreground)" stopOpacity="0.50" />
+        </linearGradient>
+      </defs>
+
       {/* Baseline */}
       <line
         x1={padX}
@@ -404,9 +423,45 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
         const cx = padX + slot * i + slot / 2;
         const spentH = (m.spent / max) * innerH;
         const incomeH = (m.income / max) * innerH;
-        const isCurrent = i === months.length - 1;
+        const isCurrent = i === currentIdx;
+        const isActive = i === activeIdx;
+        const spentX = cx + gap / 2;
+        const spentY = h - padBottom - spentH;
+        // Selected (non-current) uses a neutral foreground gradient so users can
+        // tell selection apart from the brand-emerald "current month" emphasis.
+        const spentFill = isActive
+          ? isCurrent
+            ? "url(#lumi-insights-month-current)"
+            : "url(#lumi-insights-month-selected)"
+          : "var(--color-primary)";
+        const spentOpacity = isActive ? 1 : 0.55;
         return (
-          <g key={m.monthKey}>
+          <g
+            key={m.monthKey}
+            onClick={() => toggle(i)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggle(i);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isActive}
+            aria-label={`${m.label}: ${formatMoney(m.spent, currency)}`}
+            style={{ cursor: "pointer" }}
+            className="focus:outline-none"
+          >
+            {/* Transparent hit area covering the full slot — drawn first so it
+                sits behind the visible bars and provides a forgiving tap target
+                on small mobile widths where bars are only ~14px wide. */}
+            <rect
+              x={padX + slot * i}
+              y={padTop}
+              width={slot}
+              height={innerH + 6}
+              fill="transparent"
+            />
             {/* Income (lighter, behind) */}
             <rect
               x={cx - barW - gap / 2}
@@ -415,18 +470,33 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
               height={incomeH}
               rx="2"
               fill="var(--color-muted)"
-              opacity={isCurrent ? 0.9 : 0.6}
+              opacity={isActive ? 0.9 : 0.6}
             />
             {/* Spent */}
             <rect
-              x={cx + gap / 2}
-              y={h - padBottom - spentH}
+              x={spentX}
+              y={spentY}
               width={barW}
               height={spentH}
               rx="2"
-              fill="var(--color-primary)"
-              opacity={isCurrent ? 1 : 0.55}
+              fill={spentFill}
+              opacity={spentOpacity}
+              style={{ transition: "fill 150ms ease-out, opacity 150ms ease-out" }}
             />
+            {isActive && (
+              <text
+                x={cx}
+                y={Math.max(spentY - 6, 10)}
+                textAnchor="middle"
+                fontSize="10"
+                fontFamily="var(--font-display)"
+                fontStyle="italic"
+                className="fill-foreground"
+                style={{ fontFeatureSettings: '"tnum","lnum"' }}
+              >
+                {formatMoneyCompact(m.spent, currency)}
+              </text>
+            )}
             <text
               x={cx}
               y={h - padBottom + 14}
@@ -434,7 +504,7 @@ function MonthBars({ months, currency }: { months: MonthTotal[]; currency: Curre
               fontSize="10"
               className={cn(
                 "fill-muted-foreground",
-                isCurrent && "fill-foreground font-semibold",
+                isActive && "fill-foreground font-semibold",
               )}
               fontFamily="var(--font-sans)"
             >

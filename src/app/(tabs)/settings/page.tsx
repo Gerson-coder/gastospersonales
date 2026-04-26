@@ -1,6 +1,4 @@
-// TODO: wire profile/categories/prefs to Supabase once Batch C lands.
-// TODO: replace USER_EMAIL placeholder with the email from the Supabase session
-// once we have a `useSession` hook.
+// TODO: wire categories to Supabase once Batch C lands.
 /**
  * Settings route — Lumi
  *
@@ -24,8 +22,8 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   ChevronRight,
-  Pencil,
   Tag,
+  Plus,
   Utensils,
   Car,
   ShoppingCart,
@@ -44,9 +42,9 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
@@ -56,9 +54,22 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
+import {
+  archiveCategory,
+  createCategory,
+  listCategories,
+  type Category as DbCategory,
+  updateCategory,
+} from "@/lib/data/categories";
+import { getCategoryIcon } from "@/lib/category-icons";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import type { Database } from "@/lib/supabase/types";
+import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
+
+type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 // Same runtime feature flag as /login: do we have a real Supabase project
 // configured? Next inlines NEXT_PUBLIC_* at build time, so this is a literal
@@ -103,8 +114,6 @@ const DEFAULT_PREFS: Prefs = {
   theme: "system",
 };
 
-const NAME_MAX_LENGTH = 40;
-
 // Hardcoded for now; package.json import would couple build to a server module.
 const APP_VERSION = "0.1.0";
 
@@ -138,41 +147,31 @@ const CATEGORY_TINT: Record<CategoryId, string> = {
   other: "bg-[oklch(0.92_0_95)] text-[oklch(0.45_0_95)]",
 };
 
-// User identity placeholders — email replaced by Supabase session data in Batch C.
-const USER_EMAIL = "gerson@lumi.app";
-const FALLBACK_USER_NAME = "Sin nombre";
-
-function deriveInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const router = useRouter();
-  const { name, setName, clearName, hydrated: nameHydrated } = useUserName();
+  const session = useSession();
+  const { clearName } = useUserName();
 
   const [prefs, setPrefs] = React.useState<Prefs>(DEFAULT_PREFS);
   const [hydrated, setHydrated] = React.useState(false);
 
   // Sheet state
   const [signOutOpen, setSignOutOpen] = React.useState(false);
-  const [editOpen, setEditOpen] = React.useState(false);
-  const [draftName, setDraftName] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
 
   // Refs for focus management on open
   const signOutConfirmRef = React.useRef<HTMLButtonElement | null>(null);
-  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // next-themes returns sane defaults outside a provider, so calling this at
   // the top level is safe even if RootLayout has not mounted ThemeProvider yet.
-  const { setTheme } = useTheme();
+  // We also pull `resolvedTheme` so the "Sistema" microcopy can disclose what
+  // the OS actually resolved to (avoids "I picked Sistema but it's still dark"
+  // confusion when the user's OS is in dark mode).
+  const { setTheme, resolvedTheme } = useTheme();
+  const [themeMounted, setThemeMounted] = React.useState(false);
+  React.useEffect(() => {
+    setThemeMounted(true);
+  }, []);
 
   // Hydrate prefs from localStorage AFTER mount — never during SSR.
   React.useEffect(() => {
@@ -199,6 +198,19 @@ export default function SettingsPage() {
     }
   }, [prefs, hydrated]);
 
+  // When the profile row arrives from Supabase, prefer its currency over the
+  // localStorage cache. localStorage is just a fast-paint hint; the DB is the
+  // source of truth once we have a session. Theme stays device-local on
+  // purpose — it is a per-device preference, not a per-user one.
+  React.useEffect(() => {
+    if (!hydrated) return;
+    if (!SUPABASE_ENABLED) return;
+    const dbCurrency = session.profile?.default_currency;
+    if (dbCurrency && (dbCurrency === "PEN" || dbCurrency === "USD")) {
+      setPrefs((p) => (p.currency === dbCurrency ? p : { ...p, currency: dbCurrency }));
+    }
+  }, [hydrated, session.profile?.default_currency]);
+
   // When sign-out sheet opens, focus the destructive button so keyboard users
   // land on the most prominent action. Base UI's Dialog manages the focus trap;
   // we just steer the initial focus target.
@@ -210,20 +222,43 @@ export default function SettingsPage() {
     return () => window.cancelAnimationFrame(id);
   }, [signOutOpen]);
 
-  // When edit sheet opens, focus the input. autoFocus on the element itself is
-  // unreliable inside portaled Dialogs, so we drive it imperatively.
-  React.useEffect(() => {
-    if (!editOpen) return;
-    const id = window.requestAnimationFrame(() => {
-      nameInputRef.current?.focus();
-      nameInputRef.current?.select();
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [editOpen]);
-
   function handleCurrencyChange(value: string) {
-    if (value === "PEN" || value === "USD") {
-      setPrefs((p) => ({ ...p, currency: value }));
+    if (value !== "PEN" && value !== "USD") return;
+    // Optimistic local update — the currency enum is 1 byte, so we flip the
+    // UI immediately and only roll back if the round-trip actually fails.
+    // Capture the prior value BEFORE mutating so the rollback path has it.
+    const prev = prefs.currency;
+    if (prev === value) return;
+    setPrefs((p) => ({ ...p, currency: value }));
+    if (SUPABASE_ENABLED && session.user) {
+      const userId = session.user.id;
+      void (async () => {
+        try {
+          const supabase = createSupabaseClient();
+          const patch: ProfileUpdate = { default_currency: value };
+          const { error } = await supabase
+            .from("profiles")
+            .update(patch)
+            .eq("id", userId);
+          if (error) {
+            // Roll back so the radio reflects what's actually in the DB.
+            setPrefs((p) => ({ ...p, currency: prev }));
+            toast.error("No se pudo guardar la moneda", {
+              description: "Reintentá en un momento.",
+            });
+            return;
+          }
+          toast.success("Moneda actualizada");
+        } catch {
+          setPrefs((p) => ({ ...p, currency: prev }));
+          toast.error("No se pudo guardar la moneda", {
+            description: "Reintentá en un momento.",
+          });
+        }
+      })();
+    } else {
+      // Demo mode: still confirm so the radio change feels acknowledged.
+      toast.success("Moneda actualizada");
     }
   }
 
@@ -232,25 +267,6 @@ export default function SettingsPage() {
       setPrefs((p) => ({ ...p, theme: value }));
       // No-op outside a ThemeProvider; harmless.
       setTheme(value);
-    }
-  }
-
-  function openEditProfile() {
-    setDraftName(name ?? "");
-    setEditOpen(true);
-  }
-
-  function handleEditSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = draftName.trim();
-    if (!trimmed) return;
-    setSubmitting(true);
-    try {
-      setName(trimmed);
-      setEditOpen(false);
-      toast.success("Nombre actualizado");
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -271,11 +287,6 @@ export default function SettingsPage() {
     router.push("/login");
   }
 
-  const displayName = nameHydrated ? (name ?? FALLBACK_USER_NAME) : " ";
-  const displayInitials = nameHydrated && name ? deriveInitials(name) : "?";
-  const trimmedDraft = draftName.trim();
-  const canSubmitName = trimmedDraft.length > 0 && !submitting;
-
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
@@ -293,88 +304,15 @@ export default function SettingsPage() {
           </Link>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Tu cuenta
+              Tu app
             </p>
             <h1 className="mt-1 text-2xl font-bold md:text-3xl">Ajustes</h1>
           </div>
         </header>
 
-        {/* Profile */}
-        <SettingsSection title="Perfil" headingId="settings-profile">
-          <Card className="rounded-2xl border-border p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
-              <div
-                aria-hidden="true"
-                className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-lg font-bold"
-              >
-                {displayInitials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-semibold">{displayName}</div>
-                <div className="truncate text-xs text-muted-foreground">{USER_EMAIL}</div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={openEditProfile}
-                aria-label="Editar perfil"
-                className="min-h-11 rounded-full px-4"
-              >
-                <Pencil size={14} aria-hidden="true" />
-                <span className="ml-1">Editar</span>
-              </Button>
-            </div>
-          </Card>
-        </SettingsSection>
-
         {/* Categorías */}
         <SettingsSection title="Categorías" headingId="settings-categories">
-          <Card className="overflow-hidden rounded-2xl border-border p-0">
-            <ul className="divide-y divide-border" role="list">
-              {MOCK_CATEGORIES.map((category) => {
-                const CategoryIcon = category.icon;
-                return (
-                  <li key={category.id}>
-                    <Link
-                      href={`/settings/categories/${category.id}`}
-                      aria-disabled
-                      onClick={(e) => {
-                        e.preventDefault();
-                        toast("Próximamente", {
-                          description: "El detalle de categoría llega pronto.",
-                        });
-                      }}
-                      className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                    >
-                      <div
-                        aria-hidden="true"
-                        className={cn(
-                          "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
-                          CATEGORY_TINT[category.id],
-                        )}
-                      >
-                        <CategoryIcon size={16} aria-hidden />
-                      </div>
-                      <div className="min-w-0 flex-1 text-[14px] font-semibold">
-                        {category.label}
-                      </div>
-                      <Tag
-                        size={14}
-                        className="text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <ChevronRight
-                        size={16}
-                        className="text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </Card>
+          <CategoriesCard />
         </SettingsSection>
 
         {/* Preferencias */}
@@ -405,7 +343,11 @@ export default function SettingsPage() {
             <fieldset>
               <legend className="text-[13px] font-semibold">Tema</legend>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Sistema sigue lo que tienes configurado en tu dispositivo.
+                Sistema sigue lo que tienes configurado en tu dispositivo
+                {themeMounted && prefs.theme === "system" && resolvedTheme
+                  ? ` (ahora: ${resolvedTheme === "dark" ? "oscuro" : "claro"})`
+                  : ""}
+                .
               </p>
               <RadioGroup
                 value={prefs.theme}
@@ -564,61 +506,6 @@ export default function SettingsPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Edit name Sheet */}
-      <Sheet open={editOpen} onOpenChange={setEditOpen}>
-        <SheetContent
-          side="bottom"
-          aria-labelledby="editname-title"
-          className="rounded-t-2xl md:max-w-md"
-        >
-          <form onSubmit={handleEditSubmit} aria-busy={submitting}>
-            <SheetHeader>
-              <SheetTitle id="editname-title">Editar nombre</SheetTitle>
-              <SheetDescription>
-                Así te llamamos en Lumi. Podés cambiarlo cuando quieras.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="px-4 pb-2">
-              <Label
-                htmlFor="edit-name-input"
-                className="mb-1.5 block text-[13px] font-semibold"
-              >
-                Nombre
-              </Label>
-              <Input
-                id="edit-name-input"
-                ref={nameInputRef}
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                maxLength={NAME_MAX_LENGTH}
-                autoComplete="off"
-                autoFocus
-                placeholder="Tu nombre"
-                disabled={submitting}
-                className="h-11 text-[15px]"
-              />
-            </div>
-            <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setEditOpen(false)}
-                disabled={submitting}
-                className="min-h-11"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={!canSubmitName}
-                className="min-h-11"
-              >
-                Guardar
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
     </main>
   );
 }
@@ -675,5 +562,371 @@ function PrefRadio({
         </span>
       ) : null}
     </Label>
+  );
+}
+
+// ─── Categories card ───────────────────────────────────────────────────────
+/**
+ * CategoriesCard
+ *
+ * Owns the data fetch + create/edit/archive flows for the Categorías section.
+ * Lives inside the same file (rather than a separate component module) so the
+ * SUPABASE_ENABLED demo branch can keep the original mock styling without
+ * dragging the palette/icon mapping into the data layer.
+ *
+ * Demo mode (no envs): renders the legacy MOCK_CATEGORIES list with
+ * "Próximamente" toasts on tap — same UX the page shipped with originally.
+ *
+ * Live mode: fetches from Supabase via `listCategories()`, shows a small
+ * skeleton on first load, and opens a sheet to create or edit rows. System
+ * categories (user_id NULL) get a "Sistema" badge and open the sheet in
+ * read-only mode.
+ */
+function CategoriesCard() {
+  if (!SUPABASE_ENABLED) {
+    return <CategoriesCardMock />;
+  }
+  return <CategoriesCardLive />;
+}
+
+function CategoriesCardMock() {
+  return (
+    <Card className="overflow-hidden rounded-2xl border-border p-0">
+      <ul className="divide-y divide-border" role="list">
+        {MOCK_CATEGORIES.map((category) => {
+          const CategoryIcon = category.icon;
+          return (
+            <li key={category.id}>
+              <Link
+                href={`/settings/categories/${category.id}`}
+                aria-disabled
+                onClick={(e) => {
+                  e.preventDefault();
+                  toast("Próximamente", {
+                    description: "El detalle de categoría llega pronto.",
+                  });
+                }}
+                className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+              >
+                <div
+                  aria-hidden="true"
+                  className={cn(
+                    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
+                    CATEGORY_TINT[category.id],
+                  )}
+                >
+                  <CategoryIcon size={16} aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 text-[14px] font-semibold">
+                  {category.label}
+                </div>
+                <Tag
+                  size={14}
+                  className="text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <ChevronRight
+                  size={16}
+                  className="text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+function CategoriesCardLive() {
+  const [items, setItems] = React.useState<DbCategory[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  // Sheet state — only one sheet open at a time. `editing` is the row being
+  // edited; null means the create sheet (or no sheet) is the active one.
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<DbCategory | null>(null);
+
+  const reload = React.useCallback(async () => {
+    try {
+      const rows = await listCategories();
+      setItems(rows);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos cargar las categorías.";
+      toast.error(message);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listCategories();
+        if (!cancelled) setItems(rows);
+      } catch (err) {
+        if (cancelled) return;
+        const message =
+          err instanceof Error
+            ? err.message
+            : "No pudimos cargar las categorías.";
+        toast.error(message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Optimistic close for create/edit: dismiss the sheet BEFORE the round-trip
+  // so the UX feels instant. The list reloads on success; on failure we surface
+  // a toast and reload to discard any optimistic UI drift. We don't try to
+  // re-open the sheet on failure — the user keeps their work in toast context
+  // and can re-open without losing data (the form draft is already gone).
+  // Archive intentionally does NOT short-circuit close — it's destructive, so
+  // closing prematurely would make rollback confusing.
+  async function handleCreate(draft: {
+    name: string;
+    kind: "expense" | "income";
+    icon: string;
+  }) {
+    setCreateOpen(false);
+    setSubmitting(true);
+    try {
+      await createCategory({
+        name: draft.name,
+        kind: draft.kind,
+        icon: draft.icon,
+      });
+      toast.success("Categoría creada");
+      await reload();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No pudimos crear la categoría.";
+      toast.error(message);
+      await reload();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleEdit(patch: { name: string; icon: string }) {
+    if (!editing) return;
+    const target = editing;
+    setEditing(null);
+    setSubmitting(true);
+    try {
+      await updateCategory(target.id, patch);
+      toast.success("Categoría actualizada");
+      await reload();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos actualizar la categoría.";
+      toast.error(message);
+      await reload();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!editing) return;
+    setSubmitting(true);
+    try {
+      await archiveCategory(editing.id);
+      setEditing(null);
+      toast.success("Categoría archivada");
+      await reload();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos archivar la categoría.";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Hint card sits ABOVE the list when the user has only system rows. Once
+  // they create their first custom category we drop it. Subtle & calm — no
+  // empty-screen drama since the system rows already render below.
+  const hasUserCategories = items.some((row) => row.user_id !== null);
+  const showFirstCustomHint = !loading && items.length > 0 && !hasUserCategories;
+
+  return (
+    <>
+      {showFirstCustomHint ? (
+        <Card className="mb-3 rounded-2xl border-dashed border-border bg-[var(--color-primary-soft)]/30 p-4">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-card text-[var(--color-primary-soft-foreground)] shadow-[var(--shadow-xs)]"
+            >
+              <Plus size={14} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold leading-snug">
+                Tus categorías personalizadas aparecen acá.
+              </p>
+              <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+                Agregá las que uses seguido para capturar más rápido.
+              </p>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="mt-2 inline-flex min-h-9 items-center text-[12px] font-semibold text-foreground underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                Crear la primera
+              </button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      <Card className="overflow-hidden rounded-2xl border-border p-0">
+        {/* Add button — full-width header row above the list */}
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          aria-label="Agregar categoría"
+          className="flex min-h-[52px] w-full items-center gap-2 border-b border-border px-4 py-3 text-left text-[13px] font-semibold text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+        >
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+          >
+            <Plus size={14} aria-hidden="true" />
+          </span>
+          Agregar categoría
+        </button>
+
+        {loading ? (
+          <CategoriesSkeleton />
+        ) : items.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+            No tenés categorías todavía.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border" role="list">
+            {items.map((row) => {
+              const Icon = getCategoryIcon(row.icon);
+              const isSystem = row.user_id === null;
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(row)}
+                    aria-label={`Editar categoría ${row.name}`}
+                    className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+                      style={
+                        row.color
+                          ? {
+                              backgroundColor: `${row.color}1f`,
+                              color: row.color,
+                            }
+                          : undefined
+                      }
+                    >
+                      <Icon size={16} aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[14px] font-semibold">
+                        {row.name}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {row.kind === "income" ? "Ingreso" : "Gasto"}
+                      </div>
+                    </div>
+                    {isSystem ? (
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                        Sistema
+                      </span>
+                    ) : null}
+                    <ChevronRight
+                      size={16}
+                      className="text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
+      {/* Create sheet */}
+      <CategoryFormSheet
+        mode="create"
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (submitting && !open) return;
+          setCreateOpen(open);
+        }}
+        submitting={submitting}
+        onSubmit={handleCreate}
+      />
+
+      {/* Edit sheet — only mounted when a row is selected so the sheet's
+          internal form state resets cleanly between rows. */}
+      {editing ? (
+        <CategoryFormSheet
+          mode="edit"
+          open={true}
+          onOpenChange={(open) => {
+            if (submitting && !open) return;
+            if (!open) setEditing(null);
+          }}
+          submitting={submitting}
+          readOnly={editing.user_id === null}
+          initial={{
+            name: editing.name,
+            icon: editing.icon,
+            kind: editing.kind,
+          }}
+          onSubmit={handleEdit}
+          onArchive={handleArchive}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CategoriesSkeleton() {
+  // Four shimmer rows mirroring the real row layout (icon + 2-line text +
+  // chevron placeholder). Widths vary per row so it reads as data, not a bar
+  // chart. The shimmer keyframe lives in globals.css.
+  const widths = ["w-32", "w-24", "w-40", "w-28"];
+  return (
+    <ul
+      className="divide-y divide-border"
+      role="list"
+      aria-busy="true"
+      aria-label="Cargando categorías"
+    >
+      {widths.map((w, i) => (
+        <li key={i} className="flex min-h-[56px] items-center gap-3 px-4 py-3">
+          <Skeleton className="h-9 w-9 flex-shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <Skeleton className={cn("h-3 rounded", w)} />
+            <Skeleton className="h-2 w-12 rounded" />
+          </div>
+          <Skeleton className="h-3 w-3 rounded" />
+        </li>
+      ))}
+    </ul>
   );
 }

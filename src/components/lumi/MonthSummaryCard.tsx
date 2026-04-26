@@ -42,6 +42,8 @@ export interface MonthSummaryCardProps {
   filter?: MonthFilter;
   /** When provided, Gasto/Ingreso cells become tappable buttons. */
   onFilterChange?: (filter: MonthFilter) => void;
+  /** When provided, a compact PEN/USD pill appears in the card header. */
+  onCurrencyToggle?: () => void;
   className?: string;
 }
 
@@ -220,6 +222,7 @@ export function MonthSummaryCard({
   incomeDelta,
   filter = "all",
   onFilterChange,
+  onCurrencyToggle,
   className,
 }: MonthSummaryCardProps) {
   const net = income - spent;
@@ -258,15 +261,34 @@ export function MonthSummaryCard({
       )}
     >
       {/* Eyebrow — also carries the comparison ("comparado con marzo") so the
-          delta chips below stay compact (icon + %) and never line-wrap. */}
+          delta chips below stay compact (icon + %) and never line-wrap.
+          The currency pill (when provided) sits at the right edge so the
+          per-card money lever lives next to the numbers it controls, not in
+          the global header. */}
       <div className="flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         <span className="inline-flex items-center gap-2">
           <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
           {eyebrow}
         </span>
-        <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/80">
-          {comparison}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/80">
+            {comparison}
+          </span>
+          {onCurrencyToggle ? (
+            <button
+              type="button"
+              onClick={onCurrencyToggle}
+              aria-label={`Cambiar moneda (actualmente ${currency})`}
+              aria-pressed={currency === "USD"}
+              className="inline-flex h-7 items-center justify-center rounded-full border border-border bg-card px-2.5 text-[11px] font-semibold normal-case tracking-normal transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden="true">{currency === "PEN" ? "S/" : "$"}</span>
+              <span className="ml-1 text-muted-foreground font-medium">
+                {currency}
+              </span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* HERO: NETO. The single most important number — "how am I doing this

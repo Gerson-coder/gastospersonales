@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionProvider } from "@/lib/use-session";
 
 /**
  * Suppresses a known upstream noise from vaul (the lib that powers shadcn
@@ -49,8 +50,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      {children}
-      <Toaster richColors position="top-center" />
+      <SessionProvider>
+        {children}
+        <Toaster richColors position="top-center" />
+      </SessionProvider>
     </ThemeProvider>
   );
 }

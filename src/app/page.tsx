@@ -5,9 +5,10 @@
  * live behind this gate:
  *
  *   1. Supabase wired (envs PRESENT) → we ask the browser client whether a
- *      session cookie is alive. If yes, /dashboard. If no, /login.
- *      A cleared `lumi-user-name` is fine — the user is logged in but hasn't
- *      picked a display name yet, and Settings will let them set one.
+ *      session cookie is alive. If yes, we peek at `profiles.display_name`:
+ *      a NULL value means the user verified email but never finished
+ *      onboarding, so we send them to /welcome; otherwise /dashboard.
+ *      A profile read error falls through to /dashboard rather than blocking.
  *
  *   2. Supabase missing (envs ABSENT, demo build) → fall back to the legacy
  *      localStorage gate so `npm run dev` without `.env.local` keeps working.
@@ -53,7 +54,23 @@ export default function Home() {
           const { data } = await supabase.auth.getSession();
           if (cancelled) return;
           if (data.session) {
-            router.replace("/dashboard");
+            // Authenticated — pick /welcome vs /dashboard the same way the
+            // /auth/callback handler does, so a user who lands on `/` after
+            // verifying email gets the orientation flow exactly once.
+            let target = "/dashboard";
+            try {
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("display_name")
+                .eq("id", data.session.user.id)
+                .maybeSingle();
+              if (profile && profile.display_name === null) {
+                target = "/welcome";
+              }
+            } catch {
+              // Profile read failed — keep the safe default of /dashboard.
+            }
+            if (!cancelled) router.replace(target);
             return;
           }
           // No live session: fall through to the localStorage check so the

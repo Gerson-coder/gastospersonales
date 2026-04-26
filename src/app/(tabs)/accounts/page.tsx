@@ -1,19 +1,22 @@
-// TODO: wire to Supabase accounts table once Batch C lands. CRUD operations land in a later change.
 /**
  * Accounts route — Lumi
  *
- * Focused payment-accounts screen. The previous "/accounts" page held the full
- * settings panel; that lives now under "/settings". Users reach Settings via
- * the gear icon in the top-right header here.
+ * Focused payment-accounts screen. Wired to Supabase `accounts` via the
+ * `@/lib/data/accounts` data layer (Batch C — accounts CRUD). When Supabase
+ * env vars are missing we keep the original mock list so the app stays
+ * usable in demo mode.
  *
- * Mobile-first, desktop max-w-3xl centered. All data is mocked until Batch C
- * (Supabase) lands.
+ * Balances are intentionally omitted from this screen until the transactions
+ * table wiring lands — the DB has no `balance` column; balances are derived.
+ * The previous "Saldo total" card is replaced with a friendly placeholder.
+ *
+ * Mobile-first, desktop max-w-3xl centered. Settings is one tap away via the
+ * gear icon in the header.
  */
 
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -21,34 +24,53 @@ import {
   Landmark,
   ChevronRight,
   Plus,
-  Settings as SettingsIcon,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import {
+  archiveAccount,
+  createAccount,
+  listAccounts,
+  updateAccount,
+  type Account,
+  type AccountKind,
+  type Currency,
+} from "@/lib/data/accounts";
 
-// ─── Types ────────────────────────────────────────────────────────────────
-type Currency = "PEN" | "USD";
-type AccountKind = "cash" | "card" | "bank";
-
-type Account = {
-  id: string;
-  label: string;
-  currency: Currency;
-  kind: AccountKind;
-  balance: number;
-};
+// ─── Demo mode flag ───────────────────────────────────────────────────────
+// Mirrors `useSession` and `/login`: when env vars are absent we skip the
+// data-layer entirely and surface the original mocks so the app stays
+// browseable.
+const SUPABASE_ENABLED =
+  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // ─── Constants ────────────────────────────────────────────────────────────
-// Mock data — same shape that Supabase will hand us in Batch C.
+// Demo-mode mock list. Same shape as `Account` from the data layer.
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "a1", label: "Efectivo", currency: "PEN", kind: "cash", balance: 320.5 },
-  { id: "a2", label: "BCP Soles", currency: "PEN", kind: "bank", balance: 4820.75 },
-  { id: "a3", label: "Visa BBVA", currency: "PEN", kind: "card", balance: -640.2 },
-  { id: "a4", label: "BCP Dólares", currency: "USD", kind: "bank", balance: 1250 },
+  { id: "a1", label: "Efectivo", currency: "PEN", kind: "cash" },
+  { id: "a2", label: "BCP Soles", currency: "PEN", kind: "bank" },
+  { id: "a3", label: "Visa BBVA", currency: "PEN", kind: "card" },
+  { id: "a4", label: "BCP Dólares", currency: "USD", kind: "bank" },
 ];
 
 const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
@@ -66,58 +88,82 @@ const ACCOUNT_KIND_ICON: Record<
   bank: Landmark,
 };
 
-/**
- * Warm-neutral tints for account icons. Mirrors the Dashboard/Movements
- * `CATEGORY_TINT` palette technique (subtle oklch washes) but keeps the
- * accounts screen visually calmer than the rainbow categories list.
- */
 const ACCOUNT_TINT: Record<AccountKind, string> = {
   cash: "bg-[oklch(0.92_0.04_70)] text-[oklch(0.45_0.10_70)]",
   card: "bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]",
   bank: "bg-[oklch(0.92_0.03_140)] text-[oklch(0.45_0.10_140)]",
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-function formatBalance(amount: number, currency: Currency): string {
-  const symbol = currency === "PEN" ? "S/" : "$";
-  const formatted = new Intl.NumberFormat("es-PE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
-  const sign = amount < 0 ? "-" : "";
-  return `${sign}${symbol} ${formatted}`;
-}
-
-/**
- * Sum balances per currency. Mixing PEN + USD into a single number is wrong,
- * so we surface them side-by-side. When Supabase lands we'll convert via the
- * user's preferred currency, but for now keep them honest and separate.
- */
-function totalsByCurrency(accounts: Account[]): Record<Currency, number> {
-  return accounts.reduce(
-    (acc, a) => {
-      acc[a.currency] += a.balance;
-      return acc;
-    },
-    { PEN: 0, USD: 0 } as Record<Currency, number>,
-  );
-}
+const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank"];
+const CURRENCY_OPTIONS: Currency[] = ["PEN", "USD"];
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function AccountsPage() {
-  const totals = React.useMemo(() => totalsByCurrency(MOCK_ACCOUNTS), []);
+  const [accounts, setAccounts] = React.useState<Account[]>(
+    SUPABASE_ENABLED ? [] : MOCK_ACCOUNTS,
+  );
+  const [loading, setLoading] = React.useState<boolean>(SUPABASE_ENABLED);
+  const [editing, setEditing] = React.useState<Account | null>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
 
-  function handleEditAccount(label: string) {
-    toast("Próximamente", {
-      description: `La edición de "${label}" llega en la próxima fase.`,
-    });
+  const reload = React.useCallback(async () => {
+    if (!SUPABASE_ENABLED) return;
+    try {
+      const list = await listAccounts();
+      setAccounts(list);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No pudimos cargar tus cuentas.";
+      toast.error("Error al cargar cuentas", { description: msg });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listAccounts();
+        if (!cancelled) setAccounts(list);
+      } catch (err) {
+        if (cancelled) return;
+        const msg =
+          err instanceof Error ? err.message : "No pudimos cargar tus cuentas.";
+        toast.error("Error al cargar cuentas", { description: msg });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleEditAccount(acc: Account) {
+    if (!SUPABASE_ENABLED) {
+      toast("Próximamente", {
+        description: `La edición de "${acc.label}" llega cuando conectes Supabase.`,
+      });
+      return;
+    }
+    setEditing(acc);
   }
 
   function handleAddAccount() {
-    toast("Próximamente", {
-      description: "Agregar cuentas llega en la próxima fase.",
-    });
+    if (!SUPABASE_ENABLED) {
+      toast("Próximamente", {
+        description: "Agregar cuentas llega cuando conectes Supabase.",
+      });
+      return;
+    }
+    setCreateOpen(true);
   }
+
+  // Show the diversification hint only when the user has exactly one account
+  // (the auto-seeded Efectivo). Two or more = they've already set things up.
+  const showDiversifyHint = !loading && accounts.length === 1;
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
@@ -128,34 +174,20 @@ export default function AccountsPage() {
           title="Cuentas"
           titleStyle="page"
           className="px-0 pt-0"
-          actionsBefore={
-            <Link
-              href="/settings"
-              aria-label="Abrir ajustes"
-              className={cn(
-                "inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground",
-                "transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              )}
-            >
-              <SettingsIcon size={16} aria-hidden="true" />
-            </Link>
-          }
         />
 
-        {/* Totals summary */}
-        <section aria-labelledby="accounts-total" className="mt-2">
+        {/* Balances placeholder — the previous "Saldo total" lived here. The
+            DB has no balance column; balances will be derived from
+            `transactions` once that wiring lands. Until then, a calm hint. */}
+        <section aria-labelledby="accounts-balances-placeholder" className="mt-2">
           <h2
-            id="accounts-total"
+            id="accounts-balances-placeholder"
             className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
           >
             Saldo total
           </h2>
-          <Card className="rounded-2xl border-border p-5">
-            <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-              <TotalRow label="Soles" amount={totals.PEN} currency="PEN" />
-              <Separator className="md:hidden" />
-              <TotalRow label="Dólares" amount={totals.USD} currency="USD" />
-            </div>
+          <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
+            Tus saldos aparecen acá cuando registres movimientos.
           </Card>
         </section>
 
@@ -168,60 +200,73 @@ export default function AccountsPage() {
             Tus cuentas
           </h2>
           <Card className="overflow-hidden rounded-2xl border-border p-0">
-            <ul className="divide-y divide-border" role="list">
-              {MOCK_ACCOUNTS.map((account) => {
-                const KindIcon = ACCOUNT_KIND_ICON[account.kind];
-                return (
-                  <li key={account.id}>
-                    <div className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3">
-                      <div
-                        aria-hidden="true"
-                        className={cn(
-                          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl",
-                          ACCOUNT_TINT[account.kind],
-                        )}
-                      >
-                        <KindIcon size={18} aria-hidden />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[14px] font-semibold">
-                          {account.label}
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {ACCOUNT_KIND_LABEL[account.kind]} · {account.currency}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span
-                          className={cn(
-                            "text-[14px] font-semibold tabular-nums",
-                            account.balance < 0 && "text-destructive",
-                          )}
-                        >
-                          {formatBalance(account.balance, account.currency)}
-                        </span>
-                      </div>
+            {loading ? (
+              <AccountsSkeleton />
+            ) : accounts.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Todavía no tenés cuentas. Tocá <span className="font-semibold">Agregar cuenta</span> para crear una.
+              </div>
+            ) : (
+              <ul className="divide-y divide-border" role="list">
+                {accounts.map((account) => {
+                  const KindIcon = ACCOUNT_KIND_ICON[account.kind];
+                  return (
+                    <li key={account.id}>
                       <button
                         type="button"
-                        onClick={(e) => {
-                          // Destinations don't exist yet; surface the placeholder.
-                          e.preventDefault();
-                          handleEditAccount(account.label);
-                        }}
+                        onClick={() => handleEditAccount(account)}
                         aria-label={`Editar ${account.label}`}
                         className={cn(
-                          "ml-2 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground",
-                          "transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:outline-none",
+                          "flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left transition-colors",
+                          "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
                         )}
                       >
-                        <ChevronRight size={16} aria-hidden="true" />
+                        <div
+                          aria-hidden="true"
+                          className={cn(
+                            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl",
+                            ACCOUNT_TINT[account.kind],
+                          )}
+                        >
+                          <KindIcon size={18} aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[14px] font-semibold">
+                            {account.label}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {account.currency} · {ACCOUNT_KIND_LABEL[account.kind]}
+                          </div>
+                        </div>
+                        <ChevronRight
+                          size={16}
+                          aria-hidden="true"
+                          className="ml-2 flex-shrink-0 text-muted-foreground"
+                        />
                       </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </Card>
+
+          {/* Diversification hint — only when there's exactly one account.
+              Calm, dismiss-by-action: tap "Agregar otra" to open create. */}
+          {showDiversifyHint ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-3.5">
+              <p className="text-[13px] leading-snug text-foreground">
+                Te conviene tener al menos una tarjeta o banco también.
+              </p>
+              <button
+                type="button"
+                onClick={handleAddAccount}
+                className="mt-1.5 inline-flex min-h-9 items-center text-[12px] font-semibold text-foreground underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                Agregar otra cuenta
+              </button>
+            </div>
+          ) : null}
         </section>
 
         {/* Add account */}
@@ -237,33 +282,406 @@ export default function AccountsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Create sheet */}
+      <AccountFormSheet
+        mode="create"
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onOptimisticClose={() => setCreateOpen(false)}
+        reload={reload}
+      />
+
+      {/* Edit sheet — only mounted when a row is selected so the form state
+          resets cleanly between rows (the sheet's draft state is keyed off
+          mount, not the open prop). */}
+      {editing ? (
+        <AccountFormSheet
+          mode="edit"
+          account={editing}
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+          onOptimisticClose={() => setEditing(null)}
+          reload={reload}
+        />
+      ) : null}
     </main>
   );
 }
 
-// ─── Subcomponents ─────────────────────────────────────────────────────────
-function TotalRow({
-  label,
-  amount,
-  currency,
-}: {
-  label: string;
-  amount: number;
-  currency: Currency;
-}) {
+// ─── Skeleton ─────────────────────────────────────────────────────────────
+function AccountsSkeleton() {
+  // Three shimmer rows mirroring the real account row layout (icon tile +
+  // 2-line text + chevron placeholder).
+  const widths = ["w-28", "w-36", "w-24"];
   return (
-    <div className="flex items-baseline justify-between gap-3 md:flex-col md:items-start md:gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "text-xl font-bold tabular-nums md:text-2xl",
-          amount < 0 && "text-destructive",
-        )}
+    <ul
+      className="divide-y divide-border"
+      role="list"
+      aria-busy="true"
+      aria-label="Cargando cuentas"
+    >
+      {widths.map((w, i) => (
+        <li key={i}>
+          <div className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3">
+            <Skeleton className="h-10 w-10 flex-shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className={cn("h-3.5 rounded", w)} />
+              <Skeleton className="h-2.5 w-16 rounded" />
+            </div>
+            <Skeleton className="h-3 w-3 rounded" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ─── Form sheet ────────────────────────────────────────────────────────────
+type AccountFormSheetProps = {
+  mode: "create" | "edit";
+  open: boolean;
+  account?: Account | null;
+  onOpenChange: (open: boolean) => void;
+  /** Close the sheet from the parent (used by the optimistic submit path). */
+  onOptimisticClose: () => void;
+  /** Refresh the parent list after a successful or failed write. */
+  reload: () => Promise<void>;
+};
+
+function AccountFormSheet({
+  mode,
+  open,
+  account,
+  onOpenChange,
+  onOptimisticClose,
+  reload,
+}: AccountFormSheetProps) {
+  const [label, setLabel] = React.useState("");
+  const [kind, setKind] = React.useState<AccountKind>("cash");
+  const [currency, setCurrency] = React.useState<Currency>("PEN");
+  const [submitting, setSubmitting] = React.useState(false);
+  // Validation only surfaces after the user touches Save once.
+  const [showError, setShowError] = React.useState(false);
+  // Inline archive confirm — opens a small "¿Archivar?" row in-place.
+  const [archiveArmed, setArchiveArmed] = React.useState(false);
+  const labelRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Re-seed form values whenever the sheet opens (or the target account
+  // changes). Reset transient validation/confirm state too, so a previous
+  // abort doesn't pre-arm the next session — covers swipe/escape close as
+  // well as the explicit Cancelar button.
+  React.useEffect(() => {
+    if (!open) return;
+    if (mode === "edit" && account) {
+      setLabel(account.label);
+      setKind(account.kind);
+      setCurrency(account.currency);
+    } else {
+      setLabel("");
+      setKind("cash");
+      setCurrency("PEN");
+    }
+    setShowError(false);
+    setArchiveArmed(false);
+    const id = window.requestAnimationFrame(() => {
+      labelRef.current?.focus();
+      if (mode === "edit") labelRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open, mode, account]);
+
+  const trimmed = label.trim();
+  const labelInvalid = trimmed.length === 0;
+
+  // Optimistic close pattern: dismiss the sheet BEFORE the round-trip so the
+  // UX feels instant. We surface a toast on either path and reload to
+  // reconcile any drift. Archive does NOT short-circuit close — destructive
+  // ops keep the user in context until confirmed.
+  async function handleSubmit() {
+    if (submitting) return;
+    if (labelInvalid) {
+      setShowError(true);
+      labelRef.current?.focus();
+      return;
+    }
+    const action = mode;
+    const targetId = account?.id;
+    onOptimisticClose();
+    setSubmitting(true);
+    try {
+      if (action === "create") {
+        await createAccount({ label: trimmed, kind, currency });
+        toast.success("Cuenta creada");
+      } else if (targetId) {
+        await updateAccount(targetId, { label: trimmed, kind, currency });
+        toast.success("Cuenta actualizada");
+      }
+      await reload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No pudimos guardar la cuenta.";
+      toast.error("No se pudo guardar", { description: msg });
+      await reload();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleArchiveClick() {
+    if (!account || submitting) return;
+    if (!archiveArmed) {
+      setArchiveArmed(true);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await archiveAccount(account.id);
+      toast.success("Cuenta archivada");
+      onOpenChange(false);
+      await reload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No pudimos archivar la cuenta.";
+      toast.error("No se puede archivar", { description: msg });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const title = mode === "create" ? "Nueva cuenta" : "Editar cuenta";
+  const description =
+    mode === "create"
+      ? "Dale un nombre, tipo y moneda."
+      : "Actualizá nombre, tipo o moneda. También podés archivarla.";
+
+  const errorId = "account-label-error";
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        // Block close while submitting so an in-flight archive can finish.
+        if (submitting && !next) return;
+        onOpenChange(next);
+      }}
+    >
+      <SheetContent
+        side="bottom"
+        aria-labelledby="account-form-title"
+        className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-md"
       >
-        {formatBalance(amount, currency)}
-      </span>
-    </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSubmit();
+          }}
+          aria-busy={submitting}
+        >
+          <SheetHeader className="px-0">
+            <SheetTitle id="account-form-title">{title}</SheetTitle>
+            <SheetDescription>{description}</SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-2 flex flex-col gap-4 px-0 pb-2">
+            <div>
+              <Label
+                htmlFor="account-label"
+                className="mb-1.5 block text-[13px] font-semibold"
+              >
+                Nombre
+              </Label>
+              <Input
+                id="account-label"
+                ref={labelRef}
+                value={label}
+                onChange={(e) => {
+                  setLabel(e.target.value);
+                  if (showError && e.target.value.trim().length > 0) {
+                    setShowError(false);
+                  }
+                }}
+                onBlur={() => {
+                  if (labelInvalid) setShowError(true);
+                }}
+                placeholder="Ej. Efectivo, BCP Soles, Visa…"
+                maxLength={60}
+                autoComplete="off"
+                disabled={submitting}
+                aria-invalid={showError && labelInvalid}
+                aria-describedby={
+                  showError && labelInvalid ? errorId : undefined
+                }
+                className={cn(
+                  "h-11 text-[15px]",
+                  showError && labelInvalid && "border-destructive focus-visible:ring-destructive",
+                )}
+              />
+              {showError && labelInvalid ? (
+                <span
+                  id={errorId}
+                  role="alert"
+                  className="mt-1.5 block text-[12px] font-medium text-destructive"
+                >
+                  Necesita un nombre para guardarla.
+                </span>
+              ) : null}
+            </div>
+
+            <fieldset>
+              <legend className="mb-1.5 text-[13px] font-semibold">Tipo</legend>
+              <RadioGroup
+                value={kind}
+                onValueChange={(v) => setKind(v as AccountKind)}
+                className="grid grid-cols-3 gap-2"
+              >
+                {KIND_OPTIONS.map((k) => {
+                  const Icon = ACCOUNT_KIND_ICON[k];
+                  const selected = kind === k;
+                  return (
+                    <label
+                      key={k}
+                      className={cn(
+                        "flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] transition-colors",
+                        "focus-within:ring-2 focus-within:ring-ring",
+                        selected
+                          ? "border-foreground bg-muted text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <RadioGroupItem
+                        value={k}
+                        className="sr-only"
+                        disabled={submitting}
+                      />
+                      <Icon size={16} aria-hidden />
+                      <span className="font-semibold">
+                        {ACCOUNT_KIND_LABEL[k]}
+                      </span>
+                    </label>
+                  );
+                })}
+              </RadioGroup>
+            </fieldset>
+
+            <fieldset>
+              <legend className="mb-1.5 text-[13px] font-semibold">
+                Moneda
+              </legend>
+              <RadioGroup
+                value={currency}
+                onValueChange={(v) => setCurrency(v as Currency)}
+                className="grid grid-cols-2 gap-2"
+              >
+                {CURRENCY_OPTIONS.map((c) => {
+                  const selected = currency === c;
+                  return (
+                    <label
+                      key={c}
+                      className={cn(
+                        "flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors",
+                        "focus-within:ring-2 focus-within:ring-ring",
+                        selected
+                          ? "border-foreground bg-muted text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <RadioGroupItem
+                        value={c}
+                        className="sr-only"
+                        disabled={submitting}
+                      />
+                      {c}
+                    </label>
+                  );
+                })}
+              </RadioGroup>
+            </fieldset>
+
+            {/* Inline archive confirm — keeps the destructive action calm
+                and reversible without stacking sheets. */}
+            {mode === "edit" && account && archiveArmed ? (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-2xl border border-destructive/30 bg-[var(--color-destructive-soft)] px-3.5 py-3 text-[13px] text-foreground"
+              >
+                <p className="font-semibold leading-snug">
+                  ¿Archivar esta cuenta?
+                </p>
+                <p className="text-[12px] leading-snug text-muted-foreground">
+                  La ocultamos de las listas. Tus movimientos pasados la
+                  conservan.
+                </p>
+                <div className="mt-1 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setArchiveArmed(false)}
+                    disabled={submitting}
+                    className="min-h-9 flex-1"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => void handleArchiveClick()}
+                    disabled={submitting}
+                    className="min-h-9 flex-1"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 size={14} aria-hidden className="animate-spin" />
+                        <span className="ml-1.5">Archivando…</span>
+                      </>
+                    ) : (
+                      "Archivar"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <SheetFooter className="px-0 flex-col-reverse gap-2 md:flex-row md:justify-end">
+            {mode === "edit" && account && !archiveArmed ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleArchiveClick()}
+                disabled={submitting}
+                className="min-h-11 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 size={14} aria-hidden="true" className="mr-1.5" />
+                Archivar
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={submitting} className="min-h-11">
+              {submitting ? (
+                <>
+                  <Loader2 size={14} aria-hidden className="animate-spin" />
+                  <span className="ml-1.5">Guardando…</span>
+                </>
+              ) : mode === "create" ? (
+                "Crear cuenta"
+              ) : (
+                "Guardar cambios"
+              )}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }

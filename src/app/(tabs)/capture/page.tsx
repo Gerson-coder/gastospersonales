@@ -58,32 +58,54 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { listAccounts, type Account as DataAccount } from "@/lib/data/accounts";
+import {
+  listCategories,
+  type Category as DbCategory,
+} from "@/lib/data/categories";
+import { getCategoryIcon } from "@/lib/category-icons";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Demo-mode flag — when env vars are absent, fall back to the inline
+// MOCK_ACCOUNTS rather than hitting Supabase. Mirrors the same gate used by
+// `useSession` and `/login`.
+const SUPABASE_ENABLED =
+  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
 type Kind = "expense" | "income";
 
-type CategoryId =
-  | "food"
-  | "transport"
-  | "home"
-  | "health"
-  | "fun"
-  | "utilities"
-  | "edu"
-  | "savings"
-  | "work"
-  | "other";
+// Category IDs are opaque strings — uuid in real mode, the mock keys in demo.
+type CategoryId = string;
 
 type Category = {
   id: CategoryId;
   label: string;
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
-  // Default kind suggested by the category — "Trabajo" defaults to income.
+  // Default kind suggested by the category — income for things like "Trabajo".
   defaultKind: Kind;
 };
 
-type AccountId = "cash" | "card" | "bank";
+/**
+ * Map a DB category row → the local Category shape used by chips/drawer.
+ * Resolves the kebab-case Lucide icon name to a real component, defaulting to
+ * Circle when the row's icon is unknown or null.
+ */
+function fromDbCategory(c: DbCategory): Category {
+  return {
+    id: c.id,
+    label: c.name,
+    Icon: getCategoryIcon(c.icon),
+    defaultKind: c.kind,
+  };
+}
+
+// Account IDs are opaque strings — uuid in real mode, the mock keys in demo.
+type AccountId = string;
 type Account = {
   id: AccountId;
   label: string;
@@ -91,6 +113,27 @@ type Account = {
   currency: Currency;
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
+
+// Map an account kind to its icon. Used to "rehydrate" the lucide icon for
+// rows that come from the data layer (which doesn't carry React components).
+const ACCOUNT_KIND_ICON: Record<
+  Account["kind"],
+  React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>
+> = {
+  cash: Wallet,
+  card: CreditCard,
+  bank: Landmark,
+};
+
+function fromDataAccount(a: DataAccount): Account {
+  return {
+    id: a.id,
+    label: a.label,
+    kind: a.kind,
+    currency: a.currency,
+    Icon: ACCOUNT_KIND_ICON[a.kind],
+  };
+}
 
 // ─── Mock data ────────────────────────────────────────────────────────────
 const MOCK_CATEGORIES: Category[] = [
@@ -112,7 +155,10 @@ const MOCK_ACCOUNTS: Account[] = [
   { id: "bank", label: "Banco", kind: "bank", currency: "USD", Icon: Landmark },
 ];
 
-// MRU mock — first three categories shown inline above the keypad.
+// MRU mock — first three categories shown inline above the keypad in demo
+// mode. In real mode we default the strip to the first 3 expense categories
+// alphabetically (see CapturePage). TODO: replace with real MRU based on
+// transaction history once that data layer lands.
 const MRU_CATEGORY_IDS: CategoryId[] = ["food", "transport", "fun"];
 
 // ─── Money formatting ─────────────────────────────────────────────────────
@@ -268,8 +314,83 @@ export default function CapturePage() {
   const [amountBuffer, setAmountBuffer] = React.useState("");
   const [currency, setCurrency] = React.useState<Currency>("PEN");
   const [kind, setKind] = React.useState<Kind>("expense");
-  const [categoryId, setCategoryId] = React.useState<CategoryId>("food");
-  const [accountId, setAccountId] = React.useState<AccountId>("cash");
+  // Categories — same demo-vs-live split as accounts. In live mode we start
+  // with an empty list + skeleton chips; in demo we seed from the inline mocks
+  // so the keypad screen renders immediately without env vars.
+  const [categories, setCategories] = React.useState<Category[]>(
+    SUPABASE_ENABLED ? [] : MOCK_CATEGORIES,
+  );
+  const [categoriesLoading, setCategoriesLoading] = React.useState<boolean>(
+    SUPABASE_ENABLED,
+  );
+  const [categoryId, setCategoryId] = React.useState<CategoryId | null>(
+    SUPABASE_ENABLED ? null : "food",
+  );
+
+  // Load real categories when Supabase is configured. Kept as a dedicated
+  // effect (separate from accounts) to keep the demo branch trivial.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listCategories();
+        if (cancelled) return;
+        const mapped = rows.map(fromDbCategory);
+        setCategories(mapped);
+        // Default-select the first expense category alphabetically — same
+        // ordering as the MRU strip below. Falls back to the first row of
+        // any kind, then null.
+        const firstExpense = mapped.find((c) => c.defaultKind === "expense");
+        setCategoryId((prev) => prev ?? firstExpense?.id ?? mapped[0]?.id ?? null);
+      } catch {
+        // Soft-fail: empty list, picker shows "Sin categorías".
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Account list — in demo mode we seed with the inline mocks so the picker
+  // works without env vars; in real mode we fetch via the data layer in a
+  // dedicated effect (kept separate from the categories effect to minimise
+  // merge conflicts with the parallel categories-wiring change).
+  const [accounts, setAccounts] = React.useState<Account[]>(
+    SUPABASE_ENABLED ? [] : MOCK_ACCOUNTS,
+  );
+  const [accountsLoading, setAccountsLoading] = React.useState<boolean>(SUPABASE_ENABLED);
+  // `null` until we know which account to default-select. The first effect
+  // tick (or the inline mocks) seeds it to the first account in the list.
+  const [accountId, setAccountId] = React.useState<AccountId | null>(
+    SUPABASE_ENABLED ? null : MOCK_ACCOUNTS[0]?.id ?? null,
+  );
+
+  // Load real accounts when Supabase is configured. Separate effect from any
+  // categories loader so two parallel agents don't fight over the same hook.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listAccounts();
+        if (cancelled) return;
+        const mapped = list.map(fromDataAccount);
+        setAccounts(mapped);
+        // Default-select the first active account (post-fetch, never hardcoded).
+        setAccountId((prev) => prev ?? mapped[0]?.id ?? null);
+      } catch {
+        // Soft-fail: keep accounts empty; the picker shows an empty state.
+      } finally {
+        if (!cancelled) setAccountsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [note, setNote] = React.useState("");
   const [categoryDrawerOpen, setCategoryDrawerOpen] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
@@ -285,16 +406,31 @@ export default function CapturePage() {
   const ready = amount > 0;
   const display = displayAmount(amountBuffer, currency);
 
-  const category = MOCK_CATEGORIES.find((c) => c.id === categoryId) ?? MOCK_CATEGORIES[0];
-  const account = MOCK_ACCOUNTS.find((a) => a.id === accountId) ?? MOCK_ACCOUNTS[0];
+  // `category` may be null briefly while we wait for the first fetch tick or
+  // if the user has no categories at all. Downstream code coalesces.
+  const category: Category | null =
+    categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  // `account` may be null briefly while we wait for the first fetch tick.
+  // The picker chip shows a skeleton in that window; downstream consumers
+  // (saveAriaLabel, save handler) coalesce to safe defaults.
+  const account: Account | null =
+    accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
 
-  const mruCategories = React.useMemo(
-    () =>
-      MRU_CATEGORY_IDS.map((id) => MOCK_CATEGORIES.find((c) => c.id === id)).filter(
-        (c): c is Category => Boolean(c),
-      ),
-    [],
-  );
+  // MRU strip. In demo mode we honour the original mock IDs ("food",
+  // "transport", "fun") so the keypad screen looks unchanged. In live mode
+  // we fall back to the first 3 expense categories alphabetically — proper
+  // MRU based on transaction history is a TODO for after the data model
+  // exposes it.
+  const mruCategories = React.useMemo<Category[]>(() => {
+    if (!SUPABASE_ENABLED) {
+      return MRU_CATEGORY_IDS.map((id) =>
+        categories.find((c) => c.id === id),
+      ).filter((c): c is Category => Boolean(c));
+    }
+    return categories
+      .filter((c) => c.defaultKind === "expense")
+      .slice(0, 3);
+  }, [categories]);
 
   const press = React.useCallback((k: KeypadKey) => {
     setAmountBuffer((s) => {
@@ -320,10 +456,12 @@ export default function CapturePage() {
     // place we touch Date — keeps SSR output deterministic.
     const ts = Date.now();
     setSaved({ ts });
-    // Reset form for the next entry.
+    // Reset form for the next entry. Drop back to the default category if we
+    // can identify one — otherwise let the next category-fetch tick re-seed.
     setAmountBuffer("");
     setNote("");
-    setCategoryId("food");
+    const firstExpense = categories.find((c) => c.defaultKind === "expense");
+    setCategoryId(firstExpense?.id ?? categories[0]?.id ?? null);
     // After 1.4s show the user the success state, then route to /dashboard
     // where the new transaction will appear in the latest list.
     // TODO: when Supabase persistence lands (Batch C), the success banner
@@ -332,20 +470,21 @@ export default function CapturePage() {
     window.setTimeout(() => {
       router.push("/dashboard");
     }, 1400);
-  }, [ready, router]);
+  }, [ready, router, categories]);
 
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {
       setCategoryId(id);
       setCategoryDrawerOpen(false);
-      const picked = MOCK_CATEGORIES.find((c) => c.id === id);
+      const picked = categories.find((c) => c.id === id);
       if (picked && picked.defaultKind !== kind) {
-        // Switching to "Trabajo" (income-by-default) flips the kind so the
-        // user doesn't have to toggle manually. They can still flip back.
+        // Switching to an income-by-default category (e.g. "Trabajo") flips
+        // the kind so the user doesn't have to toggle manually. They can
+        // still flip back manually.
         setKind(picked.defaultKind);
       }
     },
-    [kind],
+    [kind, categories],
   );
 
   const openNoteDrawer = React.useCallback(() => {
@@ -374,7 +513,7 @@ export default function CapturePage() {
 
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"
-    : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)} en ${category.label}, cuenta ${account.label}`;
+    : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${account.label}` : ""}`;
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
@@ -495,21 +634,34 @@ export default function CapturePage() {
         {/* MRU category chips */}
         <section className="mt-4 px-4" aria-label="Categorías recientes">
           <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {mruCategories.map((c) => (
-              <CategoryChip
-                key={c.id}
-                category={c}
-                selected={categoryId === c.id}
-                onClick={() => handlePickCategory(c.id)}
-              />
-            ))}
+            {categoriesLoading ? (
+              // Skeleton chips — match the real chip height (h-11) and the
+              // ~w-24 horizontal footprint of a 1-2 word label so the strip
+              // doesn't reflow when data lands.
+              [0, 1, 2].map((i) => (
+                <Skeleton
+                  key={i}
+                  className="h-11 w-24 flex-shrink-0 rounded-full"
+                />
+              ))
+            ) : (
+              mruCategories.map((c) => (
+                <CategoryChip
+                  key={c.id}
+                  category={c}
+                  selected={categoryId === c.id}
+                  onClick={() => handlePickCategory(c.id)}
+                />
+              ))
+            )}
             <button
               type="button"
               onClick={() => setCategoryDrawerOpen(true)}
+              disabled={categoriesLoading || categories.length === 0}
               aria-label="Ver todas las categorías"
               aria-haspopup="dialog"
               aria-expanded={categoryDrawerOpen}
-              className="inline-flex h-11 flex-shrink-0 items-center rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-11 flex-shrink-0 items-center rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
             >
               + Más
             </button>
@@ -521,22 +673,42 @@ export default function CapturePage() {
           <button
             type="button"
             onClick={() => setAccountDrawerOpen(true)}
-            aria-label={`Cuenta ${account.label}, toca para cambiar`}
+            disabled={accountsLoading || accounts.length === 0}
+            aria-label={
+              account
+                ? `Cuenta ${account.label}, toca para cambiar`
+                : accountsLoading
+                  ? "Cargando cuentas"
+                  : "Sin cuentas disponibles"
+            }
             aria-haspopup="dialog"
             aria-expanded={accountDrawerOpen}
-            className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span
-              aria-hidden="true"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
-            >
-              <account.Icon size={14} />
-            </span>
-            <span className="flex-1 text-[13px] font-semibold">{account.label}</span>
-            <span className="text-[11px] font-medium text-muted-foreground">
-              {account.currency}
-            </span>
-            <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
+            {accountsLoading ? (
+              <>
+                <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
+                <Skeleton className="h-3.5 flex-1 rounded" />
+              </>
+            ) : account ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
+                >
+                  <account.Icon size={14} />
+                </span>
+                <span className="flex-1 text-[13px] font-semibold">{account.label}</span>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {account.currency}
+                </span>
+                <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
+              </>
+            ) : (
+              <span className="flex-1 text-[13px] font-medium text-muted-foreground">
+                Sin cuentas — creá una en /cuentas
+              </span>
+            )}
           </button>
 
           {/* Note chip — empty: a small "+ Nota" affordance; filled: shows the
@@ -703,40 +875,53 @@ export default function CapturePage() {
             </DrawerDescription>
           </DrawerHeader>
           <div className="grid grid-cols-3 gap-2 px-4 pb-6">
-            {MOCK_CATEGORIES.map((c) => {
-              const Icon = c.Icon;
-              const selected = categoryId === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => handlePickCategory(c.id)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "flex min-h-[88px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border bg-card text-foreground hover:bg-muted",
-                  )}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-full",
-                      selected
-                        ? "bg-background/20 text-current"
-                        : "bg-muted text-foreground",
-                    )}
-                  >
-                    <Icon size={20} />
-                  </span>
-                  <span className="text-xs font-semibold leading-tight">
-                    {c.label}
-                  </span>
-                </button>
-              );
-            })}
+            {categoriesLoading
+              ? [0, 1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton
+                    key={i}
+                    className="min-h-[88px] rounded-2xl"
+                  />
+                ))
+              : categories.length === 0
+                ? (
+                    <p className="col-span-3 py-6 text-center text-[13px] text-muted-foreground">
+                      No tenés categorías todavía. Creá una en Ajustes.
+                    </p>
+                  )
+                : categories.map((c) => {
+                    const Icon = c.Icon;
+                    const selected = categoryId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handlePickCategory(c.id)}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex min-h-[88px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          selected
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-card text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "flex h-10 w-10 items-center justify-center rounded-full",
+                            selected
+                              ? "bg-background/20 text-current"
+                              : "bg-muted text-foreground",
+                          )}
+                        >
+                          <Icon size={20} />
+                        </span>
+                        <span className="text-xs font-semibold leading-tight">
+                          {c.label}
+                        </span>
+                      </button>
+                    );
+                  })}
           </div>
         </DrawerContent>
       </Drawer>
@@ -754,43 +939,55 @@ export default function CapturePage() {
             </DrawerDescription>
           </DrawerHeader>
           <ul className="flex flex-col gap-1 px-2 pb-6">
-            {MOCK_ACCOUNTS.map((a) => {
-              const Icon = a.Icon;
-              const selected = accountId === a.id;
-              return (
-                <li key={a.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAccountId(a.id);
-                      setAccountDrawerOpen(false);
-                    }}
-                    aria-pressed={selected}
-                    className={cn(
-                      "flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      selected ? "bg-muted" : "hover:bg-muted",
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground"
-                    >
-                      <Icon size={16} />
-                    </span>
-                    <span className="flex-1">
-                      <span className="block text-[13px] font-semibold">{a.label}</span>
-                      <span className="block text-[11px] text-muted-foreground">
-                        {a.currency} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
-                      </span>
-                    </span>
-                    {selected ? (
-                      <Check size={16} aria-hidden="true" className="text-foreground" />
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
+            {accountsLoading
+              ? [0, 1, 2].map((i) => (
+                  <li key={i}>
+                    <div className="flex h-14 w-full items-center gap-3 rounded-2xl px-3">
+                      <Skeleton className="h-9 w-9 flex-shrink-0 rounded-full" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="block h-3.5 w-1/3 rounded" />
+                        <Skeleton className="block h-3 w-1/4 rounded" />
+                      </div>
+                    </div>
+                  </li>
+                ))
+              : accounts.map((a) => {
+                  const Icon = a.Icon;
+                  const selected = accountId === a.id;
+                  return (
+                    <li key={a.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccountId(a.id);
+                          setAccountDrawerOpen(false);
+                        }}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          selected ? "bg-muted" : "hover:bg-muted",
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground"
+                        >
+                          <Icon size={16} />
+                        </span>
+                        <span className="flex-1">
+                          <span className="block text-[13px] font-semibold">{a.label}</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {a.currency} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
+                          </span>
+                        </span>
+                        {selected ? (
+                          <Check size={16} aria-hidden="true" className="text-foreground" />
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
           </ul>
         </DrawerContent>
       </Drawer>

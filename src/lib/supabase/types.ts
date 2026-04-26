@@ -2,6 +2,14 @@
 // once the remote DB is provisioned. This hand-rolled skeleton mirrors
 // `supabase/migrations/00001_schema.sql` so the typed clients compile in the
 // meantime.
+//
+// Notes for future-me:
+//   - `__InternalSupabase: { PostgrestVersion: "12" }` is required by
+//     `@supabase/postgrest-js` v2.45+ — without it, `.insert/.update/.upsert`
+//     are typed as `never` and every CRUD call refuses to compile.
+//   - Each table MUST include `Relationships: readonly []` (the postgrest
+//     `GenericTable` shape requires it). We use empty arrays because the
+//     generated client doesn't auto-infer FKs without the introspection step.
 
 export type Currency = "PEN" | "USD";
 export type AccountType = "cash" | "card" | "bank";
@@ -10,6 +18,9 @@ export type TransactionSource = "manual" | "ocr";
 export type OcrStatus = "pending" | "processing" | "completed" | "failed";
 
 export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "12";
+  };
   public: {
     Tables: {
       profiles: {
@@ -26,6 +37,7 @@ export type Database = {
           id: string;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
+        Relationships: [];
       };
       accounts: {
         Row: {
@@ -45,6 +57,7 @@ export type Database = {
           currency: Currency;
         };
         Update: Partial<Database["public"]["Tables"]["accounts"]["Row"]>;
+        Relationships: [];
       };
       categories: {
         Row: {
@@ -64,6 +77,7 @@ export type Database = {
           kind: CategoryKind;
         };
         Update: Partial<Database["public"]["Tables"]["categories"]["Row"]>;
+        Relationships: [];
       };
       transactions: {
         Row: {
@@ -92,6 +106,7 @@ export type Database = {
           currency: Currency;
         };
         Update: Partial<Database["public"]["Tables"]["transactions"]["Row"]>;
+        Relationships: [];
       };
       receipts: {
         Row: {
@@ -117,6 +132,7 @@ export type Database = {
           image_path: string;
         };
         Update: Partial<Database["public"]["Tables"]["receipts"]["Row"]>;
+        Relationships: [];
       };
       exchange_rates: {
         Row: {
@@ -127,6 +143,7 @@ export type Database = {
         };
         Insert: Database["public"]["Tables"]["exchange_rates"]["Row"];
         Update: Partial<Database["public"]["Tables"]["exchange_rates"]["Row"]>;
+        Relationships: [];
       };
       allowed_emails: {
         Row: {
@@ -141,6 +158,7 @@ export type Database = {
           email: string;
         };
         Update: Partial<Database["public"]["Tables"]["allowed_emails"]["Row"]>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

@@ -350,3 +350,33 @@
     font-feature-settings: "tnum", "lnum";
   }
 }
+
+/* ============================================================
+   Lumi shimmer — used by <Skeleton /> placeholders.
+   Single ~1.4s left→right sweep so a row of skeletons reads as
+   one calm motion rather than a strobe. The global
+   prefers-reduced-motion rule above clamps duration to 0.01ms.
+   ============================================================ */
+@keyframes lumi-shimmer {
+  100% { transform: translateX(100%); }
+}
+@theme inline {
+  --animate-lumi-shimmer: lumi-shimmer 1.4s ease-in-out infinite;
+}
+
+/* ============================================================
+   Lumi scan-line — used by the Receipt OCR "loading" state.
+   A thin gradient line sweeps top→bottom over the receipt
+   image, mimicking a flatbed scanner pass. ~1.8s linear so
+   the motion reads as deliberate, not anxious. The global
+   prefers-reduced-motion rule clamps animation-duration to
+   0.01ms; the consumer also pairs this with motion-reduce:hidden
+   so the line disappears entirely for opted-out users.
+   ============================================================ */
+@keyframes lumi-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@theme inline {
+  --animate-lumi-scan: lumi-scan 1.8s linear infinite;
+}

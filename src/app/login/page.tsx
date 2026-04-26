@@ -8,16 +8,15 @@
  *   1. Envs PRESENT  → real Supabase magic-link OTP. Submitting the email
  *      calls `supabase.auth.signInWithOtp`, which mails a one-tap link that
  *      lands at `/auth/callback`. The callback exchanges the code for a
- *      session cookie and redirects to /dashboard.
+ *      session cookie and inspects `profiles.display_name` to decide whether
+ *      to send the user to /welcome (first login) or /dashboard.
  *
  *   2. Envs ABSENT   → name-only stub (offline preview / demo). The original
  *      onboarding: enter name → persist to localStorage under `lumi-user-name`
  *      → /dashboard. Lets `npm run dev` work without a Supabase project.
  *
- * Both modes share the brand wordmark, the headline, and the legal footer.
- *
- * TODO: Once the auth integration is fully verified end-to-end, retire the
- * name-only fallback and make Supabase the only path.
+ * Both modes share the brand wordmark, the headline, the radial-glow hero
+ * backdrop, and the legal footer.
  */
 
 "use client";
@@ -25,6 +24,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,20 @@ const SUPABASE_ENABLED =
   typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
+// Maps the `?error=` codes that /auth/callback may send back to user-facing
+// copy. Anything not listed falls through to the generic message so unknown
+// Supabase error strings (which we URL-encode raw) never leak to the UI.
+const ERROR_MESSAGES: Record<string, string> = {
+  missing_code: "El enlace no es válido. Pedí uno nuevo.",
+  auth_disabled: "El inicio de sesión no está activo en este entorno.",
+};
+const GENERIC_ERROR = "No pudimos iniciarte sesión. Probá de nuevo.";
+
+// Cooldown between magic-link resends. Long enough to discourage spamming
+// the SMTP queue, short enough that a user who just cleared their inbox can
+// retry without rage-quitting.
+const RESEND_COOLDOWN_SECONDS = 60;
+
 export default function LoginPage() {
   // useSearchParams() forces this subtree to be client-rendered, so wrap the
   // body in Suspense to satisfy Next 15+/16's static-rendering check.
@@ -55,10 +69,19 @@ export default function LoginPage() {
 function LoginInner() {
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
+  const errorMessage = errorParam
+    ? (ERROR_MESSAGES[errorParam] ?? GENERIC_ERROR)
+    : null;
 
   return (
     <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
-      <div className="mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
+      {/* Hero glow — a soft primary-soft radial gradient that sits behind the
+          wordmark and headline. Pointer-events-none so it never interferes
+          with form interaction. Pinned to the top of the shell on mobile and
+          floats behind the card on desktop. */}
+      <HeroGlow />
+
+      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
         {/* Brand mark */}
         <div className="mb-12 md:mb-8">
           <Image
@@ -84,12 +107,12 @@ function LoginInner() {
             a Lumi
           </h1>
 
-          {errorParam ? (
+          {errorMessage ? (
             <div
               role="alert"
               className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive"
             >
-              No pudimos iniciarte sesión. Probá de nuevo.
+              {errorMessage}
             </div>
           ) : null}
 
@@ -126,7 +149,8 @@ function LoginInner() {
 function LoginShell() {
   return (
     <main className="relative flex min-h-dvh flex-col bg-background text-foreground md:min-h-screen md:items-center md:justify-center md:px-6">
-      <div className="mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
+      <HeroGlow />
+      <div className="relative mx-auto flex w-full max-w-[440px] flex-1 flex-col px-6 pb-10 pt-14 md:flex-initial md:px-0 md:pb-0 md:pt-0 md:rounded-2xl md:border md:border-border md:bg-card md:shadow-card md:p-8">
         <div className="mb-12 md:mb-8">
           <Image
             src="/brand/lumi-wordmark.svg"
@@ -139,6 +163,30 @@ function LoginShell() {
         </div>
       </div>
     </main>
+  );
+}
+
+// ─── Hero visual ──────────────────────────────────────────────────────────
+/**
+ * A soft radial-gradient backdrop using `--color-primary-soft` at low alpha
+ * so it picks up the brand emerald in light mode and a muted teal-shaded
+ * version in dark mode without ever touching the headline contrast. We avoid
+ * an SVG/illustration on purpose — Lumi is calm, not Stripe-y.
+ */
+function HeroGlow() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[360px] overflow-hidden md:rounded-2xl"
+    >
+      <div
+        className="absolute left-1/2 top-[-120px] h-[420px] w-[420px] -translate-x-1/2 rounded-full opacity-70"
+        style={{
+          background:
+            "radial-gradient(closest-side, var(--color-primary-soft), transparent 70%)",
+        }}
+      />
+    </div>
   );
 }
 
@@ -161,7 +209,9 @@ function NameOnlyForm() {
     if (isEmpty) return;
 
     setIsSubmitting(true);
-    persistName(trimmed);
+    // Demo path: persistName resolves immediately (no Supabase). The promise
+    // is intentionally not awaited — name-only flow is purely localStorage.
+    void persistName(trimmed);
     router.push("/dashboard");
   }
 
@@ -235,7 +285,18 @@ function NameOnlyForm() {
             "transition-transform active:scale-[0.99]",
           )}
         >
-          Comenzar
+          {isSubmitting ? (
+            <>
+              <Loader2
+                size={16}
+                className="mr-2 animate-spin"
+                aria-hidden="true"
+              />
+              Comenzando…
+            </>
+          ) : (
+            "Comenzar"
+          )}
         </Button>
 
         <p className="pt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
@@ -261,10 +322,6 @@ function NameOnlyForm() {
 }
 
 // ─── Real flow: Supabase magic-link OTP ───────────────────────────────────
-// TODO: copy the Supabase user.email/user.user_metadata.full_name back into
-// the local `lumi-user-name` slot once we standardise on a profile model
-// (Batch C+). For now the email becomes the identity and the display name
-// is set inside Settings.
 function EmailMagicLinkForm() {
   const [email, setEmail] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
@@ -272,19 +329,28 @@ function EmailMagicLinkForm() {
   const [sent, setSent] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
 
+  // Cooldown timer for "Reenviar enlace". Counts down from
+  // RESEND_COOLDOWN_SECONDS to 0; the resend button is disabled while > 0.
+  const [cooldown, setCooldown] = React.useState(0);
+
   const trimmed = email.trim();
   const isInvalid =
     trimmed.length === 0 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed);
   const showError = submitted && isInvalid;
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setSubmitted(true);
-    setServerError(null);
-    if (isInvalid) return;
+  // Tick the cooldown each second once the email is sent. We intentionally
+  // store an absolute count rather than a target timestamp — a 60s window is
+  // short enough that drift from setInterval scheduling is negligible.
+  React.useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldown]);
 
-    setIsSubmitting(true);
+  async function sendMagicLink(): Promise<boolean> {
+    setServerError(null);
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOtp({
@@ -295,43 +361,106 @@ function EmailMagicLinkForm() {
       });
       if (error) {
         setServerError("No pudimos enviar el enlace. Probá de nuevo.");
-        return;
+        return false;
       }
-      setSent(true);
+      return true;
     } catch {
       setServerError("No pudimos enviar el enlace. Probá de nuevo.");
-    } finally {
-      setIsSubmitting(false);
+      return false;
     }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSubmitting) return;
+    setSubmitted(true);
+    if (isInvalid) return;
+
+    setIsSubmitting(true);
+    const ok = await sendMagicLink();
+    setIsSubmitting(false);
+    if (ok) {
+      setSent(true);
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    }
+  }
+
+  async function handleResend() {
+    if (cooldown > 0 || isSubmitting) return;
+    setIsSubmitting(true);
+    const ok = await sendMagicLink();
+    setIsSubmitting(false);
+    if (ok) setCooldown(RESEND_COOLDOWN_SECONDS);
   }
 
   function handleReset() {
     setSent(false);
     setSubmitted(false);
     setServerError(null);
+    setCooldown(0);
   }
 
   if (sent) {
     return (
       <div className="mt-9 space-y-5" aria-live="polite">
         <div className="rounded-2xl border border-border bg-[var(--color-primary-soft)] p-5 text-[var(--color-primary-soft-foreground)]">
-          <p className="text-[15px] font-semibold leading-snug">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/50">
+            <Mail size={18} aria-hidden="true" />
+          </div>
+          <p className="mt-4 text-[15px] font-semibold leading-snug">
             Te enviamos un enlace a tu email.
           </p>
           <p className="mt-2 text-[13px] leading-relaxed">
             Tocá el enlace para entrar. Si no lo ves, revisá la carpeta de spam.
           </p>
-          <p className="mt-3 break-all text-[12px] font-medium opacity-80">
+          <p className="mt-4 break-all text-[14px] font-semibold tracking-tight">
             {trimmed}
           </p>
+          {serverError ? (
+            <p
+              role="alert"
+              className="mt-3 text-[13px] font-medium text-destructive"
+            >
+              {serverError}
+            </p>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={handleReset}
-          className="text-[13px] font-medium text-foreground underline underline-offset-4 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          Cambiar email
-        </button>
+
+        <div className="flex flex-col gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleResend}
+            disabled={cooldown > 0 || isSubmitting}
+            className={cn(
+              "h-11 w-full rounded-xl text-[14px] font-semibold",
+              "transition-transform active:scale-[0.99]",
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="mr-2 animate-spin"
+                  aria-hidden="true"
+                />
+                Reenviando…
+              </>
+            ) : cooldown > 0 ? (
+              `Reenviar en ${cooldown}s`
+            ) : (
+              "Reenviar enlace"
+            )}
+          </Button>
+
+          <button
+            type="button"
+            onClick={handleReset}
+            className="self-center text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            Cambiar email
+          </button>
+        </div>
       </div>
     );
   }
@@ -415,7 +544,18 @@ function EmailMagicLinkForm() {
             "transition-transform active:scale-[0.99]",
           )}
         >
-          {isSubmitting ? "Enviando…" : "Enviarme el enlace"}
+          {isSubmitting ? (
+            <>
+              <Loader2
+                size={16}
+                className="mr-2 animate-spin"
+                aria-hidden="true"
+              />
+              Enviando…
+            </>
+          ) : (
+            "Enviarme el enlace"
+          )}
         </Button>
 
         <p className="pt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
