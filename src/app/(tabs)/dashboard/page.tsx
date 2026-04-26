@@ -27,6 +27,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 
@@ -571,23 +572,24 @@ export default function DashboardPage() {
             </div>
             <h1 className="mt-1.5 text-[22px] font-bold leading-tight md:text-3xl">{greeting}</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
               aria-label={`Cambiar moneda (actualmente ${currency})`}
               aria-pressed={currency === "USD"}
-              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-border bg-card px-4 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-border bg-card px-4 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span aria-hidden="true">
                 {currency === "PEN" ? "S/" : "$"}
               </span>
               <span className="ml-1 text-muted-foreground font-medium">{currency}</span>
             </button>
+            <ThemeToggle />
             <button
               type="button"
               aria-label="Abrir perfil"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <User size={18} aria-hidden="true" />
             </button>
