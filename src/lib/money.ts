@@ -102,9 +102,17 @@ export function getMoneyDisplaySizeClass(
   amount: number,
   currency: Currency = "PEN",
   scale: MoneyDisplayScale = "hero",
+  /** Extra characters that the consumer adds OUTSIDE formatMoney — typically
+   *  the "− " prefix when the displayed number is negative. Without this the
+   *  helper underestimates the effective width and the bigger tier overflows
+   *  the card on narrow mobile (S/.1,228 + "− " = 13 chars but formatted
+   *  alone is 11 → would fall into tier 0 incorrectly). */
+  extraChars: number = 0,
 ): string {
   const formatted = formatMoney(Math.abs(amount) * 100, currency);
-  const length = formatted.length;
-  const tier = length <= 12 ? 0 : length <= 15 ? 1 : length <= 18 ? 2 : 3;
+  const length = formatted.length + extraChars;
+  // Thresholds tightened by 2 vs the original (12/15/18) so even unaccounted
+  // sign or symbol prefixes still fall into a safe tier on a 320px mobile card.
+  const tier = length <= 10 ? 0 : length <= 13 ? 1 : length <= 16 ? 2 : 3;
   return scale === "hero" ? HERO_SIZES[tier] : SECONDARY_SIZES[tier];
 }

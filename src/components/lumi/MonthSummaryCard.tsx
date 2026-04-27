@@ -147,10 +147,15 @@ function HeroKpi({
       <span
         className={cn(
           "block max-w-full font-semibold leading-none tracking-tight tabular-nums",
-          // Predictable size tiers driven by formatted character count
-          // (see getMoneyDisplaySizeClass). Long amounts (≥ S/ 1M) shrink
-          // gracefully without surprising mid-viewport jumps.
-          getMoneyDisplaySizeClass(amount, currency, "secondary"),
+          // Predictable size tiers driven by formatted character count.
+          // Pass 2 extra chars when forceSign is set ("− ") so the prefix
+          // is included in the tier decision and we don't overflow the cell.
+          getMoneyDisplaySizeClass(
+            amount,
+            currency,
+            "secondary",
+            forceSign ? 2 : 0,
+          ),
           numberColor,
         )}
         style={{
@@ -233,9 +238,16 @@ export function MonthSummaryCard({
         </dt>
         <dd
           className={cn(
-            "mt-3 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap text-foreground",
-            // Hero scale: shrinks predictably as the saldo grows (≥ 1M, 100M, etc).
-            getMoneyDisplaySizeClass(Math.abs(net), currency, "hero"),
+            "mt-3 max-w-full font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap text-foreground",
+            // Hero scale: shrinks predictably as the saldo grows. We pass
+            // 2 extra chars when negative so the "− " prefix counts toward
+            // the tier decision (otherwise tier 0 overflows the card).
+            getMoneyDisplaySizeClass(
+              Math.abs(net),
+              currency,
+              "hero",
+              netPositive ? 0 : 2,
+            ),
           )}
           style={{ fontFeatureSettings: '"tnum","lnum"' }}
         >
