@@ -82,6 +82,9 @@ type HeroKpiProps = {
   ariaLabel?: string;
   pressed?: boolean;
   onClick?: () => void;
+  /** Parent has stacked the row vertically (long amounts). When true both
+   *  KPIs align left for symmetry. When false they push to opposite edges. */
+  stacked?: boolean;
 };
 
 function HeroKpi({
@@ -93,6 +96,7 @@ function HeroKpi({
   ariaLabel,
   pressed = false,
   onClick,
+  stacked = false,
 }: HeroKpiProps) {
   const interactive = typeof onClick === "function";
   // Subtle (non-saturated) tones: rose for gasto, emerald for ingreso. Use a
@@ -106,13 +110,15 @@ function HeroKpi({
       ? "bg-[oklch(0.65_0.16_162)]"
       : "bg-[oklch(0.65_0.18_25)]";
 
-  // Push expense to the left and income to the right of the card so the
-  // two numbers use the available width fully and create natural breathing
-  // room between them — instead of both center-clustering near the divider.
+  // Side-by-side: push expense left + income right (outer-edge alignment
+  // gives natural breathing room in the middle). Stacked vertically: both
+  // align left for symmetric reading flow. Desktop: always left.
   const isIncome = variant === "income";
   const baseClass = cn(
     "flex min-h-[72px] w-full min-w-0 flex-col gap-2 rounded-xl px-4 py-3.5",
-    isIncome ? "items-end text-right md:items-start md:text-left" : "items-start text-left",
+    isIncome && !stacked
+      ? "items-end text-right md:items-start md:text-left"
+      : "items-start text-left",
     interactive && [
       "transition-colors duration-150 ease-out",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -243,54 +249,63 @@ export function MonthSummaryCard({
         <div className="mt-5 flex justify-center md:mt-6">{currencySwitch}</div>
       ) : null}
 
-      {/* Secondary KPIs — Gasto / Ingreso. Side by side when amounts are
-          short; stacked vertically when either formatted amount crosses
-          ~15 chars (≈ S/. 1M+) so neither number gets cramped against the
-          divider. Desktop always grids — plenty of horizontal room there. */}
-      <div
-        className={cn(
-          Math.max(
-            formatMoney(spent, currency).length,
-            formatMoney(income, currency).length,
-          ) > 15
-            ? "flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4"
-            : "grid grid-cols-2 gap-2 md:gap-4",
-          currencySwitch ? "mt-5 md:mt-6" : "mt-7 md:mt-9",
-        )}
-      >
-        <HeroKpi
-          label="Gasto"
-          amount={spent}
-          currency={currency}
-          forceSign="−"
-          variant="expense"
-          ariaLabel={
-            onFilterChange
-              ? filter === "expense"
-                ? "Quitar filtro de gastos"
-                : "Filtrar por gastos"
-              : `Gasto del mes ${formatMoney(spent, currency)}`
-          }
-          pressed={filter === "expense"}
-          onClick={onFilterChange ? () => toggle("expense") : undefined}
-        />
-        <HeroKpi
-          label="Ingreso"
-          amount={income}
-          currency={currency}
-          forceSign=""
-          variant="income"
-          ariaLabel={
-            onFilterChange
-              ? filter === "income"
-                ? "Quitar filtro de ingresos"
-                : "Filtrar por ingresos"
-              : `Ingreso del mes ${formatMoney(income, currency)}`
-          }
-          pressed={filter === "income"}
-          onClick={onFilterChange ? () => toggle("income") : undefined}
-        />
-      </div>
+      {/* Secondary KPIs — Gasto / Ingreso. Side by side when both fit
+          comfortably in half the card width; stacked vertically as soon as
+          either amount crosses ~12 chars (≈ S/. 100,000+) — empirical
+          threshold where text-xl tabular-nums starts overlapping the
+          opposite cell. Desktop always grids — plenty of horizontal room. */}
+      {(() => {
+        const longest = Math.max(
+          formatMoney(spent, currency).length,
+          formatMoney(income, currency).length,
+        );
+        const stackOnMobile = longest > 12;
+        return (
+          <div
+            className={cn(
+              stackOnMobile
+                ? "flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4"
+                : "grid grid-cols-2 gap-2 md:gap-4",
+              currencySwitch ? "mt-5 md:mt-6" : "mt-7 md:mt-9",
+            )}
+          >
+            <HeroKpi
+              label="Gasto"
+              amount={spent}
+              currency={currency}
+              forceSign="−"
+              variant="expense"
+              stacked={stackOnMobile}
+              ariaLabel={
+                onFilterChange
+                  ? filter === "expense"
+                    ? "Quitar filtro de gastos"
+                    : "Filtrar por gastos"
+                  : `Gasto del mes ${formatMoney(spent, currency)}`
+              }
+              pressed={filter === "expense"}
+              onClick={onFilterChange ? () => toggle("expense") : undefined}
+            />
+            <HeroKpi
+              label="Ingreso"
+              amount={income}
+              currency={currency}
+              forceSign=""
+              variant="income"
+              stacked={stackOnMobile}
+              ariaLabel={
+                onFilterChange
+                  ? filter === "income"
+                    ? "Quitar filtro de ingresos"
+                    : "Filtrar por ingresos"
+                  : `Ingreso del mes ${formatMoney(income, currency)}`
+              }
+              pressed={filter === "income"}
+              onClick={onFilterChange ? () => toggle("income") : undefined}
+            />
+          </div>
+        );
+      })()}
     </Card>
   );
 }
