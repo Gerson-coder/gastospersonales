@@ -52,19 +52,44 @@ export function UserAvatarCircle({
   size = "sm",
   className,
 }: UserAvatarCircleProps) {
-  const { name, hydrated } = useUserName();
+  const { name, avatarUrl, hydrated } = useUserName();
+  // Track whether the <img> failed (broken URL, network error, deleted
+  // file). On failure we fall back to the initial — same UX as users
+  // who never uploaded a picture.
+  const [imgFailed, setImgFailed] = React.useState(false);
+  // Reset failure state when the URL changes — a fresh upload should get
+  // a chance to render even if a previous URL had failed.
+  React.useEffect(() => {
+    setImgFailed(false);
+  }, [avatarUrl]);
+
   const initial = hydrated ? deriveInitial(name) : "?";
+  const showImage = Boolean(avatarUrl) && !imgFailed && hydrated;
 
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full bg-muted text-foreground font-semibold",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground font-semibold",
         SIZE_CLASSES[size],
         className,
       )}
     >
-      {initial}
+      {showImage ? (
+        // Plain <img> rather than next/image: the bucket origin is dynamic
+        // per-deployment (Supabase project URL) so configuring
+        // `images.remotePatterns` adds friction with no win at 24/36px.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl ?? ""}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setImgFailed(true)}
+          loading="lazy"
+        />
+      ) : (
+        initial
+      )}
     </span>
   );
 }

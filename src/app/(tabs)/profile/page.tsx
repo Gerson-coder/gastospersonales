@@ -15,7 +15,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Copy, Loader2, Pencil } from "lucide-react";
+import { Camera, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { removeAvatar, uploadAvatar } from "@/lib/data/avatar";
 import {
   Sheet,
   SheetContent,
@@ -77,12 +78,60 @@ function shortenUserId(id: string): string {
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const session = useSession();
-  const { name, setName, hydrated: nameHydrated } = useUserName();
+  const { name, avatarUrl, setName, hydrated: nameHydrated } = useUserName();
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [draftName, setDraftName] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const nameInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Avatar upload state. The hidden <input type="file"> is driven via ref
+  // so we can put the user-facing affordance inside a styled <Button>.
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [imgFailed, setImgFailed] = React.useState(false);
+  // Reset the broken-image flag whenever the URL changes (e.g. after a
+  // successful upload that replaces a previously failing URL).
+  React.useEffect(() => {
+    setImgFailed(false);
+  }, [avatarUrl]);
+
+  async function handleAvatarFileChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    // Always clear the input value so picking the SAME file twice in a row
+    // still triggers `onChange` (browsers skip identical-value events).
+    event.target.value = "";
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      await uploadAvatar(file);
+      await session.refresh();
+      toast.success("Foto actualizada");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No pudimos subir la imagen.";
+      toast.error("No se pudo actualizar tu foto", { description: message });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleAvatarRemove() {
+    setAvatarBusy(true);
+    try {
+      await removeAvatar();
+      await session.refresh();
+      toast.success("Foto eliminada");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No pudimos quitar la imagen.";
+      toast.error("No se pudo quitar tu foto", { description: message });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   // When the edit sheet opens, focus the input. autoFocus inside portaled
   // Dialogs is unreliable, so we drive focus imperatively after the next
@@ -179,9 +228,24 @@ export default function ProfilePage() {
               {identityReady ? (
                 <div
                   aria-hidden="true"
-                  className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-xl font-bold md:h-20 md:w-20 md:text-2xl"
+                  className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)] text-xl font-bold md:h-20 md:w-20 md:text-2xl"
                 >
-                  {displayInitials}
+                  {avatarUrl && !imgFailed ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatarUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      onError={() => setImgFailed(true)}
+                    />
+                  ) : (
+                    displayInitials
+                  )}
+                  {avatarBusy ? (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+                      <Loader2 size={20} className="animate-spin" aria-hidden="true" />
+                    </span>
+                  ) : null}
                 </div>
               ) : (
                 <Skeleton className="h-16 w-16 flex-shrink-0 rounded-full md:h-20 md:w-20" />
@@ -216,6 +280,60 @@ export default function ProfilePage() {
                 <span className="ml-1.5">Editar nombre</span>
               </Button>
             </div>
+
+            {/* Avatar actions — only shown when Supabase is wired since the
+                upload requires an authenticated session and persists to the
+                avatars Storage bucket. */}
+            {SUPABASE_ENABLED ? (
+              <div className="mt-5 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!identityReady || avatarBusy}
+                    className="min-h-11 rounded-full px-4"
+                  >
+                    {avatarBusy ? (
+                      <Loader2
+                        size={14}
+                        aria-hidden="true"
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Camera size={14} aria-hidden="true" />
+                    )}
+                    <span className="ml-1.5">
+                      {avatarUrl ? "Cambiar foto" : "Subir foto"}
+                    </span>
+                  </Button>
+                  {avatarUrl ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleAvatarRemove}
+                      disabled={!identityReady || avatarBusy}
+                      className="min-h-11 rounded-full px-3 text-muted-foreground hover:text-foreground"
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                      <span className="ml-1.5">Quitar</span>
+                    </Button>
+                  ) : null}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                </div>
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  PNG, JPEG o WebP. Máximo 2 MB.
+                </p>
+              </div>
+            ) : null}
           </Card>
         </section>
 

@@ -37,6 +37,7 @@ const SUPABASE_ENABLED =
  */
 export function useUserName(): {
   name: string | null;
+  avatarUrl: string | null;
   setName: (name: string) => Promise<void>;
   clearName: () => void;
   hydrated: boolean;
@@ -44,6 +45,11 @@ export function useUserName(): {
   const session = useSession();
   const [name, setNameState] = useState<string | null>(null);
   const [localHydrated, setLocalHydrated] = useState(false);
+  // Avatar URL is sourced strictly from the session profile — there is no
+  // localStorage cache for it because (a) it is already a CDN URL with its
+  // own caching, and (b) a stale local cache after `removeAvatar()` would
+  // flash a deleted image on first paint.
+  const avatarUrl = session.profile?.avatar_url ?? null;
 
   // Step 1 — load the localStorage cache after mount. Always runs. Cheap and
   // synchronous, so it paints before any network round-trip.
@@ -119,5 +125,5 @@ export function useUserName(): {
   // paint; DB is the eventual-consistency authority.
   const hydrated = localHydrated;
 
-  return { name, setName, clearName, hydrated };
+  return { name, avatarUrl, setName, clearName, hydrated };
 }

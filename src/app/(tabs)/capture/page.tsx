@@ -39,6 +39,7 @@ import {
   Briefcase,
   Circle,
   Check,
+  ChevronDown,
   ChevronRight,
   Wallet,
   CreditCard,
@@ -744,7 +745,7 @@ function CapturePageInner() {
           <div
             role="radiogroup"
             aria-label="Tipo de movimiento"
-            className="mx-auto flex h-11 items-center gap-0.5 rounded-full bg-muted p-0.5 md:h-9"
+            className="mx-auto flex h-12 items-center gap-0.5 rounded-full bg-muted p-0.5 md:h-9"
           >
             <button
               type="button"
@@ -752,7 +753,7 @@ function CapturePageInner() {
               aria-checked={kind === "expense"}
               onClick={() => setKind("expense")}
               className={cn(
-                "rounded-full px-4 text-sm font-semibold transition-colors md:px-3.5 md:text-xs",
+                "min-w-[96px] rounded-full px-5 text-[15px] font-semibold transition-colors md:min-w-0 md:px-3.5 md:text-xs",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -767,7 +768,7 @@ function CapturePageInner() {
               aria-checked={kind === "income"}
               onClick={() => setKind("income")}
               className={cn(
-                "rounded-full px-4 text-sm font-semibold transition-colors md:px-3.5 md:text-xs",
+                "min-w-[96px] rounded-full px-5 text-[15px] font-semibold transition-colors md:min-w-0 md:px-3.5 md:text-xs",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -802,7 +803,7 @@ function CapturePageInner() {
         </header>
 
         {/* Amount display */}
-        <section className="px-6 pt-6 text-center md:px-8 md:pt-8" aria-live="polite">
+        <section className="px-6 pt-8 text-center md:px-8 md:pt-8" aria-live="polite">
           <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             {kind === "income" ? "Cuánto entró" : "Cuánto gastaste"}
           </div>
@@ -987,6 +988,22 @@ function CapturePageInner() {
         <p className="sr-only" aria-live="polite">
           {saveAriaLabel}
         </p>
+
+        {/* Save hint — wayfinding for the new flow: now that the in-page
+            "Guardar gasto" button is gone, point the user to the central
+            ✓ FAB in the bottom TabBar. Mobile-only (md+ has the sidebar
+            and a different action surface). aria-hidden because the FAB
+            already carries the canonical "Guardar movimiento" label. */}
+        <div
+          aria-hidden="true"
+          className="mt-6 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
+        >
+          <span className="text-[12px] font-medium">Guardar</span>
+          <ChevronDown
+            className="h-5 w-5 animate-bounce [animation-duration:1.6s]"
+            aria-hidden="true"
+          />
+        </div>
       </div>
 
       {/* Submitting overlay — when handleSave is in flight (Supabase ACK
