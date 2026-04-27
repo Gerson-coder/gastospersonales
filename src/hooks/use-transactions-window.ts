@@ -81,6 +81,14 @@ export type UseTransactionsWindowOpts = {
   /** Rolling window size in months. Defaults to 6. */
   months?: number;
   currency: Currency;
+  /**
+   * Optional account filter — when set, all aggregations (current-month
+   * scalars, category buckets, weekly bars, daily series, monthly totals,
+   * recent + top movements) are computed from rows belonging to ONLY this
+   * account. `null`/undefined keeps the previous behavior (aggregate across
+   * all accounts).
+   */
+  accountId?: string | null;
 };
 
 export type TransactionsWindowResult = {
@@ -278,7 +286,7 @@ export function useTransactionsWindow(
   opts: UseTransactionsWindowOpts,
 ): TransactionsWindowResult {
   const months = opts.months ?? 6;
-  const { currency } = opts;
+  const { currency, accountId = null } = opts;
 
   const [rows, setRows] = useState<TransactionView[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -326,6 +334,17 @@ export function useTransactionsWindow(
     };
   }, [currency, fromISO]);
 
+  // ── Account filter ─────────────────────────────────────────────────────
+  // Applied BEFORE every aggregation so the dashboard can scope all numbers
+  // (Saldo, Gasto, Ingreso, Distribución, Velocity, weekly bars, recent…) to
+  // a single account when the user picks one in the chip strip. We keep the
+  // unfiltered `rows` for the fetch so flipping the picker is instant — no
+  // re-fetch, just a re-derive.
+  const filteredRows = useMemo(() => {
+    if (!accountId) return rows;
+    return rows.filter((r) => r.accountId === accountId);
+  }, [rows, accountId]);
+
   // ── Reference dates (memoized so derived memos don't churn) ────────────
   const refs = useMemo(() => {
     const now = new Date();
@@ -349,7 +368,7 @@ export function useTransactionsWindow(
   const partition = useMemo(() => {
     const currentMonthRows: TransactionView[] = [];
     const prevMonthRows: TransactionView[] = [];
-    for (const r of rows) {
+    for (const r of filteredRows) {
       const occurred = new Date(r.occurredAt);
       if (occurred >= refs.currentMonthStart && occurred < refs.nextMonthStart) {
         currentMonthRows.push(r);
@@ -361,7 +380,7 @@ export function useTransactionsWindow(
       }
     }
     return { currentMonthRows, prevMonthRows };
-  }, [rows, refs]);
+  }, [filteredRows, refs]);
 
   // ── Current-month scalars ──────────────────────────────────────────────
   const expenseCurrentMonth = useMemo(
@@ -394,8 +413,8 @@ export function useTransactionsWindow(
 
   // ── Recent + top movements ─────────────────────────────────────────────
   const recentTransactions = useMemo(
-    () => rows.slice(0, 5),
-    [rows],
+    () => filteredRows.slice(0, 5),
+    [filteredRows],
   );
 
   const topMovementsCurrentMonth = useMemo(() => {
@@ -419,8 +438,8 @@ export function useTransactionsWindow(
   // "Distribución" card uses this when the user wants a smoother distribution
   // than a single month can give.
   const topCategoriesAllWindow = useMemo(
-    () => aggregateByCategory(rows, []),
-    [rows],
+    () => aggregateByCategory(filteredRows, []),
+    [filteredRows],
   );
 
   // ── Monthly totals (oldest → newest) ───────────────────────────────────
@@ -437,7 +456,7 @@ export function useTransactionsWindow(
         income: 0,
       });
     }
-    for (const r of rows) {
+    for (const r of filteredRows) {
       const key = monthKeyOf(new Date(r.occurredAt));
       const bucket = buckets.get(key);
       if (!bucket) continue; // outside the visible window — skip silently
@@ -445,7 +464,7 @@ export function useTransactionsWindow(
       else bucket.income += r.amount;
     }
     return Array.from(buckets.values());
-  }, [rows, months, refs]);
+  }, [filteredRows, months, refs]);
 
   // ── Daily series (current + previous month) ────────────────────────────
   const byDayCurrentMonth = useMemo<DailyBucket[]>(() => {
@@ -505,14 +524,14 @@ export function useTransactionsWindow(
     // Index by ISO date for O(rows) fold rather than O(rows*7).
     const byDate = new Map<string, WeeklyBucket>();
     for (const b of out) byDate.set(b.date, b);
-    for (const r of rows) {
+    for (const r of filteredRows) {
       if (r.kind !== "expense") continue;
       const key = formatISODate(new Date(r.occurredAt));
       const bucket = byDate.get(key);
       if (bucket) bucket.amount += r.amount;
     }
     return out;
-  }, [rows, refs]);
+  }, [filteredRows, refs]);
 
   return {
     rows,

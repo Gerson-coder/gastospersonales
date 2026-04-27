@@ -45,7 +45,6 @@ import {
   CreditCard,
   Landmark,
   Loader2,
-  MoreHorizontal,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -312,7 +311,7 @@ function CategoryChip({
       aria-pressed={selected}
       aria-label={`Categoría ${category.label}${selected ? " (seleccionada)" : ""}`}
       className={cn(
-        "inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-full border pl-1.5 pr-3.5 text-[13px] font-medium transition-colors",
+        "inline-flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full border pl-1 pr-3 text-[13px] font-medium transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         // Selected state: high-contrast neutral pill (foreground bg / background text).
         // Brand emerald is reserved for the Save CTA below — keep selection
@@ -325,13 +324,13 @@ function CategoryChip({
       <span
         aria-hidden="true"
         className={cn(
-          "inline-flex h-8 w-8 items-center justify-center rounded-full",
+          "inline-flex h-7 w-7 items-center justify-center rounded-full",
           selected
             ? "bg-background/20 text-current"
             : "bg-muted text-foreground",
         )}
       >
-        <Icon size={16} />
+        <Icon size={14} />
       </span>
       {category.label}
     </button>
@@ -624,6 +623,15 @@ function CapturePageInner() {
   const handleSave = React.useCallback(async () => {
     if (!ready || submitting || hydrating) return;
 
+    // Category is mandatory — defense-in-depth in case the FAB is somehow
+    // triggered while categoryId is null (the bus also blocks this via the
+    // `ready` flag, but we mirror it here so the user gets a clear toast
+    // instead of silently saving into "ninguna categoría").
+    if (!categoryId) {
+      toast.error("Elige una categoría antes de guardar.");
+      return;
+    }
+
     // Spend cap guard — belt-and-braces in case the keypad somehow let a
     // value through (paste, autocomplete, future scanner integration). The
     // data layer also enforces this; we mirror it here so the user gets a
@@ -728,7 +736,11 @@ function CapturePageInner() {
   // "Guardar gasto" button used (`!ready || submitting || hydrating || !online`),
   // so the FAB visually matches the same enabled/disabled state.
   React.useEffect(() => {
-    const ready = !submitting && !hydrating && online && amount > 0;
+    // Category is MANDATORY — a transaction with no category lands in
+    // "ninguna categoría" which breaks reporting. Force the user to pick
+    // before the FAB ✓ becomes active.
+    const ready =
+      !submitting && !hydrating && online && amount > 0 && categoryId !== null;
     captureActionBus.setSaveHandler(() => {
       handleSave();
     }, ready);
@@ -737,7 +749,7 @@ function CapturePageInner() {
       // a stale closure pointing at an unmounted handler.
       captureActionBus.setSaveHandler(null, false);
     };
-  }, [handleSave, submitting, hydrating, online, amount]);
+  }, [handleSave, submitting, hydrating, online, amount, categoryId]);
 
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {
@@ -907,8 +919,28 @@ function CapturePageInner() {
           </div>
         ) : null}
 
-        {/* MRU category chips */}
+        {/* MRU category chips — header row with "Ver más →" link replaces
+            the old in-strip "Ver más" chip. Three primary chips
+            (Comida / Transporte / Salud for expense) now have room to
+            breathe on a 360px viewport. */}
         <section className="mt-4 px-4" aria-label="Categorías recientes">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Categoría
+            </span>
+            <button
+              type="button"
+              onClick={() => setCategoryDrawerOpen(true)}
+              disabled={categoriesLoading || categories.length === 0}
+              aria-label="Ver todas las categorías"
+              aria-haspopup="dialog"
+              aria-expanded={categoryDrawerOpen}
+              className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Ver más
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categoriesLoading ? (
               // Skeleton chips — match the real chip height (h-11) and the
@@ -930,27 +962,6 @@ function CapturePageInner() {
                 />
               ))
             )}
-            {/* "Ver más" chip — visually consistent with the category chips
-                (same h-11, same rounded-full, same icon-on-left layout) so
-                it reads as part of the strip rather than a foreign
-                affordance. Opens the full categories drawer. */}
-            <button
-              type="button"
-              onClick={() => setCategoryDrawerOpen(true)}
-              disabled={categoriesLoading || categories.length === 0}
-              aria-label="Ver todas las categorías"
-              aria-haspopup="dialog"
-              aria-expanded={categoryDrawerOpen}
-              className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-full border border-border bg-card pl-1.5 pr-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span
-                aria-hidden="true"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground"
-              >
-                <MoreHorizontal size={16} />
-              </span>
-              Ver más
-            </button>
           </div>
         </section>
 

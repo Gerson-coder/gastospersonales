@@ -118,8 +118,8 @@ function HeroKpi({
   // but very low chroma so they read as gentle wash, not a saturated chip.
   // Light mode: pale tint at 60% alpha. Dark mode: deeper tint at 25% alpha.
   const tintBg = isIncome
-    ? "bg-[oklch(0.95_0.06_162/0.85)] dark:bg-[oklch(0.32_0.08_162/0.55)]"
-    : "bg-[oklch(0.95_0.06_25/0.85)] dark:bg-[oklch(0.32_0.08_25/0.55)]";
+    ? "bg-[oklch(0.93_0.10_162/0.95)] dark:bg-[oklch(0.30_0.13_162/0.65)]"
+    : "bg-[oklch(0.93_0.10_25/0.95)] dark:bg-[oklch(0.30_0.13_25/0.65)]";
   const baseClass = cn(
     "flex min-h-[72px] w-full min-w-0 flex-col gap-2 rounded-xl px-4 py-3.5",
     tintBg,

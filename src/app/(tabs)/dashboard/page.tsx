@@ -43,7 +43,6 @@ import {
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
-import { UserAvatarCircle } from "@/components/lumi/UserAvatarCircle";
 import { MonthSummaryCard } from "@/components/lumi/MonthSummaryCard";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { cn } from "@/lib/utils";
@@ -51,7 +50,7 @@ import { useUserName } from "@/lib/use-user-name";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { useTransactionsWindow } from "@/hooks/use-transactions-window";
 import { useTransactionsRealtime } from "@/hooks/use-transactions-realtime";
-import { listAccounts } from "@/lib/data/accounts";
+import { listAccounts, type Account } from "@/lib/data/accounts";
 import type { TransactionView } from "@/lib/data/transactions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -340,6 +339,37 @@ function InsightChip({ insight }: { insight: Insight }) {
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── Account filter chip ──────────────────────────────────────────────────
+// Used by the dashboard's chip strip to scope all numbers to a single
+// account. "Todas" is the no-op default; tapping a specific account flips
+// the active state and re-derives the entire window via `accountId`.
+function AccountChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "h-9 px-4 rounded-full text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        active
+          ? "bg-foreground text-background"
+          : "bg-muted text-muted-foreground hover:bg-muted/70",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -907,7 +937,18 @@ export default function DashboardPage() {
   // mode would still call Supabase, so we gate all usage of `window` results
   // behind SUPABASE_ENABLED below — when disabled, we never even mount the
   // realtime subscription and we feed the legacy demo dataset into the UI.
-  const window = useTransactionsWindow({ months: 6, currency });
+  // Account filter — when set, the entire dashboard scopes to a single
+  // account. `null` = "Todas las cuentas" (default). The picker only renders
+  // when the user has more than one account; with a single account the
+  // chip strip would be a no-op.
+  const [selectedAccountId, setSelectedAccountId] = React.useState<string | null>(null);
+  const [accounts, setAccounts] = React.useState<Account[]>([]);
+
+  const window = useTransactionsWindow({
+    months: 6,
+    currency,
+    accountId: selectedAccountId,
+  });
   useTransactionsRealtime({
     enabled: SUPABASE_ENABLED,
     onEvent: window.refetch,
@@ -915,7 +956,8 @@ export default function DashboardPage() {
   });
 
   // Account count (real). Lives outside the window hook because the dashboard
-  // shows a small "Cuentas activas" tile separate from transactions.
+  // shows a small "Cuentas activas" tile separate from transactions. Same
+  // fetch also feeds the account-filter chip strip so we don't double-call.
   const [accountsCount, setAccountsCount] = React.useState<number | null>(
     SUPABASE_ENABLED ? null : DEMO_ACCOUNTS_COUNT,
   );
@@ -925,7 +967,10 @@ export default function DashboardPage() {
     void (async () => {
       try {
         const list = await listAccounts();
-        if (!cancelled) setAccountsCount(list.length);
+        if (!cancelled) {
+          setAccounts(list);
+          setAccountsCount(list.length);
+        }
       } catch {
         // Non-fatal — keep null and the tile renders a dash placeholder.
         if (!cancelled) setAccountsCount(null);
@@ -1036,11 +1081,7 @@ export default function DashboardPage() {
             The PEN/USD CurrencySwitch was moved INSIDE the MonthSummaryCard,
             centered between the separator and the Gasto/Ingreso row, where it
             reads as part of the money chrome instead of header noise. */}
-        <AppHeader
-          title={greeting}
-          titleStyle="page"
-          avatar={<UserAvatarCircle size="sm" />}
-        />
+        <AppHeader title={greeting} titleStyle="page" />
 
         {isLoading ? (
           <>
@@ -1060,6 +1101,34 @@ export default function DashboardPage() {
           <DashboardErrorCard onRetry={window.refetch} />
         ) : (
           <>
+            {/* Account filter — chip strip. Renders only when the user has
+                multiple accounts (a single-account picker is a no-op). The
+                strip scrolls horizontally on narrow screens. Selecting an
+                account re-derives every number on the page via the
+                `accountId` arg fed to `useTransactionsWindow`. */}
+            {accounts.length > 1 && (
+              <div
+                className="mx-4 mt-4 -mr-4 overflow-x-auto md:mx-0 md:mr-0 md:mt-6"
+                aria-label="Filtrar por cuenta"
+              >
+                <div className="flex gap-2 w-max pr-4 md:pr-0">
+                  <AccountChip
+                    label="Todas"
+                    active={selectedAccountId === null}
+                    onClick={() => setSelectedAccountId(null)}
+                  />
+                  {accounts.map((account) => (
+                    <AccountChip
+                      key={account.id}
+                      label={account.label}
+                      active={selectedAccountId === account.id}
+                      onClick={() => setSelectedAccountId(account.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Hero — vertical "Este mes · abril" summary card. */}
             <MonthSummaryCard
               periodLabel={(() => {

@@ -145,17 +145,20 @@ export function MerchantPicker({
         className="mt-3 px-4"
         aria-label="Comercio (opcional)"
       >
-        <div className="mb-1.5 flex items-baseline justify-between">
-          <span className="text-[13px] font-semibold text-foreground">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             {(() => {
               const label = getMerchantSectionLabel(categoryName);
-              // Split off the "(opcional)" suffix to keep the muted styling
-              // it had before — visual continuity matters more than DRY here.
+              // Split off the "(opcional)" suffix — it now reads in the
+              // muted header style, so we keep the parenthetical inline.
               const m = label.match(/^(.*?)\s*\(opcional\)$/);
               if (!m) return label;
               return (
                 <>
-                  {m[1]} <span className="text-muted-foreground">(opcional)</span>
+                  {m[1]}{" "}
+                  <span className="font-medium normal-case tracking-normal">
+                    (opcional)
+                  </span>
                 </>
               );
             })()}
@@ -165,10 +168,10 @@ export function MerchantPicker({
             onClick={() => setDrawerOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={drawerOpen}
-            className="inline-flex items-center gap-0.5 text-[12px] font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Ver más
-            <ChevronRight size={14} aria-hidden="true" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -202,19 +205,6 @@ export function MerchantPicker({
               </button>
             );
           })}
-          {/* "Ver más" inline pill mirrors the "+ Más" affordance on the
-              category strip — keeps the visual rhythm consistent when MRU
-              is short. */}
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            aria-label="Ver todos los comercios"
-            aria-haspopup="dialog"
-            aria-expanded={drawerOpen}
-            className="inline-flex h-9 flex-shrink-0 items-center rounded-full border border-dashed border-border bg-transparent px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Ver más
-          </button>
         </div>
       </section>
 

@@ -54,3 +54,7 @@ public/swe-worker-*.js
 
 # Design system reference (not source code — kept locally for visual reference)
 Lumi Design System/
+
+# Raw logo source packs (logosenvector.com / seeklogo downloads)
+# Only the optimized SVGs at public/logos/merchants/{slug}.svg are tracked.
+public/logos/merchants/*/
