@@ -106,8 +106,13 @@ function HeroKpi({
       ? "bg-[oklch(0.65_0.16_162)]"
       : "bg-[oklch(0.65_0.18_25)]";
 
+  // Push expense to the left and income to the right of the card so the
+  // two numbers use the available width fully and create natural breathing
+  // room between them — instead of both center-clustering near the divider.
+  const isIncome = variant === "income";
   const baseClass = cn(
-    "flex min-h-[72px] w-full min-w-0 flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left",
+    "flex min-h-[72px] w-full min-w-0 flex-col gap-2 rounded-xl px-4 py-3.5",
+    isIncome ? "items-end text-right md:items-start md:text-left" : "items-start text-left",
     interactive && [
       "transition-colors duration-150 ease-out",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
