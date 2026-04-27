@@ -114,8 +114,15 @@ function HeroKpi({
   // gives natural breathing room in the middle). Stacked vertically: both
   // align left for symmetric reading flow. Desktop: always left.
   const isIncome = variant === "income";
+  // Subtle tint background per variant — same hues as the dot/number text
+  // but very low chroma so they read as gentle wash, not a saturated chip.
+  // Light mode: pale tint at 60% alpha. Dark mode: deeper tint at 25% alpha.
+  const tintBg = isIncome
+    ? "bg-[oklch(0.96_0.025_162/0.6)] dark:bg-[oklch(0.30_0.05_162/0.35)]"
+    : "bg-[oklch(0.96_0.025_25/0.6)] dark:bg-[oklch(0.30_0.05_25/0.35)]";
   const baseClass = cn(
     "flex min-h-[72px] w-full min-w-0 flex-col gap-2 rounded-xl px-4 py-3.5",
+    tintBg,
     isIncome && !stacked
       ? "items-end text-right md:items-start md:text-left"
       : "items-start text-left",
@@ -123,8 +130,8 @@ function HeroKpi({
       "transition-colors duration-150 ease-out",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       pressed
-        ? "bg-foreground/[0.06] ring-1 ring-inset ring-foreground/15"
-        : "hover:bg-muted/60",
+        ? "ring-1 ring-inset ring-foreground/15"
+        : "hover:brightness-[0.98] dark:hover:brightness-110",
     ],
   );
 
