@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import { getMoneyDisplaySizeClass } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   useTransactionsWindow,
@@ -273,7 +274,11 @@ function HeroMetric({
         </div>
         <div className="mt-1.5 flex items-baseline gap-3">
           <span
-            className="font-semibold tabular-nums leading-none tracking-tight text-[44px] md:text-[64px]"
+            className={cn(
+              "font-semibold tabular-nums leading-none tracking-tight whitespace-nowrap",
+              // Hero scale: shrinks predictably for long amounts (≥ 1M, etc).
+              getMoneyDisplaySizeClass(spent, currency, "hero"),
+            )}
             style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
             {formatMoney(spent, currency)}

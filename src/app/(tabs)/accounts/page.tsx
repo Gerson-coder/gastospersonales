@@ -108,9 +108,10 @@ const ACCOUNT_TINT: Record<AccountKind, string> = {
 
 const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank", "yape", "plin"];
 
-// Account name char cap. 32 is plenty for "BCP Soles", "Visa BBVA Plata",
-// "Yape", etc. and keeps the list row from overflowing on narrow phones.
-const LABEL_MAX_LENGTH = 32;
+// Account name char cap. 24 covers legitimate names ("Cuenta Ahorro BCP",
+// "Tarjeta Interbank") while preventing visual spam — 32 chars of garbage
+// fills the entire visible width on narrow phones.
+const LABEL_MAX_LENGTH = 24;
 
 // Account names that are auto-locked when the corresponding kind is picked.
 // Mirrored in the DB as plain text — defensive trim/match in handleSubmit.
@@ -536,7 +537,12 @@ function AccountFormSheet({
           aria-busy={submitting}
         >
           <SheetHeader className="px-0">
-            <SheetTitle id="account-form-title">{title}</SheetTitle>
+            <SheetTitle
+              id="account-form-title"
+              className="font-sans not-italic font-semibold"
+            >
+              {title}
+            </SheetTitle>
             <SheetDescription>{description}</SheetDescription>
           </SheetHeader>
 

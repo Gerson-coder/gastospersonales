@@ -96,7 +96,7 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
     .select("id, name, type, currency")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw friendlyAccountError(error);
   return toAccount(data);
 }
 
@@ -123,8 +123,28 @@ export async function updateAccount(
     .select("id, name, type, currency")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) throw friendlyAccountError(error);
   return toAccount(data);
+}
+
+/**
+ * Translate Postgres/Supabase errors into user-friendly Spanish messages for
+ * the accounts table. Falls back to the raw `message` for anything we don't
+ * recognize so we don't accidentally swallow real signal.
+ *
+ * Known codes:
+ *   - 23514 (check_violation) on `accounts_type_check`: the remote DB hasn't
+ *     applied migration 00011 yet, so kinds `yape`/`plin` are rejected.
+ */
+function friendlyAccountError(err: { code?: string; message: string }): Error {
+  const code = err.code ?? "";
+  const msg = err.message ?? "";
+  if (code === "23514" && /accounts_type_check/i.test(msg)) {
+    return new Error(
+      "Yape y Plin todavía no están habilitados. El admin debe aplicar la migración pendiente.",
+    );
+  }
+  return new Error(msg || "No se pudo guardar la cuenta.");
 }
 
 /**
