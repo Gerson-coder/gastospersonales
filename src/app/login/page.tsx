@@ -533,7 +533,11 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
       const { error } = await supabase.auth.resetPasswordForEmail(
         trimmedEmail,
         {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
+          // Route through /auth/callback so the server handler exchanges the
+          // PKCE code and writes session cookies, then forwards to the
+          // reset-password form. Going directly to /auth/reset-password skips
+          // the exchange and the page can't see a session.
+          redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
         },
       );
       if (error) {
@@ -580,7 +584,11 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
       const { error } = await supabase.auth.resetPasswordForEmail(
         trimmedEmail,
         {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
+          // Route through /auth/callback so the server handler exchanges the
+          // PKCE code and writes session cookies, then forwards to the
+          // reset-password form. Going directly to /auth/reset-password skips
+          // the exchange and the page can't see a session.
+          redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
         },
       );
       if (error) {
