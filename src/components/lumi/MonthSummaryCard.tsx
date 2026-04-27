@@ -238,12 +238,18 @@ export function MonthSummaryCard({
         <div className="mt-5 flex justify-center md:mt-6">{currencySwitch}</div>
       ) : null}
 
-      {/* Secondary KPIs — Gasto / Ingreso side by side. Subtle rose / emerald
-          on the numbers themselves; labels stay muted. No deltas, no "+"
-          prefix — the Lucide arrow indicators went away with the redesign. */}
+      {/* Secondary KPIs — Gasto / Ingreso. Side by side when amounts are
+          short; stacked vertically when either formatted amount crosses
+          ~15 chars (≈ S/. 1M+) so neither number gets cramped against the
+          divider. Desktop always grids — plenty of horizontal room there. */}
       <div
         className={cn(
-          "grid grid-cols-2 gap-2 md:gap-4",
+          Math.max(
+            formatMoney(spent, currency).length,
+            formatMoney(income, currency).length,
+          ) > 15
+            ? "flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-4"
+            : "grid grid-cols-2 gap-2 md:gap-4",
           currencySwitch ? "mt-5 md:mt-6" : "mt-7 md:mt-9",
         )}
       >
