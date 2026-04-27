@@ -64,3 +64,47 @@ export function toMinor(major: number): bigint {
 export function toMajor(minor: bigint | number): number {
   return typeof minor === "bigint" ? Number(minor) / 100 : minor / 100;
 }
+
+/**
+ * Picks a Tailwind size class for a money display based on the formatted
+ * string length. Per-transaction is capped at 999,999.99 (MAX_TRANSACTION_AMOUNT)
+ * but aggregates (saldo, totals) can grow unbounded, so the UI must shrink
+ * gracefully when numbers get wider. Predictable JS-driven breakpoints
+ * (no clamp() guesswork — the size only depends on the actual content).
+ *
+ * Two scales:
+ *   - "hero": for the centerpiece Saldo number.
+ *   - "secondary": for sibling numbers like Gasto/Ingreso under the saldo.
+ *
+ * Length thresholds reference the "es-PE" PEN format ("S/ 12,345.67"):
+ *   ≤ 12 chars  → up to ~99,999.99            → biggest tier
+ *   ≤ 15 chars  → up to ~999,999.99           → tier-2
+ *   ≤ 18 chars  → up to ~99,999,999.99 (~100M) → tier-3
+ *   > 18 chars  → extreme (multi-100M / B+)    → smallest tier
+ */
+export type MoneyDisplayScale = "hero" | "secondary";
+
+const HERO_SIZES = [
+  "text-5xl md:text-6xl", // ≤12
+  "text-4xl md:text-5xl", // ≤15
+  "text-3xl md:text-4xl", // ≤18
+  "text-2xl md:text-3xl", // >18
+] as const;
+
+const SECONDARY_SIZES = [
+  "text-2xl md:text-3xl", // ≤12
+  "text-xl md:text-2xl",  // ≤15
+  "text-lg md:text-xl",   // ≤18
+  "text-base md:text-lg", // >18
+] as const;
+
+export function getMoneyDisplaySizeClass(
+  amount: number,
+  currency: Currency = "PEN",
+  scale: MoneyDisplayScale = "hero",
+): string {
+  const formatted = formatMoney(Math.abs(amount) * 100, currency);
+  const length = formatted.length;
+  const tier = length <= 12 ? 0 : length <= 15 ? 1 : length <= 18 ? 2 : 3;
+  return scale === "hero" ? HERO_SIZES[tier] : SECONDARY_SIZES[tier];
+}

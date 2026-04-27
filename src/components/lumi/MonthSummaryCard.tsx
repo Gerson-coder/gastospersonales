@@ -19,6 +19,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { getMoneyDisplaySizeClass } from "@/lib/money";
 
 // --- Public types ---------------------------------------------------------
 export type MonthFilter = "all" | "expense" | "income";
@@ -128,9 +129,10 @@ function HeroKpi({
       <span
         className={cn(
           "block max-w-full font-semibold leading-none tracking-tight tabular-nums",
-          // Fluid size: shrinks on small screens so long amounts (S/ 100,000.00)
-          // stay on one line, scales up gracefully on wider viewports.
-          "text-[clamp(0.95rem,4.6vw,1.25rem)] md:text-[26px]",
+          // Predictable size tiers driven by formatted character count
+          // (see getMoneyDisplaySizeClass). Long amounts (≥ S/ 1M) shrink
+          // gracefully without surprising mid-viewport jumps.
+          getMoneyDisplaySizeClass(amount, currency, "secondary"),
           numberColor,
         )}
         style={{
@@ -212,7 +214,11 @@ export function MonthSummaryCard({
           Saldo actual
         </dt>
         <dd
-          className="mt-3 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap text-foreground text-[44px] md:text-[60px]"
+          className={cn(
+            "mt-3 font-semibold leading-[0.95] tracking-tight tabular-nums whitespace-nowrap text-foreground",
+            // Hero scale: shrinks predictably as the saldo grows (≥ 1M, 100M, etc).
+            getMoneyDisplaySizeClass(Math.abs(net), currency, "hero"),
+          )}
           style={{ fontFeatureSettings: '"tnum","lnum"' }}
         >
           {netPositive ? "" : "− "}
