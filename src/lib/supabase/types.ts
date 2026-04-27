@@ -12,7 +12,7 @@
 //     generated client doesn't auto-infer FKs without the introspection step.
 
 export type Currency = "PEN" | "USD";
-export type AccountType = "cash" | "card" | "bank";
+export type AccountType = "cash" | "card" | "bank" | "yape" | "plin";
 export type CategoryKind = "expense" | "income";
 export type TransactionSource = "manual" | "ocr";
 export type OcrStatus = "pending" | "processing" | "completed" | "failed";

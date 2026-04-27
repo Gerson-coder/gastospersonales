@@ -1032,14 +1032,14 @@ export default function DashboardPage() {
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
-        {/* AppHeader — Wave 4 mounts the CurrencySwitch in the trailing slot.
-            Other tabs (movements/insights/etc.) don't pass it, so the switch
-            only appears here. */}
+        {/* AppHeader — header is now greeting + persistent right cluster only.
+            The PEN/USD CurrencySwitch was moved INSIDE the MonthSummaryCard,
+            centered between the separator and the Gasto/Ingreso row, where it
+            reads as part of the money chrome instead of header noise. */}
         <AppHeader
           title={greeting}
           titleStyle="page"
           avatar={<UserAvatarCircle size="sm" />}
-          actionsBefore={<CurrencySwitch />}
         />
 
         {isLoading ? (
@@ -1070,6 +1070,7 @@ export default function DashboardPage() {
               spent={spent}
               income={income}
               currency={currency}
+              currencySwitch={<CurrencySwitch />}
               onFilterChange={(next) => {
                 if (next === "all") {
                   router.push("/movements");
@@ -1129,15 +1130,17 @@ export default function DashboardPage() {
                       Ver todo →
                     </Link>
                   </div>
-                  <p className="mb-5 text-[13px] leading-snug text-muted-foreground">
-                    <span
-                      className="font-semibold tabular-nums text-foreground"
+                  <div className="mb-5">
+                    <div
+                      className="text-[20px] font-semibold leading-tight tabular-nums text-foreground"
                       style={{ fontFeatureSettings: '"tnum","lnum"' }}
                     >
                       {formatMoney(spent, currency)}
-                    </span>{" "}
-                    gastado en {topCategories.length} categorías
-                  </p>
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
+                      gastado en {topCategories.length} categorías
+                    </p>
+                  </div>
                   {topCategories.length > 0 ? (
                     <CategoryBars items={topCategories} total={spent} currency={currency} />
                   ) : (

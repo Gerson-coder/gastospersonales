@@ -22,6 +22,7 @@ import {
   Banknote,
   CreditCard,
   Landmark,
+  Wallet,
   ChevronRight,
   Plus,
   Trash2,
@@ -77,8 +78,13 @@ const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
   cash: "Efectivo",
   card: "Tarjeta",
   bank: "Banco",
+  yape: "Yape",
+  plin: "Plin",
 };
 
+// Icons are kept on the LIST view (fast recognition) but removed from the
+// form's type chips per UX feedback. Yape/Plin reuse a wallet-ish icon so
+// the list still has a visual anchor.
 const ACCOUNT_KIND_ICON: Record<
   AccountKind,
   React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>
@@ -86,15 +92,32 @@ const ACCOUNT_KIND_ICON: Record<
   cash: Banknote,
   card: CreditCard,
   bank: Landmark,
+  yape: Wallet,
+  plin: Wallet,
 };
 
 const ACCOUNT_TINT: Record<AccountKind, string> = {
   cash: "bg-[oklch(0.92_0.04_70)] text-[oklch(0.45_0.10_70)]",
   card: "bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]",
   bank: "bg-[oklch(0.92_0.03_140)] text-[oklch(0.45_0.10_140)]",
+  // Yape brand purple, Plin brand teal — both at the calm soft-tint level
+  // used by the rest of the kinds so the row rhythm stays consistent.
+  yape: "bg-[oklch(0.92_0.05_310)] text-[oklch(0.45_0.16_310)]",
+  plin: "bg-[oklch(0.92_0.05_185)] text-[oklch(0.45_0.12_185)]",
 };
 
-const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank"];
+const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank", "yape", "plin"];
+
+// Account name char cap. 32 is plenty for "BCP Soles", "Visa BBVA Plata",
+// "Yape", etc. and keeps the list row from overflowing on narrow phones.
+const LABEL_MAX_LENGTH = 32;
+
+// Account names that are auto-locked when the corresponding kind is picked.
+// Mirrored in the DB as plain text — defensive trim/match in handleSubmit.
+const LOCKED_KIND_NAMES: Partial<Record<AccountKind, string>> = {
+  yape: "Yape",
+  plin: "Plin",
+};
 const CURRENCY_OPTIONS: Currency[] = ["PEN", "USD"];
 
 // ─── Page ──────────────────────────────────────────────────────────────────
@@ -376,7 +399,11 @@ function AccountFormSheet({
   React.useEffect(() => {
     if (!open) return;
     if (mode === "edit" && account) {
-      setLabel(account.label);
+      // If the saved kind has a locked brand name, normalise on hydrate
+      // so legacy rows that were saved before this rule still render the
+      // canonical "Yape"/"Plin" label.
+      const locked = LOCKED_KIND_NAMES[account.kind];
+      setLabel(locked ?? account.label);
       setKind(account.kind);
       setCurrency(account.currency);
     } else {
@@ -388,13 +415,40 @@ function AccountFormSheet({
     setArchiveArmed(false);
     const id = window.requestAnimationFrame(() => {
       labelRef.current?.focus();
-      if (mode === "edit") labelRef.current?.select();
+      // Don't auto-select when the name is locked — the field is disabled
+      // anyway, and selecting visually suggests the user can edit it.
+      if (mode === "edit" && account && !LOCKED_KIND_NAMES[account.kind]) {
+        labelRef.current?.select();
+      }
     });
     return () => window.cancelAnimationFrame(id);
   }, [open, mode, account]);
 
   const trimmed = label.trim();
   const labelInvalid = trimmed.length === 0;
+  // When kind is yape/plin we hard-lock the name to the brand. The user
+  // cannot type — the input is disabled and the value is enforced again
+  // on submit (defense-in-depth in case state desyncs).
+  const lockedName = LOCKED_KIND_NAMES[kind];
+  const nameLocked = lockedName !== undefined;
+  const labelMax = LABEL_MAX_LENGTH;
+  const labelRemaining = labelMax - label.length;
+  const showLabelCounter = !nameLocked && labelRemaining <= 5;
+
+  // Switch kind. Yape/Plin auto-lock the name to the brand. Switching back
+  // to a free-typed kind clears the field if it was holding a brand name —
+  // prevents a leftover "Yape" sneaking into a Cash account.
+  function handleKindChange(next: AccountKind) {
+    if (submitting) return;
+    setKind(next);
+    const nextLocked = LOCKED_KIND_NAMES[next];
+    if (nextLocked !== undefined) {
+      setLabel(nextLocked);
+      setShowError(false);
+    } else if (label === "Yape" || label === "Plin") {
+      setLabel("");
+    }
+  }
 
   // Optimistic close pattern: dismiss the sheet BEFORE the round-trip so the
   // UX feels instant. We surface a toast on either path and reload to
@@ -407,16 +461,19 @@ function AccountFormSheet({
       labelRef.current?.focus();
       return;
     }
+    // Defense-in-depth: if kind is locked, force the canonical brand name
+    // even if state somehow drifted.
+    const finalLabel = lockedName ?? trimmed;
     const action = mode;
     const targetId = account?.id;
     onOptimisticClose();
     setSubmitting(true);
     try {
       if (action === "create") {
-        await createAccount({ label: trimmed, kind, currency });
+        await createAccount({ label: finalLabel, kind, currency });
         toast.success("Cuenta creada");
       } else if (targetId) {
-        await updateAccount(targetId, { label: trimmed, kind, currency });
+        await updateAccount(targetId, { label: finalLabel, kind, currency });
         toast.success("Cuenta actualizada");
       }
       await reload();
@@ -485,38 +542,73 @@ function AccountFormSheet({
 
           <div className="mt-2 flex flex-col gap-4 px-0 pb-2">
             <div>
-              <Label
-                htmlFor="account-label"
-                className="mb-1.5 block text-[13px] font-semibold"
-              >
-                Nombre
-              </Label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <Label
+                  htmlFor="account-label"
+                  className="block text-[13px] font-semibold"
+                >
+                  Nombre
+                </Label>
+                {showLabelCounter ? (
+                  <span
+                    aria-live="polite"
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      labelRemaining < 0
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {labelRemaining}
+                  </span>
+                ) : null}
+              </div>
               <Input
                 id="account-label"
                 ref={labelRef}
                 value={label}
                 onChange={(e) => {
+                  if (nameLocked) return;
                   setLabel(e.target.value);
                   if (showError && e.target.value.trim().length > 0) {
                     setShowError(false);
                   }
                 }}
                 onBlur={() => {
-                  if (labelInvalid) setShowError(true);
+                  if (labelInvalid && !nameLocked) setShowError(true);
                 }}
-                placeholder="Ej. Efectivo, BCP Soles, Visa…"
-                maxLength={60}
+                placeholder={
+                  nameLocked
+                    ? lockedName
+                    : "Ej. Efectivo, BCP Soles, Visa…"
+                }
+                maxLength={LABEL_MAX_LENGTH}
                 autoComplete="off"
-                disabled={submitting}
+                disabled={submitting || nameLocked}
+                readOnly={nameLocked}
+                aria-readonly={nameLocked || undefined}
                 aria-invalid={showError && labelInvalid}
                 aria-describedby={
-                  showError && labelInvalid ? errorId : undefined
+                  showError && labelInvalid
+                    ? errorId
+                    : nameLocked
+                      ? "account-label-locked"
+                      : undefined
                 }
                 className={cn(
                   "h-11 text-[15px]",
+                  nameLocked && "opacity-70 cursor-not-allowed",
                   showError && labelInvalid && "border-destructive focus-visible:ring-destructive",
                 )}
               />
+              {nameLocked ? (
+                <span
+                  id="account-label-locked"
+                  className="mt-1.5 block text-[11px] text-muted-foreground"
+                >
+                  El nombre se asigna automáticamente para {lockedName}.
+                </span>
+              ) : null}
               {showError && labelInvalid ? (
                 <span
                   id={errorId}
@@ -530,19 +622,21 @@ function AccountFormSheet({
 
             <fieldset>
               <legend className="mb-1.5 text-[13px] font-semibold">Tipo</legend>
+              {/* Text-only chips per UX feedback (icons removed to keep the
+                  picker calm on small screens). 5 options on one row at md+,
+                  wraps to 3+2 on phones via grid-cols-3. */}
               <RadioGroup
                 value={kind}
-                onValueChange={(v) => setKind(v as AccountKind)}
-                className="grid grid-cols-3 gap-2"
+                onValueChange={(v) => handleKindChange(v as AccountKind)}
+                className="grid grid-cols-3 gap-2 md:grid-cols-5"
               >
                 {KIND_OPTIONS.map((k) => {
-                  const Icon = ACCOUNT_KIND_ICON[k];
                   const selected = kind === k;
                   return (
                     <label
                       key={k}
                       className={cn(
-                        "flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] transition-colors",
+                        "flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2.5 text-[13px] transition-colors",
                         "focus-within:ring-2 focus-within:ring-ring",
                         selected
                           ? "border-foreground bg-muted text-foreground"
@@ -554,8 +648,7 @@ function AccountFormSheet({
                         className="sr-only"
                         disabled={submitting}
                       />
-                      <Icon size={16} aria-hidden />
-                      <span className="font-semibold">
+                      <span className="truncate font-semibold">
                         {ACCOUNT_KIND_LABEL[k]}
                       </span>
                     </label>

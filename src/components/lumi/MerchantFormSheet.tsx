@@ -100,6 +100,9 @@ export function MerchantFormSheet(props: Props) {
   const readOnly = isEdit && props.readOnly === true;
   const nameInvalid = trimmed.length === 0;
   const submitting = props.submitting === true;
+  // Counter only when nearing the cap — keeps the sheet calm by default.
+  const nameRemaining = NAME_MAX_LENGTH - name.length;
+  const showNameCounter = nameRemaining <= 8;
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -204,12 +207,27 @@ export function MerchantFormSheet(props: Props) {
           <div className="mt-2 flex flex-col gap-4 px-0 pb-2">
             {/* Name */}
             <div>
-              <Label
-                htmlFor="merchant-name-input"
-                className="mb-1.5 block text-[13px] font-semibold"
-              >
-                Nombre
-              </Label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <Label
+                  htmlFor="merchant-name-input"
+                  className="block text-[13px] font-semibold"
+                >
+                  Nombre
+                </Label>
+                {showNameCounter ? (
+                  <span
+                    aria-live="polite"
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      nameRemaining < 0
+                        ? "text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {nameRemaining}
+                  </span>
+                ) : null}
+              </div>
               <Input
                 id="merchant-name-input"
                 ref={inputRef}

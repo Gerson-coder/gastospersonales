@@ -33,6 +33,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 
@@ -416,12 +417,33 @@ export default function ProfilePage() {
               </SheetDescription>
             </SheetHeader>
             <div className="mt-2 px-0 pb-2">
-              <Label
-                htmlFor="edit-name-input"
-                className="mb-1.5 block text-[13px] font-semibold"
-              >
-                Nombre
-              </Label>
+              {(() => {
+                const remaining = NAME_MAX_LENGTH - draftName.length;
+                const showCounter = remaining <= 6;
+                return (
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <Label
+                      htmlFor="edit-name-input"
+                      className="block text-[13px] font-semibold"
+                    >
+                      Nombre
+                    </Label>
+                    {showCounter ? (
+                      <span
+                        aria-live="polite"
+                        className={cn(
+                          "text-[11px] tabular-nums",
+                          remaining < 0
+                            ? "text-destructive"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {remaining}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })()}
               <Input
                 id="edit-name-input"
                 ref={nameInputRef}

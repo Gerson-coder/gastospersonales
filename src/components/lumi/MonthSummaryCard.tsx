@@ -24,7 +24,7 @@ import { Card } from "@/components/ui/card";
 export type MonthFilter = "all" | "expense" | "income";
 
 export interface MonthSummaryCardProps {
-  /** Period label shown in the top-right corner, e.g. "Abril 2026" */
+  /** Period label shown in the top-LEFT corner, uppercase, e.g. "ABRIL 2026" */
   periodLabel?: string;
   /** Total expenses for the period (positive number) */
   spent: number;
@@ -32,6 +32,13 @@ export interface MonthSummaryCardProps {
   income: number;
   /** Currency for the displayed numbers */
   currency: "PEN" | "USD";
+  /**
+   * Optional currency switch (PEN/USD pill). When provided, it renders centered
+   * inside the card between the separator and the Gasto/Ingreso row. The
+   * Dashboard mounts the global `<CurrencySwitch />` here so the toggle lives
+   * inside the hero rather than in the header.
+   */
+  currencySwitch?: React.ReactNode;
   /** Deltas vs previous period — fractional values (e.g. -0.12 for -12%). Currently unused; kept for API back-compat. */
   spentDelta?: number;
   incomeDelta?: number;
@@ -57,9 +64,6 @@ function formatMoney(amount: number, currency: "PEN" | "USD" = "PEN"): string {
     maximumFractionDigits: 2,
   }).format(amount);
 }
-
-// Shared min-width so spent / income / net land on aligned right edges.
-const MONEY_COL_MIN_WIDTH = "108px";
 
 // --- KPI cell -------------------------------------------------------------
 /**
@@ -102,7 +106,7 @@ function HeroKpi({
       : "bg-[oklch(0.65_0.18_25)]";
 
   const baseClass = cn(
-    "flex min-h-[72px] w-full flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left",
+    "flex min-h-[72px] w-full min-w-0 flex-col items-start gap-2 rounded-xl px-4 py-3.5 text-left",
     interactive && [
       "transition-colors duration-150 ease-out",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -123,12 +127,16 @@ function HeroKpi({
       </span>
       <span
         className={cn(
-          "font-semibold leading-none tracking-tight text-[22px] md:text-[26px] tabular-nums whitespace-nowrap",
+          "block max-w-full font-semibold leading-none tracking-tight tabular-nums",
+          // Fluid size: shrinks on small screens so long amounts (S/ 100,000.00)
+          // stay on one line, scales up gracefully on wider viewports.
+          "text-[clamp(0.95rem,4.6vw,1.25rem)] md:text-[26px]",
           numberColor,
         )}
         style={{
           fontFeatureSettings: '"tnum","lnum"',
-          minWidth: MONEY_COL_MIN_WIDTH,
+          // Keep the number on one line; the clamp() above prevents overflow.
+          whiteSpace: "nowrap",
         }}
       >
         {forceSign ? `${forceSign} ` : ""}
@@ -167,6 +175,7 @@ export function MonthSummaryCard({
   filter = "all",
   onFilterChange,
   className,
+  currencySwitch,
 }: MonthSummaryCardProps) {
   const net = income - spent;
   const netPositive = net >= 0;
@@ -185,11 +194,11 @@ export function MonthSummaryCard({
         className,
       )}
     >
-      {/* Top-right period label — small + muted. Currency switching now
-          lives in the global header (CurrencySwitch) so we don't render a
-          PEN/S/ badge in this card anymore. */}
-      <div className="flex items-start justify-end">
-        <span className="text-[12px] font-medium text-muted-foreground">
+      {/* Top-LEFT period label — small + muted + UPPERCASE. The PEN/USD
+          switch (when provided) is centered lower in the card, between the
+          separator and the Gasto/Ingreso row. */}
+      <div className="flex items-start justify-start">
+        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           {periodLabel}
         </span>
       </div>
@@ -214,13 +223,24 @@ export function MonthSummaryCard({
       {/* Thin separator — restraint, not a heavy divider. */}
       <div
         aria-hidden="true"
-        className="mx-auto my-7 h-px w-full max-w-xs bg-border md:my-9"
+        className="mx-auto mt-7 h-px w-full max-w-xs bg-border md:mt-9"
       />
+
+      {/* Optional centered currency switch — lives between the separator and
+          the Gasto/Ingreso row. Renders nothing when no switch is passed. */}
+      {currencySwitch ? (
+        <div className="mt-5 flex justify-center md:mt-6">{currencySwitch}</div>
+      ) : null}
 
       {/* Secondary KPIs — Gasto / Ingreso side by side. Subtle rose / emerald
           on the numbers themselves; labels stay muted. No deltas, no "+"
           prefix — the Lucide arrow indicators went away with the redesign. */}
-      <div className="grid grid-cols-2 gap-2 md:gap-4">
+      <div
+        className={cn(
+          "grid grid-cols-2 gap-2 md:gap-4",
+          currencySwitch ? "mt-5 md:mt-6" : "mt-7 md:mt-9",
+        )}
+      >
         <HeroKpi
           label="Gasto"
           amount={spent}

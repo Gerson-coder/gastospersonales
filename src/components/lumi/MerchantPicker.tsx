@@ -53,6 +53,30 @@ export type MerchantPickerProps = {
 
 const MRU_LIMIT = 3;
 
+/**
+ * Localized "where" label for the picker section, derived from the active
+ * category name. Falls back to a generic "Lugares (opcional)" when no
+ * mapping matches — keeps the section header friendly without forcing the
+ * user to mentally translate "merchants" into context.
+ */
+function getMerchantSectionLabel(categoryName: string | null): string {
+  if (!categoryName) return "Lugares (opcional)";
+  // Strip diacritics via NFD + Unicode "Mark" category. Using the Unicode
+  // property escape keeps the regex source ASCII (no embedded combining
+  // chars), which avoids subtle transcription bugs in tooling.
+  const normalized = categoryName
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  const map: Record<string, string> = {
+    comida: "Restaurantes (opcional)",
+    salud: "Hospitales (opcional)",
+    educacion: "Universidades (opcional)",
+    servicios: "Proveedores (opcional)",
+  };
+  return map[normalized] ?? "Lugares (opcional)";
+}
+
 export function MerchantPicker({
   categoryId,
   categoryName,
@@ -123,7 +147,18 @@ export function MerchantPicker({
       >
         <div className="mb-1.5 flex items-baseline justify-between">
           <span className="text-[13px] font-semibold text-foreground">
-            ¿Dónde? <span className="text-muted-foreground">(opcional)</span>
+            {(() => {
+              const label = getMerchantSectionLabel(categoryName);
+              // Split off the "(opcional)" suffix to keep the muted styling
+              // it had before — visual continuity matters more than DRY here.
+              const m = label.match(/^(.*?)\s*\(opcional\)$/);
+              if (!m) return label;
+              return (
+                <>
+                  {m[1]} <span className="text-muted-foreground">(opcional)</span>
+                </>
+              );
+            })()}
           </span>
           <button
             type="button"

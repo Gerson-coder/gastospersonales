@@ -45,9 +45,12 @@ import {
   CreditCard,
   Landmark,
   Loader2,
+  MoreHorizontal,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
+import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   Drawer,
   DrawerContent,
@@ -117,13 +120,15 @@ type AccountId = string;
 type Account = {
   id: AccountId;
   label: string;
-  kind: "cash" | "card" | "bank";
+  kind: "cash" | "card" | "bank" | "yape" | "plin";
   currency: Currency;
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
 
 // Map an account kind to its icon. Used to "rehydrate" the lucide icon for
 // rows that come from the data layer (which doesn't carry React components).
+// Yape/Plin reuse Wallet so the picker chip stays visually consistent —
+// the brand label below ("Yape"/"Plin") is what disambiguates.
 const ACCOUNT_KIND_ICON: Record<
   Account["kind"],
   React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>
@@ -131,6 +136,8 @@ const ACCOUNT_KIND_ICON: Record<
   cash: Wallet,
   card: CreditCard,
   bank: Landmark,
+  yape: Wallet,
+  plin: Wallet,
 };
 
 function fromDataAccount(a: DataAccount): Account {
@@ -257,7 +264,7 @@ function KeypadButton({
       onPointerCancel={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
       className={cn(
-        "flex h-16 items-center justify-center rounded-2xl border-0 text-2xl font-medium tabular-nums text-foreground",
+        "flex h-14 items-center justify-center rounded-2xl border-0 text-2xl font-medium tabular-nums text-foreground",
         "transition-colors duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "active:bg-muted",
@@ -387,7 +394,10 @@ function CapturePageInner() {
 
   // Buffer is the raw keypad string; "" means "nothing typed yet" (shows 0).
   const [amountBuffer, setAmountBuffer] = React.useState("");
-  const [currency, setCurrency] = React.useState<Currency>("PEN");
+  // Currency is unified with the rest of the app via `useActiveCurrency`
+  // (persisted in `lumi-prefs`). Edit-mode hydration calls `setCurrency` to
+  // align the global preference with the loaded transaction.
+  const { currency, setCurrency } = useActiveCurrency();
   const [kind, setKind] = React.useState<Kind>("expense");
   // Categories — same demo-vs-live split as accounts. In live mode we start
   // with an empty list + skeleton chips; in demo we seed from the inline mocks
@@ -519,7 +529,7 @@ function CapturePageInner() {
     return () => {
       cancelled = true;
     };
-  }, [editId, router]);
+  }, [editId, router, setCurrency]);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
   // Saved state — { ts } is stamped in handleSave (post-mount, not during
@@ -540,21 +550,52 @@ function CapturePageInner() {
   const account: Account | null =
     accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
 
-  // MRU strip. In demo mode we honour the original mock IDs ("food",
-  // "transport", "fun") so the keypad screen looks unchanged. In live mode
-  // we fall back to the first 3 expense categories alphabetically — proper
-  // MRU based on transaction history is a TODO for after the data model
-  // exposes it.
+  // MRU strip — kind-aware ordering.
+  //
+  // EXPENSE: pin Comida → Transporte → Salud at the front (the canonical
+  // primary trio), then the user's MRU minus duplicates and minus "Ahorro"
+  // (a savings bucket that should NOT appear on the expense capture flow,
+  // even while it's still seeded as kind=expense — migration 00010 flips it
+  // to income, but we filter explicitly so the UX is right today).
+  // INCOME: simply filter to income-kind categories so "Trabajo" (and
+  // "Ahorro" once 00010 is applied) surface naturally.
+  //
+  // Demo mode keeps its legacy mock-driven strip for backward compat.
+  const PRIMARY_EXPENSE_NAMES = React.useMemo(
+    () => ["Comida", "Transporte", "Salud"],
+    [],
+  );
   const mruCategories = React.useMemo<Category[]>(() => {
     if (!SUPABASE_ENABLED) {
-      return MRU_CATEGORY_IDS.map((id) =>
-        categories.find((c) => c.id === id),
-      ).filter((c): c is Category => Boolean(c));
+      const ids =
+        kind === "income"
+          ? categories.filter((c) => c.defaultKind === "income").map((c) => c.id)
+          : MRU_CATEGORY_IDS;
+      return ids
+        .map((id) => categories.find((c) => c.id === id))
+        .filter((c): c is Category => Boolean(c))
+        .slice(0, 3);
     }
-    return categories
-      .filter((c) => c.defaultKind === "expense")
-      .slice(0, 3);
-  }, [categories]);
+    if (kind === "income") {
+      return categories
+        .filter((c) => c.defaultKind === "income")
+        .slice(0, 3);
+    }
+    // Expense: primary trio first, then any extras (filtered).
+    const primary = PRIMARY_EXPENSE_NAMES.map((name) =>
+      categories.find(
+        (c) => c.label === name && c.defaultKind === "expense",
+      ),
+    ).filter((c): c is Category => Boolean(c));
+    const primaryIds = new Set(primary.map((c) => c.id));
+    const rest = categories.filter(
+      (c) =>
+        !primaryIds.has(c.id) &&
+        c.defaultKind === "expense" &&
+        c.label !== "Ahorro",
+    );
+    return [...primary, ...rest].slice(0, 3);
+  }, [categories, kind, PRIMARY_EXPENSE_NAMES]);
 
   const press = React.useCallback((k: KeypadKey) => {
     setAmountBuffer((s) => {
@@ -725,7 +766,10 @@ function CapturePageInner() {
   return (
     <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
       <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col">
-        {/* Header */}
+        {/* Header — back + camera flank a centered kind-toggle TITLE.
+            The kind toggle replaces the old "Cuánto gastaste/entró" eyebrow
+            (now removed) so the very first thing the user sees is the
+            primary mode switch, occupying the title slot. */}
         <header className="flex items-center justify-between px-4 pt-3">
           <button
             type="button"
@@ -736,16 +780,12 @@ function CapturePageInner() {
             <ArrowLeft size={20} aria-hidden="true" />
           </button>
 
-          {/* Kind toggle (gasto / ingreso) — bigger pill on mobile so it
-              reads as a primary control next to the amount; reverts to the
-              tighter desktop sizing at md+ where the header has more chrome
-              competing for visual weight. mx-auto keeps it visually anchored
-              between the back button and the currency cluster on small
-              screens. */}
+          {/* Kind toggle — promoted to the title slot. Bigger pill, more
+              presence; this is the page's headline. */}
           <div
             role="radiogroup"
             aria-label="Tipo de movimiento"
-            className="mx-auto flex h-12 items-center gap-0.5 rounded-full bg-muted p-0.5 md:h-9"
+            className="mx-auto inline-flex h-12 items-center gap-0.5 rounded-full bg-muted p-1"
           >
             <button
               type="button"
@@ -753,7 +793,7 @@ function CapturePageInner() {
               aria-checked={kind === "expense"}
               onClick={() => setKind("expense")}
               className={cn(
-                "min-w-[96px] rounded-full px-5 text-[15px] font-semibold transition-colors md:min-w-0 md:px-3.5 md:text-xs",
+                "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -768,7 +808,7 @@ function CapturePageInner() {
               aria-checked={kind === "income"}
               onClick={() => setKind("income")}
               className={cn(
-                "min-w-[96px] rounded-full px-5 text-[15px] font-semibold transition-colors md:min-w-0 md:px-3.5 md:text-xs",
+                "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
                   ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
@@ -780,17 +820,9 @@ function CapturePageInner() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCurrency((c) => (c === "PEN" ? "USD" : "PEN"))}
-              aria-label={`Cambiar moneda (actualmente ${currency})`}
-              aria-pressed={currency === "USD"}
-              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-border bg-card px-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {currency}
-            </button>
-            {/* Camera shortcut — relocated from a floating FAB so it stops
-                covering the keypad. Routes to the receipt-scan flow. */}
+            {/* Camera shortcut — routes to the receipt-scan flow. The PEN/USD
+                pill that used to live next to it has moved below the amount
+                (see CurrencySwitch slot) per the new title-as-toggle layout. */}
             <button
               type="button"
               onClick={() => router.push("/receipt")}
@@ -802,20 +834,24 @@ function CapturePageInner() {
           </div>
         </header>
 
-        {/* Amount display */}
-        <section className="px-6 pt-8 text-center md:px-8 md:pt-8" aria-live="polite">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            {kind === "income" ? "Cuánto entró" : "Cuánto gastaste"}
-          </div>
+        {/* Amount display — eyebrow ("Cuánto gastaste / entró") removed; the
+            kind toggle in the header now plays the title role. */}
+        <section className="px-6 pt-6 text-center md:px-8 md:pt-6" aria-live="polite">
           <div
             className={cn(
-              "mt-2 font-semibold tabular-nums leading-none tracking-tight",
+              "font-semibold tabular-nums leading-none tracking-tight",
               "text-[44px] md:text-[56px]",
               amountBuffer === "" ? "text-muted-foreground" : "text-foreground",
             )}
             style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
             {display}
+          </div>
+          {/* CurrencySwitch — moved from the header into the slot just below
+              the amount. Unified with `useActiveCurrency` so the page reflects
+              (and persists) the global PEN/USD preference. */}
+          <div className="mt-3 flex justify-center">
+            <CurrencySwitch />
           </div>
         </section>
 
@@ -894,6 +930,10 @@ function CapturePageInner() {
                 />
               ))
             )}
+            {/* "Ver más" chip — visually consistent with the category chips
+                (same h-11, same rounded-full, same icon-on-left layout) so
+                it reads as part of the strip rather than a foreign
+                affordance. Opens the full categories drawer. */}
             <button
               type="button"
               onClick={() => setCategoryDrawerOpen(true)}
@@ -901,9 +941,15 @@ function CapturePageInner() {
               aria-label="Ver todas las categorías"
               aria-haspopup="dialog"
               aria-expanded={categoryDrawerOpen}
-              className="inline-flex h-11 flex-shrink-0 items-center rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-full border border-border bg-card pl-1.5 pr-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
             >
-              + Más
+              <span
+                aria-hidden="true"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground"
+              >
+                <MoreHorizontal size={16} />
+              </span>
+              Ver más
             </button>
           </div>
         </section>
@@ -968,13 +1014,10 @@ function CapturePageInner() {
               sigue persistiendo `note` en handleSave. */}
         </section>
 
-        {/* Hint */}
-        <p className="px-4 pt-3 text-center text-[11px] text-muted-foreground">
-          {ready ? "Toca Guardar o elige otra categoría" : "Escribe el monto"}
-        </p>
-
-        {/* Keypad */}
-        <div className="mt-2 px-2">
+        {/* Keypad — the in-page hint ("Toca Guardar o elige otra categoría")
+            was removed; the bottom-nav save-FAB chevron below is the only
+            wayfinding cue now. */}
+        <div className="mt-3 px-2">
           <Keypad onPress={press} />
         </div>
 
