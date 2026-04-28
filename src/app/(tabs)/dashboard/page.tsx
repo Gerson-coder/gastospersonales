@@ -72,7 +72,11 @@ import { useUserName } from "@/lib/use-user-name";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { useTransactionsWindow } from "@/hooks/use-transactions-window";
 import { useTransactionsRealtime } from "@/hooks/use-transactions-realtime";
-import { listAccounts, type Account } from "@/lib/data/accounts";
+import {
+  accountDisplayLabel,
+  listAccounts,
+  type Account,
+} from "@/lib/data/accounts";
 import type { TransactionView } from "@/lib/data/transactions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -1039,7 +1043,7 @@ export default function DashboardPage() {
                         {visibleAccounts.map((account) => (
                           <AccountChip
                             key={account.id}
-                            label={account.label}
+                            label={accountDisplayLabel(account)}
                             active={selectedAccountId === account.id}
                             onClick={() => setSelectedAccountId(account.id)}
                           />
@@ -1110,7 +1114,7 @@ export default function DashboardPage() {
                           )}
                         >
                           <span className="truncate text-[14px] font-semibold">
-                            {account.label}
+                            {accountDisplayLabel(account)}
                           </span>
                           <span
                             className={cn(

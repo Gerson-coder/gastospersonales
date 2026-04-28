@@ -46,12 +46,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import {
+  ACCOUNT_SUBTYPE_LABEL,
+  ACCOUNT_SUBTYPE_OPTIONS,
+  accountDisplayLabel,
   archiveAccount,
   createAccount,
   listAccounts,
   updateAccount,
   type Account,
   type AccountKind,
+  type AccountSubtype,
   type Currency,
 } from "@/lib/data/accounts";
 import { CURRENCY_LABEL } from "@/lib/money";
@@ -282,7 +286,7 @@ export default function AccountsPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[14px] font-semibold">
-                            {account.label}
+                            {accountDisplayLabel(account)}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {CURRENCY_LABEL[account.currency]} · {ACCOUNT_KIND_LABEL[account.kind]}
@@ -412,6 +416,9 @@ function AccountFormSheet({
   const [label, setLabel] = React.useState("");
   const [kind, setKind] = React.useState<AccountKind>("cash");
   const [currency, setCurrency] = React.useState<Currency>("PEN");
+  // Optional product type within an institution. Only meaningful for
+  // bank accounts; cash / Yape / Plin keep this null.
+  const [subtype, setSubtype] = React.useState<AccountSubtype | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   // Validation only surfaces after the user touches Save once.
   const [showError, setShowError] = React.useState(false);
@@ -436,6 +443,7 @@ function AccountFormSheet({
       setLabel(locked ?? account.label);
       setKind(account.kind);
       setCurrency(account.currency);
+      setSubtype(account.subtype);
       // On hydrate, if the saved label exactly matches one of the brand
       // presets, treat it as locked so the input stays read-only and the
       // user has to actively switch kind to free it.
@@ -447,6 +455,7 @@ function AccountFormSheet({
       setLabel("");
       setKind("cash");
       setCurrency("PEN");
+      setSubtype(null);
       setLockedBrand(null);
     }
     setShowError(false);
@@ -495,6 +504,8 @@ function AccountFormSheet({
       // user starts with a blank slate when switching to cash, etc.
       setLabel("");
     }
+    // Subtype is bank-only. Leaving the bank kind clears it.
+    if (next !== "bank") setSubtype(null);
   }
 
   // One-tap brand preset: auto-fills kind + label and locks the input.
@@ -507,6 +518,19 @@ function AccountFormSheet({
     setLabel(preset.label);
     setLockedBrand(preset.label);
     setShowError(false);
+    // Wallet brands don't have product subtypes (Yape is just Yape).
+    if (preset.kind !== "bank") setSubtype(null);
+  }
+
+  // Auto-pick USD when the user picks "dolares" subtype (most users keep
+  // a USD-only cuenta dólares — the toggle is a small ergonomic win that
+  // saves a step). They can still flip back to PEN manually after.
+  function handleSubtypeChange(next: AccountSubtype | null) {
+    if (submitting) return;
+    setSubtype(next);
+    if (next === "dolares" && currency === "PEN") {
+      setCurrency("USD");
+    }
   }
 
   // Determine which brand preset is "active" given the current form state.
@@ -538,12 +562,27 @@ function AccountFormSheet({
     const targetId = account?.id;
     onOptimisticClose();
     setSubmitting(true);
+    // Subtype is only meaningful for bank accounts; force null elsewhere
+    // even if state somehow drifted (e.g. user picked "Dólares" for a
+    // bank, then switched to "Cash" — handleKindChange already clears it,
+    // but defense-in-depth keeps the DB tidy).
+    const finalSubtype = kind === "bank" ? subtype : null;
     try {
       if (action === "create") {
-        await createAccount({ label: finalLabel, kind, currency });
+        await createAccount({
+          label: finalLabel,
+          kind,
+          currency,
+          subtype: finalSubtype,
+        });
         toast.success("Cuenta creada");
       } else if (targetId) {
-        await updateAccount(targetId, { label: finalLabel, kind, currency });
+        await updateAccount(targetId, {
+          label: finalLabel,
+          kind,
+          currency,
+          subtype: finalSubtype,
+        });
         toast.success("Cuenta actualizada");
       }
       await reload();
@@ -772,6 +811,64 @@ function AccountFormSheet({
                 })}
               </RadioGroup>
             </fieldset>
+
+            {/* Subtype picker — only for bank accounts. Lets the user
+                differentiate multiple products under the same institution
+                (BCP cuenta sueldo + BCP cuenta dólares + BCP tarjeta de
+                crédito). "Sin tipo" stores null; picking "Dólares" also
+                flips currency to USD as a small ergonomic shortcut. */}
+            {kind === "bank" && (
+              <fieldset>
+                <legend className="mb-1.5 text-[13px] font-semibold">
+                  Tipo de cuenta
+                </legend>
+                <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
+                  Útil cuando tienes varias cuentas en el mismo banco.
+                </p>
+                <div
+                  role="group"
+                  aria-label="Tipo de cuenta dentro del banco"
+                  className="flex flex-wrap gap-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSubtypeChange(null)}
+                    disabled={submitting}
+                    aria-pressed={subtype === null}
+                    className={cn(
+                      "inline-flex h-9 items-center rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      subtype === null
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    Sin tipo
+                  </button>
+                  {ACCOUNT_SUBTYPE_OPTIONS.map((opt) => {
+                    const active = subtype === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => handleSubtypeChange(opt)}
+                        disabled={submitting}
+                        aria-pressed={active}
+                        className={cn(
+                          "inline-flex h-9 items-center rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          active
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-card text-foreground hover:bg-muted",
+                        )}
+                      >
+                        {ACCOUNT_SUBTYPE_LABEL[opt]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            )}
 
             <fieldset>
               <legend className="mb-1.5 text-[13px] font-semibold">

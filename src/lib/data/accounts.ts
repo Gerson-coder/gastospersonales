@@ -14,10 +14,14 @@
  */
 
 import { createClient } from "@/lib/supabase/client";
-import type { AccountType, Currency } from "@/lib/supabase/types";
+import type {
+  AccountSubtype,
+  AccountType,
+  Currency,
+} from "@/lib/supabase/types";
 
 export type AccountKind = AccountType; // alias for UI vocabulary
-export type { Currency };
+export type { AccountSubtype, Currency };
 
 /** Shape returned to the UI. Mirrors the mock that previously lived inline. */
 export type Account = {
@@ -25,12 +29,17 @@ export type Account = {
   label: string;
   kind: AccountKind;
   currency: Currency;
+  /** Product type within an institution (sueldo, dólares, etc.). Null when
+   * the user keeps just one account at this bank — the UI hides the chip
+   * in that case. See migration 00013_account_subtype.sql. */
+  subtype: AccountSubtype | null;
 };
 
 export type CreateAccountInput = {
   label: string;
   kind: AccountKind;
   currency: Currency;
+  subtype?: AccountSubtype | null;
 };
 
 export type UpdateAccountInput = Partial<CreateAccountInput>;
@@ -41,6 +50,7 @@ type DbAccountRow = {
   name: string;
   type: AccountType;
   currency: Currency;
+  subtype: AccountSubtype | null;
 };
 
 function toAccount(row: DbAccountRow): Account {
@@ -49,7 +59,39 @@ function toAccount(row: DbAccountRow): Account {
     label: row.name,
     kind: row.type,
     currency: row.currency,
+    subtype: row.subtype ?? null,
   };
+}
+
+/** UI labels for the optional product subtype. Mirrors migration 00013. */
+export const ACCOUNT_SUBTYPE_LABEL: Record<AccountSubtype, string> = {
+  sueldo: "Sueldo",
+  corriente: "Corriente",
+  ahorro: "Ahorro",
+  dolares: "Dólares",
+  credito: "Crédito",
+  debito: "Débito",
+};
+
+/** Ordered list for picker rendering (most-common first). */
+export const ACCOUNT_SUBTYPE_OPTIONS: ReadonlyArray<AccountSubtype> = [
+  "sueldo",
+  "corriente",
+  "ahorro",
+  "dolares",
+  "credito",
+  "debito",
+];
+
+/**
+ * Compose the user-facing label for an account. When a subtype is set
+ * we append it after a thin "·" separator; otherwise the account label
+ * stands alone. Centralised here so the dashboard chip, the account
+ * list row and the capture drawer all read the same string.
+ */
+export function accountDisplayLabel(account: Account): string {
+  if (!account.subtype) return account.label;
+  return `${account.label} · ${ACCOUNT_SUBTYPE_LABEL[account.subtype]}`;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────
@@ -61,13 +103,19 @@ export async function listAccounts(): Promise<Account[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, name, type, currency, created_at")
+    .select("id, name, type, currency, subtype, created_at")
     .is("archived_at", null)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) =>
-    toAccount({ id: r.id, name: r.name, type: r.type, currency: r.currency }),
+    toAccount({
+      id: r.id,
+      name: r.name,
+      type: r.type,
+      currency: r.currency,
+      subtype: (r as { subtype?: AccountSubtype | null }).subtype ?? null,
+    }),
   );
 }
 
@@ -79,7 +127,7 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
   const supabase = createClient();
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) {
-    throw new Error("Iniciá sesión para crear una cuenta.");
+    throw new Error("Inicia sesión para crear una cuenta.");
   }
 
   const trimmed = input.label.trim();
@@ -92,12 +140,13 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
       name: trimmed,
       type: input.kind,
       currency: input.currency,
+      subtype: input.subtype ?? null,
     })
-    .select("id, name, type, currency")
+    .select("id, name, type, currency, subtype")
     .single();
 
   if (error) throw friendlyAccountError(error);
-  return toAccount(data);
+  return toAccount(data as DbAccountRow);
 }
 
 /** Update the editable fields of an account. */
@@ -107,7 +156,12 @@ export async function updateAccount(
 ): Promise<Account> {
   const supabase = createClient();
 
-  const dbPatch: { name?: string; type?: AccountType; currency?: Currency } = {};
+  const dbPatch: {
+    name?: string;
+    type?: AccountType;
+    currency?: Currency;
+    subtype?: AccountSubtype | null;
+  } = {};
   if (patch.label !== undefined) {
     const trimmed = patch.label.trim();
     if (!trimmed) throw new Error("El nombre de la cuenta no puede estar vacío.");
@@ -115,16 +169,17 @@ export async function updateAccount(
   }
   if (patch.kind !== undefined) dbPatch.type = patch.kind;
   if (patch.currency !== undefined) dbPatch.currency = patch.currency;
+  if ("subtype" in patch) dbPatch.subtype = patch.subtype ?? null;
 
   const { data, error } = await supabase
     .from("accounts")
     .update(dbPatch)
     .eq("id", id)
-    .select("id, name, type, currency")
+    .select("id, name, type, currency, subtype")
     .single();
 
   if (error) throw friendlyAccountError(error);
-  return toAccount(data);
+  return toAccount(data as DbAccountRow);
 }
 
 /**

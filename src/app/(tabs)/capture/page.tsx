@@ -60,7 +60,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { listAccounts, type Account as DataAccount } from "@/lib/data/accounts";
+import {
+  accountDisplayLabel,
+  listAccounts,
+  type Account as DataAccount,
+} from "@/lib/data/accounts";
 import {
   listCategories,
   type Category as DbCategory,
@@ -124,6 +128,9 @@ type Account = {
   label: string;
   kind: "cash" | "card" | "bank" | "yape" | "plin";
   currency: Currency;
+  /** Optional product subtype (sueldo / dólares / crédito…). Carried here
+   * so the drawer + the picker chip can render `BCP · Sueldo`. */
+  subtype: import("@/lib/data/accounts").AccountSubtype | null;
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
 
@@ -153,6 +160,7 @@ function fromDataAccount(a: DataAccount): Account {
     label: a.label,
     kind: a.kind,
     currency: a.currency,
+    subtype: a.subtype,
     Icon: ACCOUNT_KIND_ICON[a.kind],
   };
 }
@@ -172,9 +180,9 @@ const MOCK_CATEGORIES: Category[] = [
 ];
 
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "cash", label: "Efectivo", kind: "cash", currency: "PEN", Icon: Wallet },
-  { id: "card", label: "Tarjeta", kind: "card", currency: "PEN", Icon: CreditCard },
-  { id: "bank", label: "Banco", kind: "bank", currency: "USD", Icon: Landmark },
+  { id: "cash", label: "Efectivo", kind: "cash", currency: "PEN", subtype: null, Icon: Wallet },
+  { id: "card", label: "Tarjeta", kind: "card", currency: "PEN", subtype: null, Icon: CreditCard },
+  { id: "bank", label: "Banco",   kind: "bank", currency: "USD", subtype: null, Icon: Landmark },
 ];
 
 // MRU mock — first three categories shown inline above the keypad in demo
@@ -817,7 +825,7 @@ function CapturePageInner() {
 
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"
-    : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${account.label}` : ""}`;
+    : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${accountDisplayLabel(account)}` : ""}`;
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
@@ -1070,7 +1078,7 @@ function CapturePageInner() {
               onClick={() => setAccountDrawerOpen(true)}
               aria-label={
                 account
-                  ? `Cuenta ${account.label}, toca para cambiar`
+                  ? `Cuenta ${accountDisplayLabel(account)}, toca para cambiar`
                   : "Sin cuenta seleccionada"
               }
               aria-haspopup="dialog"
@@ -1086,7 +1094,7 @@ function CapturePageInner() {
                     <account.Icon size={14} />
                   </span>
                   <span className="flex-1 text-[13px] font-semibold">
-                    {account.label}
+                    {accountDisplayLabel(account)}
                   </span>
                   <span className="text-[11px] font-medium text-muted-foreground">
                     {CURRENCY_LABEL[account.currency]}
@@ -1319,7 +1327,7 @@ function CapturePageInner() {
                           <Icon size={16} />
                         </span>
                         <span className="flex-1">
-                          <span className="block text-[13px] font-semibold">{a.label}</span>
+                          <span className="block text-[13px] font-semibold">{accountDisplayLabel(a)}</span>
                           <span className="block text-[11px] text-muted-foreground">
                             {CURRENCY_LABEL[a.currency]} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
                           </span>

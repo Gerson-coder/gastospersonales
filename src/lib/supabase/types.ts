@@ -13,6 +13,19 @@
 
 export type Currency = "PEN" | "USD";
 export type AccountType = "cash" | "card" | "bank" | "yape" | "plin";
+/**
+ * Optional product type WITHIN an institution. Set on accounts where the
+ * user keeps multiple products under one bank (sueldo + dólares + crédito
+ * under "BCP", say). Null = no subtype, the row renders bare. Mirrors
+ * the CHECK constraint in migration 00013.
+ */
+export type AccountSubtype =
+  | "sueldo"
+  | "corriente"
+  | "ahorro"
+  | "dolares"
+  | "credito"
+  | "debito";
 export type CategoryKind = "expense" | "income";
 export type TransactionSource = "manual" | "ocr";
 export type OcrStatus = "pending" | "processing" | "completed" | "failed";
@@ -47,6 +60,7 @@ export type Database = {
           name: string;
           type: AccountType;
           currency: Currency;
+          subtype: AccountSubtype | null;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
