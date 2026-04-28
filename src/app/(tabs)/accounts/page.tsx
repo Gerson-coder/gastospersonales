@@ -73,10 +73,10 @@ const SUPABASE_ENABLED =
 // ─── Constants ────────────────────────────────────────────────────────────
 // Demo-mode mock list. Same shape as `Account` from the data layer.
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "a1", label: "Efectivo", currency: "PEN", kind: "cash" },
-  { id: "a2", label: "BCP Soles", currency: "PEN", kind: "bank" },
-  { id: "a3", label: "Visa BBVA", currency: "PEN", kind: "card" },
-  { id: "a4", label: "BCP Dólares", currency: "USD", kind: "bank" },
+  { id: "a1", label: "Efectivo",  currency: "PEN", kind: "cash", subtype: null     },
+  { id: "a2", label: "BCP",       currency: "PEN", kind: "bank", subtype: "sueldo" },
+  { id: "a3", label: "Interbank", currency: "PEN", kind: "card", subtype: null     },
+  { id: "a4", label: "BCP",       currency: "USD", kind: "bank", subtype: "dolares"},
 ];
 
 const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
