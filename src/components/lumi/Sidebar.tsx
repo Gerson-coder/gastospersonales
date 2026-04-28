@@ -61,12 +61,12 @@ type SidebarNavItem = {
 const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/dashboard",  label: "Resumen",       icon: Home      },
   { href: "/movements",  label: "Transacciones", icon: List      },
-  { href: "/categories", label: "Categorías",    icon: Tag,      comingSoon: true },
-  { href: "/budgets",    label: "Presupuestos",  icon: Clock,    comingSoon: true },
-  { href: "/goals",      label: "Metas",         icon: Target,   comingSoon: true },
+  { href: "/categories", label: "Categorías",    icon: Tag       },
+  { href: "/budgets",    label: "Presupuestos",  icon: Clock     },
+  { href: "/goals",      label: "Metas",         icon: Target    },
   { href: "/accounts",   label: "Cuentas",       icon: Wallet    },
   { href: "/insights",   label: "Reportes",      icon: BarChart2 },
-  { href: "/advisor",    label: "Asesor IA",     icon: Bot,      badge: "new", comingSoon: true },
+  { href: "/advisor",    label: "Asesor IA",     icon: Bot,      badge: "new" },
   { href: "/settings",   label: "Configuración", icon: Settings  },
 ];
 
