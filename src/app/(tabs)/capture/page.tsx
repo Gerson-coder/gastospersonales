@@ -1118,22 +1118,54 @@ function CapturePageInner() {
           <Keypad onPress={press} />
         </div>
 
-        {/* Save is now driven by the bottom-nav center FAB (✓ when on
-            /capture). The legacy in-page "Guardar gasto/ingreso" button was
-            removed in favour of that single primary action — keeps the
-            keypad screen calm and the thumb anchored on the bottom bar.
-            We expose `saveAriaLabel` to the FAB via `captureActionBus`
-            indirectly: the screen-reader label here doubles as a hidden
-            announcement for the live region below when amount changes. */}
+        {/* Save is driven by the bottom-nav center FAB (✓ when on /capture)
+            on mobile. Desktop has no TabBar (md:hidden), so we render a
+            visible primary "Guardar" button below the keypad to make the
+            action obvious. Both surfaces ultimately call handleSave with
+            the same ready rules. */}
         <p className="sr-only" aria-live="polite">
           {saveAriaLabel}
         </p>
 
-        {/* Save hint — wayfinding for the new flow: now that the in-page
-            "Guardar gasto" button is gone, point the user to the central
-            ✓ FAB in the bottom TabBar. Mobile-only (md+ has the sidebar
-            and a different action surface). aria-hidden because the FAB
-            already carries the canonical "Guardar movimiento" label. */}
+        {/* Desktop save button — md+ only. Mirrors the FAB ready rules so
+            both UIs feel synchronised (e.g. amount typed without a category
+            picked keeps both disabled). */}
+        <div className="mt-5 hidden px-4 md:block">
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={
+              !ready || submitting || hydrating || !online || !categoryId
+            }
+            aria-label={saveAriaLabel}
+            className={cn(
+              "inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-[14px] font-semibold text-primary-foreground transition-colors",
+              "shadow-[var(--shadow-card)] hover:bg-primary/90 active:bg-primary/80",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary",
+            )}
+          >
+            {submitting ? (
+              <Loader2
+                size={16}
+                aria-hidden="true"
+                className="animate-spin"
+              />
+            ) : (
+              <Check size={16} aria-hidden="true" />
+            )}
+            <span>
+              {submitting
+                ? "Guardando…"
+                : `Guardar ${kind === "income" ? "ingreso" : "gasto"}`}
+            </span>
+          </button>
+        </div>
+
+        {/* Save hint — wayfinding for the mobile flow: with the in-page
+            "Guardar gasto" button gone on touch, point the user to the
+            central ✓ FAB in the bottom TabBar. Mobile-only because the
+            desktop button above already carries the canonical action. */}
         <div
           aria-hidden="true"
           className="mt-6 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
