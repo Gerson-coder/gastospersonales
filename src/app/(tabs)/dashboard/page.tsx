@@ -489,10 +489,14 @@ function formatTxDate(occurredAt: string): string {
 }
 
 // ─── Empty-state card ──────────────────────────────────────────────────────
-// Rendered when the user has zero transactions in the active currency window.
-// The MonthSummaryCard hero stays visible above (showing zeroes) — that's
-// intentional context: "this is where your numbers will live".
-function EmptyDashboardCard({ currency }: { currency: Currency }) {
+// Rendered when the user has zero transactions in the active-currency 6-month
+// window. We use 6-month-empty as a proxy for "no history" — a brand-new
+// account will trivially be empty, and an established user who hasn't used
+// this currency in 6 months effectively has no recent context to plot. The
+// hero + insight banner are also hidden in this branch so the screen has a
+// single CTA (no zero-filled "Gastaste hoy/semana/mes" cards competing for
+// attention with the "registra tu primero" prompt).
+function EmptyDashboardCard({ currency: _currency }: { currency: Currency }) {
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
       <div className="mx-auto flex flex-col items-center">
@@ -500,18 +504,18 @@ function EmptyDashboardCard({ currency }: { currency: Currency }) {
           <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
         </span>
         <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
-          Todavía no tienes movimientos en {CURRENCY_LABEL[currency]}
+          Registra tu primer gasto
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-          Registra un gasto o ingreso para ver aquí tu evolución, tus
-          categorías y tus últimas transacciones.
+          Apenas tengamos un movimiento empezamos a armar tu historial:
+          evolución, categorías y últimas transacciones.
         </p>
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
           <Link
             href="/capture"
             className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Registrar el primero
+            Empezar
           </Link>
           <Link
             href="/receipt"
@@ -699,6 +703,29 @@ export default function DashboardPage() {
     debounceMs: 250,
   });
 
+  // Refetch when the dashboard regains visibility / focus. App Router
+  // caches client pages, so coming back from /capture via router.push
+  // doesn't unmount this page — without this hook the user could be
+  // staring at the pre-insert numbers until the realtime broadcast
+  // arrives (often 500-1500ms). This fires synchronously on tab focus
+  // and on bfcache restore too. See bugfix: insight banner stuck after
+  // a fresh expense.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    const refetch = window.refetch;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    globalThis.addEventListener("focus", refetch);
+    globalThis.addEventListener("pageshow", refetch);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      globalThis.removeEventListener("focus", refetch);
+      globalThis.removeEventListener("pageshow", refetch);
+    };
+  }, [window.refetch]);
+
   // Account list — feeds the account-filter chip strip. Fetched once on mount.
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
@@ -827,14 +854,19 @@ export default function DashboardPage() {
       }
     }
 
-    if (period === "today") {
-      return { spent: spentToday, saldo: incomeToday - spentToday };
-    }
-    if (period === "week") {
-      return { spent: spentWeek, saldo: incomeWeek - spentWeek };
-    }
-    // Month: use the closure-scoped totals from the hook.
-    return { spent, saldo: income - spent };
+    const result = (() => {
+      if (period === "today") {
+        return { spent: spentToday, saldo: incomeToday - spentToday };
+      }
+      if (period === "week") {
+        return { spent: spentWeek, saldo: incomeWeek - spentWeek };
+      }
+      // Month: use the closure-scoped totals from the hook.
+      return { spent, saldo: income - spent };
+    })();
+    // Expose the weekly totals separately so the insight chip (whose copy
+    // says "esta semana") can use them regardless of the active period.
+    return { ...result, spentWeek, incomeWeek };
   }, [period, income, spent, isDemo, window.rows]);
 
   // Date range pill label que acompaña al saludo en mobile.
@@ -1132,15 +1164,21 @@ export default function DashboardPage() {
                 <CurrencySwitch />
               </div>
             )}
-            <div className="mx-4 mt-4 md:hidden">
-              <DashboardHero
-                period={period}
-                onPeriodChange={setPeriod}
-                spent={heroNumbers.spent}
-                saldo={heroNumbers.saldo}
-                currency={currency}
-              />
-            </div>
+            {/* Mobile hero — hidden when the user has zero history in
+                the active currency. The empty card below is the single
+                CTA in that case (no zero-filled "Gastaste hoy/semana/mes"
+                cards competing for attention). */}
+            {!isEmpty && (
+              <div className="mx-4 mt-4 md:hidden">
+                <DashboardHero
+                  period={period}
+                  onPeriodChange={setPeriod}
+                  spent={heroNumbers.spent}
+                  saldo={heroNumbers.saldo}
+                  currency={currency}
+                />
+              </div>
+            )}
 
             {isEmpty ? (
               <EmptyDashboardCard currency={currency} />
@@ -1151,8 +1189,17 @@ export default function DashboardPage() {
                     últimas transacciones flat, donut de distribución,
                     AdvisorCard. */}
                 <div className="mx-4 mt-4 flex flex-col gap-4 md:hidden">
-                  {/* Insight chip */}
-                  <MobileInsightCard spent={spent} income={income} currency={currency} />
+                  {/* Insight chip — uses WEEKLY totals because its copy
+                      explicitly says "esta semana". Previously it was wired
+                      to the monthly `spent`/`income` which produced stale
+                      "vas por buen camino" banners after a large fresh
+                      expense (a 25k expense barely moves the monthly ratio
+                      if income is also monthly). See bugfix April 2026. */}
+                  <MobileInsightCard
+                    spent={heroNumbers.spentWeek}
+                    income={heroNumbers.incomeWeek}
+                    currency={currency}
+                  />
 
                   {/* StatTrendCards */}
                   <div className="grid grid-cols-2 gap-3">

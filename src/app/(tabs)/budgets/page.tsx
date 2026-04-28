@@ -265,7 +265,6 @@ export default function BudgetsPage() {
       createdAt: new Date().toISOString(),
     };
     persist([next, ...budgets]);
-    toast.success("Presupuesto creado");
   }
 
   function handleUpdate(id: string, patch: { categoryId: string; limitMinor: number; currency: Currency }) {
@@ -275,12 +274,10 @@ export default function BudgetsPage() {
         : b,
     );
     persist(next);
-    toast.success("Presupuesto actualizado");
   }
 
   function handleDelete(id: string) {
     persist(budgets.filter((b) => b.id !== id));
-    toast.success("Presupuesto eliminado");
   }
 
   const showSpend = SUPABASE_ENABLED && !categoriesAuthError;

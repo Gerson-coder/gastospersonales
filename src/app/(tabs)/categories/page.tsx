@@ -19,6 +19,7 @@ import { ChevronRight, Lock, Plus } from "lucide-react";
 
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -138,6 +139,7 @@ export default function CategoriesPage() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Category | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [overlayLabel, setOverlayLabel] = React.useState<string>("Guardando…");
 
   const reload = React.useCallback(async () => {
     if (!SUPABASE_ENABLED) return;
@@ -222,11 +224,11 @@ export default function CategoriesPage() {
       kind: draft.kind,
       icon: draft.icon,
     };
+    setOverlayLabel("Creando categoría…");
     setSubmitting(true);
     setCreateOpen(false);
     try {
       await createCategory(payload);
-      toast.success("Categoría creada");
       // Switch the tab to the kind we just created so the row is visible.
       setActiveKind(draft.kind);
       await reload();
@@ -248,11 +250,11 @@ export default function CategoriesPage() {
     }
     const update: CategoryPatch = { name: patch.name, icon: patch.icon };
     const targetId = editing.id;
+    setOverlayLabel("Actualizando…");
     setSubmitting(true);
     setEditing(null);
     try {
       await updateCategory(targetId, update);
-      toast.success("Categoría actualizada");
       await reload();
     } catch (err) {
       const msg =
@@ -273,11 +275,11 @@ export default function CategoriesPage() {
       return;
     }
     const targetId = editing.id;
+    setOverlayLabel("Archivando…");
     setSubmitting(true);
     setEditing(null);
     try {
       await archiveCategory(targetId);
-      toast.success("Categoría archivada");
       await reload();
     } catch (err) {
       const msg =
@@ -292,6 +294,7 @@ export default function CategoriesPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
+      <SavingOverlay open={submitting} label={overlayLabel} />
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
         <AppHeader

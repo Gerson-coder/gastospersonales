@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/drawer";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
 import { MerchantFormSheet } from "@/components/lumi/MerchantFormSheet";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import {
   createMerchant,
   listMerchantsByCategory,
@@ -141,7 +142,6 @@ export function MerchantsDrawer({
           const seen = prev.some((m) => m.id === created.id);
           return seen ? prev : [created, ...prev];
         });
-        toast.success(`Listo: «${created.name}» agregado.`);
         setFormOpen(false);
         // Auto-select + close the drawer — saves the user a third tap.
         onSelect(created.id);
@@ -163,6 +163,7 @@ export function MerchantsDrawer({
 
   return (
     <>
+      <SavingOverlay open={submitting} label="Creando comerciante…" />
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent
           aria-describedby="merchants-drawer-desc"

@@ -11,7 +11,6 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
 import {
   Plus,
   Trash2,
@@ -224,7 +223,6 @@ export default function GoalsPage() {
         createdAt: new Date().toISOString(),
       };
       persist([goal, ...allGoals]);
-      toast.success("Meta guardada");
     },
     [allGoals, persist],
   );
@@ -253,7 +251,6 @@ export default function GoalsPage() {
           : g,
       );
       persist(next);
-      toast.success("Meta guardada");
     },
     [allGoals, persist],
   );
@@ -262,7 +259,6 @@ export default function GoalsPage() {
     (id: string) => {
       const next = allGoals.filter((g) => g.id !== id);
       persist(next);
-      toast.success("Meta eliminada");
     },
     [allGoals, persist],
   );
@@ -276,9 +272,6 @@ export default function GoalsPage() {
         return { ...g, currentMinor: updated };
       });
       persist(next);
-      toast.success(
-        mode === "add" ? "Aporte registrado" : "Retiro registrado",
-      );
     },
     [allGoals, persist],
   );

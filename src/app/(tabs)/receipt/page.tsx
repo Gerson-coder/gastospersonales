@@ -24,7 +24,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -497,8 +497,34 @@ function FieldRow({
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
+// sessionStorage keys used by /share-target route handler when the OS
+// share sheet hands us an image. Kept in sync with that route.
+const SHARE_KEYS = {
+  image: "lumi:share-target:image",
+  mime: "lumi:share-target:mime",
+  name: "lumi:share-target:name",
+  ts: "lumi:share-target:ts",
+} as const;
+
+// Convert a data URL (data:image/png;base64,...) into a Blob → File pair so
+// we can route it through the same handleFile() pipeline as a picker.
+function dataUrlToFile(dataUrl: string, mime: string, name: string): File | null {
+  try {
+    const commaIdx = dataUrl.indexOf(",");
+    if (commaIdx < 0) return null;
+    const b64 = dataUrl.slice(commaIdx + 1);
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name || "shared-image", { type: mime || "image/jpeg" });
+  } catch {
+    return null;
+  }
+}
+
 export default function ReceiptPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [status, setStatus] = React.useState<Status>("idle");
 
@@ -598,6 +624,63 @@ export default function ReceiptPage() {
     },
     [imageUrl],
   );
+
+  // Web Share Target intake — runs once on mount. The /share-target route
+  // handler stashes the shared image (base64 data URL) in sessionStorage and
+  // redirects here with ?fromShare=1. We pull it out, build a File, and
+  // feed it into the normal preview pipeline. Errors flagged via
+  // ?shareError=<code> surface as a toast and we drop into idle.
+  React.useEffect(() => {
+    const fromShare = searchParams.get("fromShare");
+    const shareError = searchParams.get("shareError");
+
+    if (shareError) {
+      const messages: Record<string, string> = {
+        "no-image": "No encontré ninguna imagen en lo que compartiste.",
+        "not-image": "Solo puedo procesar imágenes (JPG, PNG, etc.).",
+        "too-large": "La imagen es muy grande. El máximo es 10 MB.",
+        "bad-request": "No pude leer lo que compartiste. Inténtalo de nuevo.",
+      };
+      toast.error(messages[shareError] ?? "No pude procesar lo compartido.");
+      // Clean the URL so a refresh doesn't re-fire the toast.
+      router.replace("/receipt");
+      return;
+    }
+
+    if (fromShare !== "1") return;
+
+    if (typeof window === "undefined") return;
+    const dataUrl = window.sessionStorage.getItem(SHARE_KEYS.image);
+    const mime = window.sessionStorage.getItem(SHARE_KEYS.mime) ?? "image/jpeg";
+    const name = window.sessionStorage.getItem(SHARE_KEYS.name) ?? "shared-image";
+
+    // Single-use payload: clear immediately so a manual refresh doesn't
+    // resurrect a stale share.
+    window.sessionStorage.removeItem(SHARE_KEYS.image);
+    window.sessionStorage.removeItem(SHARE_KEYS.mime);
+    window.sessionStorage.removeItem(SHARE_KEYS.name);
+    window.sessionStorage.removeItem(SHARE_KEYS.ts);
+
+    if (!dataUrl) {
+      toast.error("No pude recuperar la imagen compartida.");
+      router.replace("/receipt");
+      return;
+    }
+
+    const file = dataUrlToFile(dataUrl, mime, name);
+    if (!file) {
+      toast.error("La imagen compartida estaba dañada.");
+      router.replace("/receipt");
+      return;
+    }
+
+    handleFile(file);
+    router.replace("/receipt");
+    // Mount-only intake — depending on handleFile would re-run after the
+    // first ingestion (handleFile changes when imageUrl changes) and we'd
+    // try to re-read an already-cleared sessionStorage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const triggerCamera = React.useCallback(() => {
     cameraInputRef.current?.click();

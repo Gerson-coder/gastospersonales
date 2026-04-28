@@ -45,6 +45,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import {
   ACCOUNT_SUBTYPE_LABEL,
   ACCOUNT_SUBTYPE_OPTIONS,
@@ -430,6 +431,7 @@ function AccountFormSheet({
   // bank accounts; cash / Yape / Plin keep this null.
   const [subtype, setSubtype] = React.useState<AccountSubtype | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [overlayLabel, setOverlayLabel] = React.useState<string>("Guardando…");
   // Validation only surfaces after the user touches Save once.
   const [showError, setShowError] = React.useState(false);
   // Inline archive confirm — opens a small "¿Archivar?" row in-place.
@@ -609,6 +611,7 @@ function AccountFormSheet({
     const action = mode;
     const targetId = account?.id;
     onOptimisticClose();
+    setOverlayLabel(action === "create" ? "Creando cuenta…" : "Actualizando…");
     setSubmitting(true);
     // Subtype is only meaningful for bank accounts; force null elsewhere
     // even if state somehow drifted (e.g. user picked "Dólares" for a
@@ -623,7 +626,6 @@ function AccountFormSheet({
           currency,
           subtype: finalSubtype,
         });
-        toast.success("Cuenta creada");
       } else if (targetId) {
         await updateAccount(targetId, {
           label: finalLabel,
@@ -631,7 +633,6 @@ function AccountFormSheet({
           currency,
           subtype: finalSubtype,
         });
-        toast.success("Cuenta actualizada");
       }
       await reload();
     } catch (err) {
@@ -649,10 +650,10 @@ function AccountFormSheet({
       setArchiveArmed(true);
       return;
     }
+    setOverlayLabel("Archivando…");
     setSubmitting(true);
     try {
       await archiveAccount(account.id);
-      toast.success("Cuenta archivada");
       onOpenChange(false);
       await reload();
     } catch (err) {
@@ -672,6 +673,8 @@ function AccountFormSheet({
   const errorId = "account-label-error";
 
   return (
+    <>
+    <SavingOverlay open={submitting} label={overlayLabel} />
     <Sheet
       open={open}
       onOpenChange={(next) => {
@@ -1055,5 +1058,6 @@ function AccountFormSheet({
         </form>
       </SheetContent>
     </Sheet>
+    </>
   );
 }

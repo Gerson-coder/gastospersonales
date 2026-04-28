@@ -61,6 +61,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import {
   archiveAllUserCategories,
   archiveCategory,
@@ -667,6 +668,7 @@ function CategoriesCardLive() {
   const [items, setItems] = React.useState<DbCategory[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
+  const [overlayLabel, setOverlayLabel] = React.useState<string>("Guardando…");
 
   // Sheet state — only one sheet open at a time. `editing` is the row being
   // edited; null means the create sheet (or no sheet) is the active one.
@@ -720,6 +722,7 @@ function CategoriesCardLive() {
     kind: "expense" | "income";
     icon: string;
   }) {
+    setOverlayLabel("Creando categoría…");
     setCreateOpen(false);
     setSubmitting(true);
     try {
@@ -728,7 +731,6 @@ function CategoriesCardLive() {
         kind: draft.kind,
         icon: draft.icon,
       });
-      toast.success("Categoría creada");
       await reload();
     } catch (err) {
       const message =
@@ -743,11 +745,11 @@ function CategoriesCardLive() {
   async function handleEdit(patch: { name: string; icon: string }) {
     if (!editing) return;
     const target = editing;
+    setOverlayLabel("Actualizando categoría…");
     setEditing(null);
     setSubmitting(true);
     try {
       await updateCategory(target.id, patch);
-      toast.success("Categoría actualizada");
       await reload();
     } catch (err) {
       const message =
@@ -763,11 +765,11 @@ function CategoriesCardLive() {
 
   async function handleArchive() {
     if (!editing) return;
+    setOverlayLabel("Archivando categoría…");
     setSubmitting(true);
     try {
       await archiveCategory(editing.id);
       setEditing(null);
-      toast.success("Categoría archivada");
       await reload();
     } catch (err) {
       const message =
@@ -788,6 +790,7 @@ function CategoriesCardLive() {
 
   return (
     <>
+      <SavingOverlay open={submitting} label={overlayLabel} />
       {showFirstCustomHint ? (
         <Card className="mb-3 rounded-2xl border-dashed border-border bg-[var(--color-primary-soft)]/30 p-4">
           <div className="flex items-start gap-3">

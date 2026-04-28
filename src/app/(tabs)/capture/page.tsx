@@ -750,6 +750,12 @@ function CapturePageInner() {
       } else {
         await createTransaction(draft);
         toast.success("Guardado.");
+        // `router.refresh()` invalidates the App Router cache so the
+        // dashboard's server boundary re-runs. Combined with the
+        // visibility-change refetch in the dashboard hook, this collapses
+        // the user-perceived stale-numbers window from "wait for realtime
+        // ack" (~500-1500ms) to "instant".
+        router.refresh();
         router.push("/dashboard");
       }
       // Don't reset state on success: the page is unmounting via navigation.
