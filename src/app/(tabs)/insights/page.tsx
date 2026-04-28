@@ -408,15 +408,18 @@ function MonthBars({ months, currency }: { months: MonthBucket[]; currency: Curr
               height={innerH + 6}
               fill="transparent"
             />
-            {/* Income (lighter, behind) */}
+            {/* Income — warm accent so it sits visually next to the
+                emerald "spent" bar instead of fading into the card.
+                The previous muted gray was nearly invisible on light
+                mode cards and made comparison impossible. */}
             <rect
               x={cx - barW - gap / 2}
               y={h - padBottom - incomeH}
               width={barW}
               height={incomeH}
               rx="2"
-              fill="var(--color-muted)"
-              opacity={isActive ? 0.9 : 0.6}
+              fill="var(--accent)"
+              opacity={isActive ? 1 : 0.7}
             />
             {/* Spent */}
             <rect
@@ -657,7 +660,7 @@ function MonthCompareCard({
           <span
             aria-hidden="true"
             className="h-2 w-2 rounded-sm"
-            style={{ background: "var(--color-muted)" }}
+            style={{ background: "var(--accent)" }}
           />
           Ingreso
         </span>

@@ -9,6 +9,7 @@ import { useSession } from "@/lib/use-session";
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 const STORAGE_KEY = "lumi-user-name";
+const AVATAR_STORAGE_KEY = "lumi-user-avatar-url";
 
 const SUPABASE_ENABLED =
   typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
@@ -39,17 +40,22 @@ export function useUserName(): {
   name: string | null;
   avatarUrl: string | null;
   setName: (name: string) => Promise<void>;
+  setAvatarUrl: (url: string | null) => void;
   clearName: () => void;
   hydrated: boolean;
 } {
   const session = useSession();
   const [name, setNameState] = useState<string | null>(null);
+  // Avatar URL now lives in local state too. We seed from the session
+  // profile (the source of truth) but expose a setter so consumers can
+  // optimistically flip the UI immediately after an upload, without
+  // waiting for the next session refresh round-trip. Same pattern as
+  // `name` — DB writes flow through the data layer; the hook just
+  // mirrors the new value across every mounted instance via storage
+  // events so the dashboard greeting + sidebar + ProfileMenu all
+  // update in lockstep.
+  const [avatarUrl, setAvatarUrlState] = useState<string | null>(null);
   const [localHydrated, setLocalHydrated] = useState(false);
-  // Avatar URL is sourced strictly from the session profile — there is no
-  // localStorage cache for it because (a) it is already a CDN URL with its
-  // own caching, and (b) a stale local cache after `removeAvatar()` would
-  // flash a deleted image on first paint.
-  const avatarUrl = session.profile?.avatar_url ?? null;
 
   // Step 1 — load the localStorage cache after mount. Always runs. Cheap and
   // synchronous, so it paints before any network round-trip.
@@ -58,6 +64,11 @@ export function useUserName(): {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (stored !== null) setNameState(stored);
+      const storedAvatar = window.localStorage.getItem(AVATAR_STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (storedAvatar !== null) {
+        setAvatarUrlState(storedAvatar === "" ? null : storedAvatar);
+      }
     } catch {
       // Storage disabled (private mode, quota, etc.) — stay on null.
     }
@@ -80,7 +91,40 @@ export function useUserName(): {
         /* ignore */
       }
     }
-  }, [session.hydrated, session.profile?.display_name]);
+    // Avatar — the session profile carries the canonical URL with a
+    // cache-buster; mirror it into local state + storage so a fresh
+    // mount paints the right image without an extra round-trip. We
+    // explicitly accept null so a removed avatar clears the UI.
+    const dbAvatar = session.profile?.avatar_url ?? null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAvatarUrlState(dbAvatar);
+    try {
+      window.localStorage.setItem(AVATAR_STORAGE_KEY, dbAvatar ?? "");
+    } catch {
+      /* ignore */
+    }
+  }, [
+    session.hydrated,
+    session.profile?.display_name,
+    session.profile?.avatar_url,
+  ]);
+
+  // Cross-instance sync — when one mount calls setName / setAvatarUrl,
+  // dispatch a `storage` event so every other useUserName mount on the
+  // same page (sidebar greeting, dashboard header, ProfileMenu, etc.)
+  // re-reads from cache immediately instead of waiting for the session
+  // refresh that lands the new value through the network.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        setNameState(e.newValue);
+      } else if (e.key === AVATAR_STORAGE_KEY) {
+        setAvatarUrlState(e.newValue === "" ? null : e.newValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const setName = useCallback(
     async (next: string) => {
@@ -88,6 +132,15 @@ export function useUserName(): {
       setNameState(next);
       try {
         window.localStorage.setItem(STORAGE_KEY, next);
+        // Same-tab sync — the native `storage` event fires only in
+        // OTHER tabs, so we synthesise one here so other useUserName
+        // mounts on this page re-read the cache.
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: STORAGE_KEY,
+            newValue: next,
+          }),
+        );
       } catch {
         /* ignore */
       }
@@ -109,10 +162,30 @@ export function useUserName(): {
     [session.user],
   );
 
+  // Optimistic avatar update — call right after `uploadAvatar` returns
+  // the new public URL so the UI flips before the session refresh
+  // round-trip completes. Pass null to clear (post-removeAvatar).
+  const setAvatarUrl = useCallback((url: string | null) => {
+    setAvatarUrlState(url);
+    try {
+      const serialised = url ?? "";
+      window.localStorage.setItem(AVATAR_STORAGE_KEY, serialised);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: AVATAR_STORAGE_KEY,
+          newValue: serialised,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const clearName = useCallback(() => {
     setNameState(null);
     try {
       window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(AVATAR_STORAGE_KEY);
     } catch {
       // Storage disabled — nothing actionable here.
     }
@@ -125,5 +198,5 @@ export function useUserName(): {
   // paint; DB is the eventual-consistency authority.
   const hydrated = localHydrated;
 
-  return { name, avatarUrl, setName, clearName, hydrated };
+  return { name, avatarUrl, setName, setAvatarUrl, clearName, hydrated };
 }

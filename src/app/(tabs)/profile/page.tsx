@@ -79,7 +79,13 @@ function shortenUserId(id: string): string {
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const session = useSession();
-  const { name, avatarUrl, setName, hydrated: nameHydrated } = useUserName();
+  const {
+    name,
+    avatarUrl,
+    setName,
+    setAvatarUrl,
+    hydrated: nameHydrated,
+  } = useUserName();
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [draftName, setDraftName] = React.useState("");
@@ -107,9 +113,13 @@ export default function ProfilePage() {
     if (!file) return;
     setAvatarBusy(true);
     try {
-      await uploadAvatar(file);
-      await session.refresh();
+      const result = await uploadAvatar(file);
+      // Optimistic flip: paint the new URL across every useUserName mount
+      // immediately. session.refresh() then runs in the background to
+      // bring the canonical profile row into sync without blocking UI.
+      setAvatarUrl(result.publicUrl);
       toast.success("Foto actualizada");
+      void session.refresh();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No pudimos subir la imagen.";
@@ -123,8 +133,11 @@ export default function ProfilePage() {
     setAvatarBusy(true);
     try {
       await removeAvatar();
-      await session.refresh();
+      // Optimistic clear so the placeholder appears instantly across
+      // mounts. session.refresh() is fire-and-forget background sync.
+      setAvatarUrl(null);
       toast.success("Foto eliminada");
+      void session.refresh();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No pudimos quitar la imagen.";
