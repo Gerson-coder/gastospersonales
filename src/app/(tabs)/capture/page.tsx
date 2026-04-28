@@ -124,6 +124,15 @@ type Account = {
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
 
+// Account kinds visible when registering an INCOME. The user receives money
+// into these surfaces (cash on hand, card, Yape) — bank/Plin are excluded
+// per product decision. The expense flow keeps every kind visible.
+const INCOME_ALLOWED_ACCOUNT_KINDS: ReadonlyArray<Account["kind"]> = [
+  "cash",
+  "card",
+  "yape",
+];
+
 // Map an account kind to its icon. Used to "rehydrate" the lucide icon for
 // rows that come from the data layer (which doesn't carry React components).
 // Yape/Plin reuse Wallet so the picker chip stays visually consistent —
@@ -543,11 +552,42 @@ function CapturePageInner() {
   // if the user has no categories at all. Downstream code coalesces.
   const category: Category | null =
     categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  // Income mode hides bank + Plin from the picker — only cash / card / Yape
+  // remain. Expense mode keeps every account. Memoized so the drawer + the
+  // header chip share a single filtered list.
+  const displayAccounts = React.useMemo<Account[]>(() => {
+    if (kind !== "income") return accounts;
+    return accounts.filter((a) =>
+      INCOME_ALLOWED_ACCOUNT_KINDS.includes(a.kind),
+    );
+  }, [accounts, kind]);
+
+  // When the user toggles to income, the previously-selected account or
+  // merchant may no longer be valid (a bank account is hidden, a merchant
+  // doesn't make sense for an income). Reconcile state so the FAB never
+  // saves with a stale id.
+  React.useEffect(() => {
+    if (kind !== "income") return;
+    if (
+      accountId !== null &&
+      !displayAccounts.some((a) => a.id === accountId)
+    ) {
+      setAccountId(displayAccounts[0]?.id ?? null);
+    }
+    if (merchantId !== null) setMerchantId(null);
+    // We only react to kind / displayAccounts changes; accountId / merchantId
+    // are read for the reconcile decision but writing to them mid-effect is
+    // intentional and converges in one pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, displayAccounts]);
+
   // `account` may be null briefly while we wait for the first fetch tick.
   // The picker chip shows a skeleton in that window; downstream consumers
   // (saveAriaLabel, save handler) coalesce to safe defaults.
   const account: Account | null =
-    accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
+    displayAccounts.find((a) => a.id === accountId) ??
+    displayAccounts[0] ??
+    null;
 
   // MRU strip — kind-aware ordering.
   //
@@ -965,22 +1005,26 @@ function CapturePageInner() {
           </div>
         </section>
 
-        {/* Merchant picker — "¿Dónde? (opcional)". Renders nothing when
+        {/* Merchant picker — "¿Dónde? (opcional)". Hidden on income because
+            ingresos don't have a "merchant" (you don't pay to anyone — you
+            receive money). On expense the picker renders nothing when
             there's no category context or the category has zero visible
             merchants, so the 3-tap happy path stays untouched. */}
-        <MerchantPicker
-          categoryId={categoryId}
-          categoryName={category?.label ?? null}
-          value={merchantId}
-          onChange={setMerchantId}
-        />
+        {kind === "expense" && (
+          <MerchantPicker
+            categoryId={categoryId}
+            categoryName={category?.label ?? null}
+            value={merchantId}
+            onChange={setMerchantId}
+          />
+        )}
 
         {/* Account picker + note */}
         <section className="mt-3 space-y-3 px-4">
           <button
             type="button"
             onClick={() => setAccountDrawerOpen(true)}
-            disabled={accountsLoading || accounts.length === 0}
+            disabled={accountsLoading || displayAccounts.length === 0}
             aria-label={
               account
                 ? `Cuenta ${account.label}, toca para cambiar`
@@ -1011,6 +1055,10 @@ function CapturePageInner() {
                 </span>
                 <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
               </>
+            ) : kind === "income" && accounts.length > 0 ? (
+              <span className="flex-1 text-[13px] font-medium text-muted-foreground">
+                Sin cuenta compatible — usa efectivo, tarjeta o Yape
+              </span>
             ) : (
               <span className="flex-1 text-[13px] font-medium text-muted-foreground">
                 Sin cuentas — crea una en /cuentas
@@ -1175,7 +1223,7 @@ function CapturePageInner() {
                     </div>
                   </li>
                 ))
-              : accounts.map((a) => {
+              : displayAccounts.map((a) => {
                   const Icon = a.Icon;
                   const selected = accountId === a.id;
                   return (
