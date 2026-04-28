@@ -989,7 +989,7 @@ function CapturePageInner() {
                 aria-expanded={categoryDrawerOpen}
                 className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Ver más
+                Ver todos
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>

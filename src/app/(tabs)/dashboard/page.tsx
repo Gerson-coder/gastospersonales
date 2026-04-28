@@ -1051,13 +1051,13 @@ export default function DashboardPage() {
                             aria-label="Ver todas las cuentas"
                             aria-haspopup="dialog"
                             className={cn(
-                              "h-9 px-4 rounded-full text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors",
-                              "border border-dashed border-border bg-card text-muted-foreground",
-                              "hover:bg-muted hover:text-foreground",
-                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                              "inline-flex h-9 items-center gap-1 rounded-sm px-2 text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors",
+                              "text-primary hover:text-primary/80 active:scale-[0.98]",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             )}
                           >
-                            +{remaining} · Ver más
+                            Ver todos
+                            <ChevronRight className="h-4 w-4" aria-hidden />
                           </button>
                         )}
                       </>

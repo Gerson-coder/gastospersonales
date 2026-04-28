@@ -19,7 +19,11 @@ export interface CategoryDonutProps {
   periodLabel?: string;
   className?: string;
   variant?: "semicircle" | "full"; // default: "semicircle"
-  totalLabel?: string; // label debajo del monto en el centro, default: "Total"
+  /**
+   * @deprecated Kept for backwards-compat with callers that still
+   * pass it; the chart no longer renders a centre label.
+   */
+  totalLabel?: string;
 }
 
 const TNUM_STYLE: React.CSSProperties = {
@@ -61,7 +65,6 @@ export function CategoryDonut({
   periodLabel = "Este mes",
   className,
   variant = "semicircle",
-  totalLabel,
 }: CategoryDonutProps) {
   const hasItems = items.length > 0;
   const total = items.reduce((acc, it) => acc + Math.max(0, it.value), 0);
@@ -79,8 +82,12 @@ export function CategoryDonut({
       color: string;
     }>;
 
-    const rOuter = isFullCircle ? 85 : 90;
-    const rInner = isFullCircle ? 52 : 60;
+    // Thinner ring + tighter gap reads more like a "tag-cloud" of
+    // categories than a heavy pie. The full circle uses an outer of
+    // 88 / inner of 64 (gap 24) — semicircle keeps the original
+    // proportion since it has less canvas to play with.
+    const rOuter = isFullCircle ? 88 : 90;
+    const rInner = isFullCircle ? 64 : 60;
     const totalAngle = isFullCircle ? 2 * Math.PI : Math.PI;
 
     const result: Array<{ id: string; d: string; color: string }> = [];
@@ -109,8 +116,6 @@ export function CategoryDonut({
     }
     return result;
   }, [items, total, hasItems, GAP, isFullCircle]);
-
-  const totalAmount = items.reduce((acc, it) => acc + it.amount, 0);
 
   return (
     <Card
@@ -147,33 +152,19 @@ export function CategoryDonut({
                 role="img"
                 aria-label="Gráfico circular de distribución de gastos por categoría"
               >
+                {/* Drop a subtle inner stroke so adjacent slices keep their
+                    visual separation even with the brand-tinted palette
+                    (some hues are too close to read otherwise). */}
                 {slices.map((s) => (
-                  <path key={s.id} d={s.d} fill={s.color} />
+                  <path
+                    key={s.id}
+                    d={s.d}
+                    fill={s.color}
+                    stroke="var(--card)"
+                    strokeWidth="1"
+                    strokeLinejoin="round"
+                  />
                 ))}
-                <text
-                  x="100"
-                  y="96"
-                  textAnchor="middle"
-                  fontSize="13"
-                  fontWeight="700"
-                  fontFamily="var(--font-sans)"
-                  fill="currentColor"
-                  style={{ fontFeatureSettings: '"tnum","lnum"' }}
-                >
-                  {formatAmount(totalAmount, currency)}
-                </text>
-                <text
-                  x="100"
-                  y="112"
-                  textAnchor="middle"
-                  fontSize="10"
-                  fontWeight="500"
-                  fontFamily="var(--font-sans)"
-                  fill="currentColor"
-                  opacity={0.6}
-                >
-                  {totalLabel ?? "Total"}
-                </text>
               </svg>
             ) : (
               <svg
@@ -189,29 +180,25 @@ export function CategoryDonut({
             )}
           </div>
 
-          {/* Leyenda — 60% */}
-          <ul className="flex-1 min-w-0 space-y-2.5">
+          {/* Leyenda — 60%. Sólo etiqueta + monto: el porcentaje quedaba
+              redundante con el peso visual del slice y empujaba el monto
+              contra el borde derecho en cards angostas. */}
+          <ul className="flex-1 min-w-0 space-y-3">
             {items.map((it) => (
               <li
                 key={it.id}
                 className="flex items-center gap-2.5"
               >
                 <span
-                  className="h-2 w-2 rounded-full shrink-0"
+                  className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-card"
                   style={{ backgroundColor: it.color }}
                   aria-hidden
                 />
-                <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
+                <span className="text-[13.5px] font-medium text-foreground truncate flex-1 min-w-0">
                   {it.label}
                 </span>
                 <span
-                  className="text-[11.5px] font-medium text-muted-foreground tabular-nums shrink-0 w-7 text-right"
-                  style={TNUM_STYLE}
-                >
-                  {Math.round(it.value)}%
-                </span>
-                <span
-                  className="text-[12px] font-semibold text-foreground tabular-nums shrink-0 text-right"
+                  className="text-[12.5px] font-semibold text-foreground tabular-nums shrink-0 text-right"
                   style={TNUM_STYLE}
                 >
                   {formatAmount(it.amount, currency)}

@@ -114,10 +114,10 @@ const ACCOUNT_TINT: Record<AccountKind, string> = {
 // schema still accepts `card` so legacy rows render unchanged.
 const KIND_OPTIONS: AccountKind[] = ["cash", "bank"];
 
-// Account name char cap. 24 covers legitimate names ("Cuenta Ahorro BCP",
-// "Tarjeta Interbank") while preventing visual spam — 32 chars of garbage
-// fills the entire visible width on narrow phones.
-const LABEL_MAX_LENGTH = 24;
+// Account name char cap. 20 covers legitimate names ("BCP Ahorros",
+// "Visa Interbank") and stops longer strings from overflowing the
+// row in /accounts and the chip in /dashboard on narrow phones.
+const LABEL_MAX_LENGTH = 20;
 
 // Account names that are auto-locked when the corresponding kind is picked.
 // Mirrored in the DB as plain text — defensive trim/match in handleSubmit.
@@ -417,6 +417,12 @@ function AccountFormSheet({
   const [showError, setShowError] = React.useState(false);
   // Inline archive confirm — opens a small "¿Archivar?" row in-place.
   const [archiveArmed, setArchiveArmed] = React.useState(false);
+  // When non-null, the label is locked to a brand preset (BCP / Interbank /
+  // BBVA / Yape / Plin) and the input becomes read-only. Cleared whenever
+  // the user manually changes the kind picker — that signals "I want to
+  // type my own name". Yape / Plin still flow through LOCKED_KIND_NAMES
+  // because the lock survives even if the user re-toggles the kind.
+  const [lockedBrand, setLockedBrand] = React.useState<string | null>(null);
   const labelRef = React.useRef<HTMLInputElement | null>(null);
 
   // Re-seed form values whenever the sheet opens (or the target account
@@ -426,24 +432,27 @@ function AccountFormSheet({
   React.useEffect(() => {
     if (!open) return;
     if (mode === "edit" && account) {
-      // If the saved kind has a locked brand name, normalise on hydrate
-      // so legacy rows that were saved before this rule still render the
-      // canonical "Yape"/"Plin" label.
       const locked = LOCKED_KIND_NAMES[account.kind];
       setLabel(locked ?? account.label);
       setKind(account.kind);
       setCurrency(account.currency);
+      // On hydrate, if the saved label exactly matches one of the brand
+      // presets, treat it as locked so the input stays read-only and the
+      // user has to actively switch kind to free it.
+      const matchingPreset = BRAND_PRESETS.find(
+        (p) => p.kind === account.kind && p.label === (locked ?? account.label),
+      );
+      setLockedBrand(matchingPreset ? matchingPreset.label : null);
     } else {
       setLabel("");
       setKind("cash");
       setCurrency("PEN");
+      setLockedBrand(null);
     }
     setShowError(false);
     setArchiveArmed(false);
     const id = window.requestAnimationFrame(() => {
       labelRef.current?.focus();
-      // Don't auto-select when the name is locked — the field is disabled
-      // anyway, and selecting visually suggests the user can edit it.
       if (mode === "edit" && account && !LOCKED_KIND_NAMES[account.kind]) {
         labelRef.current?.select();
       }
@@ -453,38 +462,50 @@ function AccountFormSheet({
 
   const trimmed = label.trim();
   const labelInvalid = trimmed.length === 0;
-  // When kind is yape/plin we hard-lock the name to the brand. The user
-  // cannot type — the input is disabled and the value is enforced again
-  // on submit (defense-in-depth in case state desyncs).
-  const lockedName = LOCKED_KIND_NAMES[kind];
+  // The name is locked when:
+  //   - the kind itself locks to a brand (Yape / Plin), OR
+  //   - the user picked a brand preset and hasn't reset it via the kind
+  //     picker. This is the "BCP / Interbank / BBVA" path the user asked
+  //     for: brand badges fix the name so two accounts under the same
+  //     bank don't drift into "BCP Soles" vs "BCP soles" via free typing.
+  const lockedKindName = LOCKED_KIND_NAMES[kind];
+  const lockedName = lockedKindName ?? lockedBrand ?? undefined;
   const nameLocked = lockedName !== undefined;
   const labelMax = LABEL_MAX_LENGTH;
   const labelRemaining = labelMax - label.length;
   const showLabelCounter = !nameLocked && labelRemaining <= 5;
 
-  // Switch kind. Yape/Plin auto-lock the name to the brand. Switching back
-  // to a free-typed kind clears the field if it was holding a brand name —
-  // prevents a leftover "Yape" sneaking into a Cash account.
+  // Switch kind. Yape/Plin auto-lock the name to the brand. Switching to a
+  // free-typed kind clears any active brand lock — that's the explicit
+  // "I want to type my own name" gesture.
   function handleKindChange(next: AccountKind) {
     if (submitting) return;
     setKind(next);
+    setLockedBrand(null);
     const nextLocked = LOCKED_KIND_NAMES[next];
     if (nextLocked !== undefined) {
       setLabel(nextLocked);
       setShowError(false);
     } else if (label === "Yape" || label === "Plin") {
       setLabel("");
+    } else if (
+      BRAND_PRESETS.some((p) => p.kind === "bank" && p.label === label)
+    ) {
+      // Coming from a bank brand preset — clear the locked label so the
+      // user starts with a blank slate when switching to cash, etc.
+      setLabel("");
     }
   }
 
-  // One-tap brand preset: auto-fills kind + label. For BCP / Interbank /
-  // BBVA we seed the brand name as a starter the user can extend (e.g.
-  // append "Soles"). For Yape / Plin the name is locked downstream by
-  // LOCKED_KIND_NAMES so the input stays read-only after the pick.
+  // One-tap brand preset: auto-fills kind + label and locks the input.
+  // Both bank brands (BCP / Interbank / BBVA) and wallet brands (Yape /
+  // Plin) lock the name now — the user wanted predefined brands to be
+  // immutable so two accounts under the same issuer can't drift in spelling.
   function handlePresetPick(preset: BrandPreset) {
     if (submitting) return;
     setKind(preset.kind);
     setLabel(preset.label);
+    setLockedBrand(preset.label);
     setShowError(false);
   }
 
@@ -671,7 +692,7 @@ function AccountFormSheet({
                 placeholder={
                   nameLocked
                     ? lockedName
-                    : "Ej. Efectivo, BCP Soles, Visa…"
+                    : "Ej. Efectivo, Banco familia, Visa Mamá…"
                 }
                 maxLength={LABEL_MAX_LENGTH}
                 autoComplete="off"
