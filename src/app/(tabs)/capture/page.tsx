@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { CURRENCY_LABEL } from "@/lib/money";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
@@ -1088,7 +1089,7 @@ function CapturePageInner() {
                     {account.label}
                   </span>
                   <span className="text-[11px] font-medium text-muted-foreground">
-                    {account.currency}
+                    {CURRENCY_LABEL[account.currency]}
                   </span>
                   <ChevronRight
                     size={16}
@@ -1320,7 +1321,7 @@ function CapturePageInner() {
                         <span className="flex-1">
                           <span className="block text-[13px] font-semibold">{a.label}</span>
                           <span className="block text-[11px] text-muted-foreground">
-                            {a.currency} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
+                            {CURRENCY_LABEL[a.currency]} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
                           </span>
                         </span>
                         {selected ? (

@@ -41,7 +41,12 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
-import { formatMoney, parseMoneyToMinor, type Currency } from "@/lib/money";
+import {
+  formatMoney,
+  parseMoneyToMinor,
+  CURRENCY_LABEL,
+  type Currency,
+} from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 
 // ─── Types & constants ─────────────────────────────────────────────────────
@@ -745,7 +750,7 @@ function GoalFormSheet(props: GoalFormSheetProps) {
                           : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
-                      {c}
+                      {CURRENCY_LABEL[c]}
                     </button>
                   );
                 })}

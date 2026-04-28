@@ -54,6 +54,7 @@ import {
   type AccountKind,
   type Currency,
 } from "@/lib/data/accounts";
+import { CURRENCY_LABEL } from "@/lib/money";
 
 // ─── Demo mode flag ───────────────────────────────────────────────────────
 // Mirrors `useSession` and `/login`: when env vars are absent we skip the
@@ -106,11 +107,12 @@ const ACCOUNT_TINT: Record<AccountKind, string> = {
   plin: "bg-[oklch(0.92_0.05_185)] text-[oklch(0.45_0.12_185)]",
 };
 
-// Yape / Plin are exposed via brand presets only (see BRAND_PRESETS below)
-// — they're brand-specific surfaces, not generic "kinds" the user has to
-// understand. Keeping them out of the kind picker stops the form from
-// asking two near-identical questions in a row.
-const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank"];
+// Yape / Plin live in BRAND_PRESETS (below); credit / debit cards are
+// always issued by a bank, so a separate "Tarjeta" kind ended up being
+// redundant with "Banco". The kind picker now offers only the two
+// distinct surfaces — cash on hand vs a bank/issuer account. The DB
+// schema still accepts `card` so legacy rows render unchanged.
+const KIND_OPTIONS: AccountKind[] = ["cash", "bank"];
 
 // Account name char cap. 24 covers legitimate names ("Cuenta Ahorro BCP",
 // "Tarjeta Interbank") while preventing visual spam — 32 chars of garbage
@@ -283,7 +285,7 @@ export default function AccountsPage() {
                             {account.label}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {account.currency} · {ACCOUNT_KIND_LABEL[account.kind]}
+                            {CURRENCY_LABEL[account.currency]} · {ACCOUNT_KIND_LABEL[account.kind]}
                           </div>
                         </div>
                         <ChevronRight
@@ -718,13 +720,15 @@ function AccountFormSheet({
               <RadioGroup
                 value={kind}
                 onValueChange={(v) => handleKindChange(v as AccountKind)}
-                className="grid grid-cols-3 gap-2"
+                className="grid grid-cols-2 gap-2"
               >
                 {KIND_OPTIONS.map((k) => {
                   const selected = kind === k;
+                  const inputId = `account-kind-${k}`;
                   return (
                     <label
                       key={k}
+                      htmlFor={inputId}
                       className={cn(
                         "flex cursor-pointer items-center justify-center rounded-xl border px-3 py-2.5 text-[13px] transition-colors",
                         "focus-within:ring-2 focus-within:ring-ring",
@@ -734,6 +738,7 @@ function AccountFormSheet({
                       )}
                     >
                       <RadioGroupItem
+                        id={inputId}
                         value={k}
                         className="sr-only"
                         disabled={submitting}
@@ -758,9 +763,11 @@ function AccountFormSheet({
               >
                 {CURRENCY_OPTIONS.map((c) => {
                   const selected = currency === c;
+                  const inputId = `account-currency-${c}`;
                   return (
                     <label
                       key={c}
+                      htmlFor={inputId}
                       className={cn(
                         "flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors",
                         "focus-within:ring-2 focus-within:ring-ring",
@@ -770,11 +777,12 @@ function AccountFormSheet({
                       )}
                     >
                       <RadioGroupItem
+                        id={inputId}
                         value={c}
                         className="sr-only"
                         disabled={submitting}
                       />
-                      {c}
+                      {CURRENCY_LABEL[c]}
                     </label>
                   );
                 })}

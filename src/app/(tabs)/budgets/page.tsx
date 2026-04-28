@@ -42,7 +42,7 @@ import {
   getCategoryIcon,
   type LucideIconLike,
 } from "@/lib/category-icons";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, CURRENCY_LABEL } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { cn } from "@/lib/utils";
 import type { Currency } from "@/lib/supabase/types";
@@ -737,7 +737,7 @@ function BudgetFormSheet({
                           : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
-                      {c}
+                      {CURRENCY_LABEL[c]}
                     </button>
                   );
                 })}

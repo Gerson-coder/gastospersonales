@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
-import { getMoneyDisplaySizeClass } from "@/lib/money";
+import { getMoneyDisplaySizeClass, CURRENCY_LABEL } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   useTransactionsWindow,
@@ -1013,8 +1013,8 @@ function EmptyInsightsCard({ currency }: { currency: Currency }) {
           Aún no hay datos para analizar
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-          Sin movimientos en {currency} para mostrar comparativas. Registra tu
-          primer movimiento y vuelve aquí.
+          Sin movimientos en {CURRENCY_LABEL[currency]} para mostrar
+          comparativas. Registra tu primer movimiento y vuelve aquí.
         </p>
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
           <Link

@@ -346,8 +346,8 @@ export default function SettingsPage() {
                 aria-label="Moneda principal"
                 className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
               >
-                <PrefRadio value="PEN" label="PEN · Sol peruano" hint="S/" />
-                <PrefRadio value="USD" label="USD · Dólar" hint="$" />
+                <PrefRadio value="PEN" label="Sol peruano" hint="S/" />
+                <PrefRadio value="USD" label="Dólar" hint="$" />
               </RadioGroup>
             </fieldset>
 

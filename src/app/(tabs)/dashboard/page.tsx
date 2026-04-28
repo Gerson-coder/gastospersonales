@@ -49,6 +49,14 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { CURRENCY_LABEL } from "@/lib/money";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
@@ -488,7 +496,7 @@ function EmptyDashboardCard({ currency }: { currency: Currency }) {
           <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
         </span>
         <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
-          Todavía no tienes movimientos en {currency}
+          Todavía no tienes movimientos en {CURRENCY_LABEL[currency]}
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
           Registra un gasto o ingreso para ver aquí tu evolución, tus
@@ -674,6 +682,7 @@ export default function DashboardPage() {
   // chip strip would be a no-op.
   const [selectedAccountId, setSelectedAccountId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
+  const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
 
   const window = useTransactionsWindow({
     months: 6,
@@ -998,31 +1007,128 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Account filter — chip strip. Renders only when the user has
-                multiple accounts (a single-account picker is a no-op). The
-                strip scrolls horizontally on narrow screens. Selecting an
-                account re-derives every number on the page via the
-                `accountId` arg fed to `useTransactionsWindow`. The "Todas"
-                chip is gone — each card represents an independent account
-                view, mixing them under a single total stopped being useful
-                once the brand badges below started carrying their own
-                identity. The strip auto-defaults to the first account. */}
+                multiple accounts. We surface the first 3 chips inline; if
+                there are more, a "+N · Ver más" chip opens a drawer with
+                the full list, picking one selects it and closes. Each
+                card represents an independent account view (the old
+                "Todas" chip is gone — the brand badges below carry their
+                own identity). */}
             {accounts.length > 1 && (
               <div
                 className="mx-4 mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:mt-6"
                 aria-label="Filtrar por cuenta"
               >
                 <div className="flex gap-2 w-max pr-1 md:pr-0">
-                  {accounts.map((account) => (
-                    <AccountChip
-                      key={account.id}
-                      label={account.label}
-                      active={selectedAccountId === account.id}
-                      onClick={() => setSelectedAccountId(account.id)}
-                    />
-                  ))}
+                  {/* Always show the active account first so the user can
+                      see what's currently selected even if it's beyond the
+                      visible window of 3. Followed by up to 3 others. */}
+                  {(() => {
+                    const visibleAccounts = (() => {
+                      const head = accounts.slice(0, 3);
+                      const active = accounts.find(
+                        (a) => a.id === selectedAccountId,
+                      );
+                      if (!active || head.some((a) => a.id === active.id)) {
+                        return head;
+                      }
+                      return [active, ...head.slice(0, 2)];
+                    })();
+                    const remaining = accounts.length - visibleAccounts.length;
+                    return (
+                      <>
+                        {visibleAccounts.map((account) => (
+                          <AccountChip
+                            key={account.id}
+                            label={account.label}
+                            active={selectedAccountId === account.id}
+                            onClick={() => setSelectedAccountId(account.id)}
+                          />
+                        ))}
+                        {remaining > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setAccountDrawerOpen(true)}
+                            aria-label="Ver todas las cuentas"
+                            aria-haspopup="dialog"
+                            className={cn(
+                              "h-9 px-4 rounded-full text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors",
+                              "border border-dashed border-border bg-card text-muted-foreground",
+                              "hover:bg-muted hover:text-foreground",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                            )}
+                          >
+                            +{remaining} · Ver más
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
+
+            {/* Full account picker — opens from the "Ver más" chip when the
+                user has more accounts than fit in the inline strip. */}
+            <Sheet
+              open={accountDrawerOpen}
+              onOpenChange={setAccountDrawerOpen}
+            >
+              <SheetContent
+                side="bottom"
+                aria-labelledby="dashboard-account-picker-title"
+                className="rounded-t-2xl px-4 pb-6 pt-2 md:max-w-md"
+              >
+                <SheetHeader className="px-1">
+                  <SheetTitle
+                    id="dashboard-account-picker-title"
+                    className="font-sans not-italic font-semibold"
+                  >
+                    Elige una cuenta
+                  </SheetTitle>
+                  <SheetDescription>
+                    El dashboard se filtra por la cuenta que selecciones.
+                  </SheetDescription>
+                </SheetHeader>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {accounts.map((account) => {
+                    const selected = selectedAccountId === account.id;
+                    return (
+                      <li key={account.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAccountId(account.id);
+                            setAccountDrawerOpen(false);
+                          }}
+                          aria-pressed={selected}
+                          className={cn(
+                            "flex min-h-12 w-full items-center justify-between rounded-2xl px-3 text-left transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            selected
+                              ? "bg-foreground text-background"
+                              : "text-foreground hover:bg-muted",
+                          )}
+                        >
+                          <span className="truncate text-[14px] font-semibold">
+                            {account.label}
+                          </span>
+                          <span
+                            className={cn(
+                              "ml-3 shrink-0 text-[11px] font-medium tabular-nums",
+                              selected
+                                ? "text-background/80"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {CURRENCY_LABEL[account.currency]}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </SheetContent>
+            </Sheet>
 
             {/* Mobile hero — verde con presupuesto derivado + period selector + CTA.
                 CurrencySwitch va en una fila separada arriba en mobile para no

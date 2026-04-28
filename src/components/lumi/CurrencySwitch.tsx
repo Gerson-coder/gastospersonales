@@ -13,6 +13,7 @@
 "use client";
 
 import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { CURRENCY_LABEL } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export function CurrencySwitch({
@@ -59,7 +60,7 @@ function CurrencyOption({
       type="button"
       role="radio"
       aria-checked={selected}
-      aria-label={`Cambiar a ${code}`}
+      aria-label={`Cambiar a ${CURRENCY_LABEL[code]}`}
       onClick={onClick}
       className={cn(
         "h-8 px-3 rounded-full text-[12px] font-semibold transition-colors",
@@ -69,7 +70,7 @@ function CurrencyOption({
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      {code}
+      {CURRENCY_LABEL[code]}
     </button>
   );
 }
