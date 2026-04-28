@@ -703,6 +703,17 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // Seed the account filter to the first account once we have a list — the
+  // "Todas" chip was removed (each card now stands alone), so we need a
+  // concrete default instead of leaving selectedAccountId at null and
+  // showing combined totals nobody asked for. Subsequent re-renders are
+  // no-ops because selectedAccountId is no longer null.
+  React.useEffect(() => {
+    if (selectedAccountId !== null) return;
+    if (accounts.length === 0) return;
+    setSelectedAccountId(accounts[0].id);
+  }, [accounts, selectedAccountId]);
+
   // ── Branch on the data source ──────────────────────────────────────────
   // Demo mode: feed the legacy in-file dataset. Real mode: derive everything
   // from `window`. Both paths produce the same downstream shape.
@@ -753,80 +764,104 @@ export default function DashboardPage() {
     return window.recentTransactions.map(viewToRecent);
   }, [isDemo, window.recentTransactions]);
 
-  const weekTotal = weekData.reduce((a, d) => a + d.value, 0);
-
-  // ── Mobile hero — period selector + derived budget ────────────────────
-  // El presupuesto se DERIVA del ingreso mensual ÷ días del mes (no hay
-  // configuración de usuario aún). Si no hay ingresos, el hero degrada
-  // elegantemente: oculta progress bar y "Te quedan", solo muestra "Gastaste".
+  // ── Mobile hero — period selector + saldo actual ──────────────────────
+  // El hero muestra: gasto del período + saldo actual (= ingreso − gasto).
+  // Sin presupuestos derivados — eso vivía antes y producía números
+  // confusos (e.g. "te quedan S/ 6.67" cuando había S/ 200 de ingreso al
+  // dividirlo entre 30 días). Saldo es la métrica honesta del estado.
   const [period, setPeriod] = React.useState<Period>("today");
 
   const heroNumbers = React.useMemo(() => {
     const now = new Date();
-    const daysInThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const dailyBudget = income > 0 ? income / daysInThisMonth : null;
 
-    // Gasto del día actual (filtrar transacciones de hoy)
+    // Today key (YYYY-MM-DD).
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    // Week start = Monday 00:00 of the current week.
+    const day = now.getDay();
+    const offsetToMon = (day + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - offsetToMon);
+    monday.setHours(0, 0, 0, 0);
+    const weekStartKey = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+
+    const rows = isDemo
+      ? DEMO_TRANSACTIONS.map((t) => ({
+          kind: t.kind,
+          amount: t.amount,
+          occurredAt: t.occurredAt,
+        }))
+      : window.rows.map((t) => ({
+          kind: t.kind,
+          amount: t.amount,
+          occurredAt: t.occurredAt,
+        }));
+
     let spentToday = 0;
-    if (isDemo) {
-      for (const t of DEMO_TRANSACTIONS) {
-        if (t.kind === "expense" && t.occurredAt.startsWith(todayKey)) {
-          spentToday += t.amount;
-        }
-      }
-    } else {
-      for (const t of window.rows) {
-        if (t.kind === "expense" && t.occurredAt.startsWith(todayKey)) {
-          spentToday += t.amount;
-        }
+    let incomeToday = 0;
+    let spentWeek = 0;
+    let incomeWeek = 0;
+    for (const t of rows) {
+      const dateKey = t.occurredAt.slice(0, 10);
+      const inToday = dateKey === todayKey;
+      const inWeek = dateKey >= weekStartKey && dateKey <= todayKey;
+      if (t.kind === "expense") {
+        if (inToday) spentToday += t.amount;
+        if (inWeek) spentWeek += t.amount;
+      } else {
+        if (inToday) incomeToday += t.amount;
+        if (inWeek) incomeWeek += t.amount;
       }
     }
-
-    // Gasto últimos 7 días = weekTotal (ya calculado arriba)
-    const spentWeek = weekTotal;
-    const weeklyBudget = dailyBudget !== null ? dailyBudget * 7 : null;
-
-    // Período mensual: usa los scalars del hook
-    const spentMonth = spent;
-    const monthlyBudget = income > 0 ? income : null;
 
     if (period === "today") {
-      return {
-        spent: spentToday,
-        budget: dailyBudget,
-        remaining: dailyBudget !== null ? dailyBudget - spentToday : null,
-      };
+      return { spent: spentToday, saldo: incomeToday - spentToday };
     }
     if (period === "week") {
-      return {
-        spent: spentWeek,
-        budget: weeklyBudget,
-        remaining: weeklyBudget !== null ? weeklyBudget - spentWeek : null,
-      };
+      return { spent: spentWeek, saldo: incomeWeek - spentWeek };
     }
-    return {
-      spent: spentMonth,
-      budget: monthlyBudget,
-      remaining: monthlyBudget !== null ? monthlyBudget - spentMonth : null,
-    };
-  }, [period, income, spent, weekTotal, isDemo, window.rows]);
+    // Month: use the closure-scoped totals from the hook.
+    return { spent, saldo: income - spent };
+  }, [period, income, spent, isDemo, window.rows]);
 
   // Date range pill label que acompaña al saludo en mobile.
+  // Para semanas que cruzan meses ("27 abr - 3 may, 2026") incluimos los
+  // dos abreviados; para semanas dentro del mismo mes el formato compacto
+  // ("27 - 3 abril, 2026") se conserva.
   const dateRangeLabel = React.useMemo(() => {
     const now = new Date();
-    const monthName = now.toLocaleDateString("es", { month: "long" });
-    const cap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-    if (period === "today") return `${now.getDate()} ${cap}, ${now.getFullYear()}`;
-    if (period === "month") return `${cap} ${now.getFullYear()}`;
-    // semana: lunes..domingo de la semana actual
+    const longMonth = (d: Date) => {
+      const m = d.toLocaleDateString("es", { month: "long" });
+      return m.charAt(0).toUpperCase() + m.slice(1);
+    };
+    const shortMonth = (d: Date) => {
+      // "abr." → "Abr"; we strip the trailing period so the label looks
+      // calmer and stays consistent with the long form.
+      const m = d.toLocaleDateString("es", { month: "short" }).replace(".", "");
+      return m.charAt(0).toUpperCase() + m.slice(1);
+    };
+    if (period === "today") {
+      return `${now.getDate()} ${longMonth(now)}, ${now.getFullYear()}`;
+    }
+    if (period === "month") {
+      return `${longMonth(now)} ${now.getFullYear()}`;
+    }
+    // Week: Monday..Sunday of the current week.
     const day = now.getDay();
     const offsetToMon = (day + 6) % 7;
     const monday = new Date(now);
     monday.setDate(now.getDate() - offsetToMon);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
-    return `${monday.getDate()} - ${sunday.getDate()} ${cap}, ${now.getFullYear()}`;
+    if (monday.getMonth() === sunday.getMonth()) {
+      return `${monday.getDate()} - ${sunday.getDate()} ${longMonth(monday)}, ${monday.getFullYear()}`;
+    }
+    // Cross-month week (e.g. 27 abr - 3 may, 2026).
+    const yearLabel =
+      monday.getFullYear() === sunday.getFullYear()
+        ? `, ${monday.getFullYear()}`
+        : `, ${monday.getFullYear()} / ${sunday.getFullYear()}`;
+    return `${monday.getDate()} ${shortMonth(monday)} - ${sunday.getDate()} ${shortMonth(sunday)}${yearLabel}`;
   }, [period]);
 
   // Series para los sparklines de StatTrendCard — 6 meses de monthTotals.
@@ -966,18 +1001,17 @@ export default function DashboardPage() {
                 multiple accounts (a single-account picker is a no-op). The
                 strip scrolls horizontally on narrow screens. Selecting an
                 account re-derives every number on the page via the
-                `accountId` arg fed to `useTransactionsWindow`. */}
+                `accountId` arg fed to `useTransactionsWindow`. The "Todas"
+                chip is gone — each card represents an independent account
+                view, mixing them under a single total stopped being useful
+                once the brand badges below started carrying their own
+                identity. The strip auto-defaults to the first account. */}
             {accounts.length > 1 && (
               <div
                 className="mx-4 mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:mt-6"
                 aria-label="Filtrar por cuenta"
               >
                 <div className="flex gap-2 w-max pr-1 md:pr-0">
-                  <AccountChip
-                    label="Todas"
-                    active={selectedAccountId === null}
-                    onClick={() => setSelectedAccountId(null)}
-                  />
                   {accounts.map((account) => (
                     <AccountChip
                       key={account.id}
@@ -1003,8 +1037,7 @@ export default function DashboardPage() {
                 period={period}
                 onPeriodChange={setPeriod}
                 spent={heroNumbers.spent}
-                remaining={heroNumbers.remaining}
-                budget={heroNumbers.budget}
+                saldo={heroNumbers.saldo}
                 currency={currency}
               />
             </div>

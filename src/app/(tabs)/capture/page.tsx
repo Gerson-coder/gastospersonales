@@ -22,12 +22,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Camera,
   Delete,
+  Plus,
   UtensilsCrossed,
   Car,
   Home as HomeIcon,
@@ -124,14 +126,10 @@ type Account = {
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
 
-// Account kinds visible when registering an INCOME. The user receives money
-// into these surfaces (cash on hand, card, Yape) — bank/Plin are excluded
-// per product decision. The expense flow keeps every kind visible.
-const INCOME_ALLOWED_ACCOUNT_KINDS: ReadonlyArray<Account["kind"]> = [
-  "cash",
-  "card",
-  "yape",
-];
+// Income flow used to hide bank/Plin accounts under a curated allow-list,
+// but a bank account is the natural target for a salary deposit — filtering
+// it out broke the most common income capture in Peru. We now keep every
+// active account visible on income, same as expense.
 
 // Map an account kind to its icon. Used to "rehydrate" the lucide icon for
 // rows that come from the data layer (which doesn't carry React components).
@@ -552,32 +550,16 @@ function CapturePageInner() {
   // if the user has no categories at all. Downstream code coalesces.
   const category: Category | null =
     categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
-  // Income mode hides bank + Plin from the picker — only cash / card / Yape
-  // remain. Expense mode keeps every account. Memoized so the drawer + the
-  // header chip share a single filtered list.
-  const displayAccounts = React.useMemo<Account[]>(() => {
-    if (kind !== "income") return accounts;
-    return accounts.filter((a) =>
-      INCOME_ALLOWED_ACCOUNT_KINDS.includes(a.kind),
-    );
-  }, [accounts, kind]);
-
-  // When the user toggles between expense and income, the previously-selected
-  // account, category or merchant may no longer be valid for the new kind:
-  //   - income hides bank/Plin accounts
-  //   - income has no merchant
+  // When the user toggles between expense and income, the merchant picker
+  // and the category column must reconcile:
+  //   - income has no merchant (you receive money, you don't pay anyone),
   //   - the category column should always match the active kind so we don't
   //     save a Comida-tagged income (which would then surface restaurants
   //     from the merchant catalogue if the user toggles back to expense).
-  // Reconcile state so the FAB never saves with a stale id.
+  // Account filtering is intentionally NOT applied — bank accounts are the
+  // most common income target and removing them broke the salary flow.
   React.useEffect(() => {
     if (kind === "income") {
-      if (
-        accountId !== null &&
-        !displayAccounts.some((a) => a.id === accountId)
-      ) {
-        setAccountId(displayAccounts[0]?.id ?? null);
-      }
       if (merchantId !== null) setMerchantId(null);
       const incomeCategories = categories.filter(
         (c) => c.defaultKind === "income",
@@ -589,9 +571,6 @@ function CapturePageInner() {
         setCategoryId(incomeCategories[0]?.id ?? null);
       }
     } else {
-      // Expense: if the current category is an income one (e.g. Trabajo, Ahorro),
-      // fall back to the first expense category so the chip strip and the
-      // merchant picker stay coherent.
       const currentIsIncome = categories.find(
         (c) => c.id === categoryId && c.defaultKind === "income",
       );
@@ -602,19 +581,16 @@ function CapturePageInner() {
         setCategoryId(firstExpense?.id ?? null);
       }
     }
-    // We only react to kind / displayAccounts / categories changes; the
-    // *Id reads inside the body are intentional reconcile inputs and
-    // converge in a single pass.
+    // We only react to kind / categories changes; the *Id reads inside the
+    // body are intentional reconcile inputs and converge in a single pass.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, displayAccounts, categories]);
+  }, [kind, categories]);
 
   // `account` may be null briefly while we wait for the first fetch tick.
   // The picker chip shows a skeleton in that window; downstream consumers
   // (saveAriaLabel, save handler) coalesce to safe defaults.
   const account: Account | null =
-    displayAccounts.find((a) => a.id === accountId) ??
-    displayAccounts[0] ??
-    null;
+    accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
 
   // MRU strip — kind-aware ordering.
   //
@@ -1055,52 +1031,78 @@ function CapturePageInner() {
           />
         )}
 
-        {/* Account picker + note */}
+        {/* Account picker + note. Two states:
+              - User has accounts -> button opens the chooser drawer.
+              - User has zero accounts -> Link straight to /accounts so the
+                first-run flow has a one-tap path to create one. The old
+                version showed a disabled grey row that left users stuck. */}
         <section className="mt-3 space-y-3 px-4">
-          <button
-            type="button"
-            onClick={() => setAccountDrawerOpen(true)}
-            disabled={accountsLoading || displayAccounts.length === 0}
-            aria-label={
-              account
-                ? `Cuenta ${account.label}, toca para cambiar`
-                : accountsLoading
-                  ? "Cargando cuentas"
-                  : "Sin cuentas disponibles"
-            }
-            aria-haspopup="dialog"
-            aria-expanded={accountDrawerOpen}
-            className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {accountsLoading ? (
-              <>
-                <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
-                <Skeleton className="h-3.5 flex-1 rounded" />
-              </>
-            ) : account ? (
-              <>
-                <span
-                  aria-hidden="true"
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
-                >
-                  <account.Icon size={14} />
-                </span>
-                <span className="flex-1 text-[13px] font-semibold">{account.label}</span>
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  {account.currency}
-                </span>
-                <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
-              </>
-            ) : kind === "income" && accounts.length > 0 ? (
-              <span className="flex-1 text-[13px] font-medium text-muted-foreground">
-                Sin cuenta compatible — usa efectivo, tarjeta o Yape
+          {accountsLoading ? (
+            <div className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3">
+              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
+              <Skeleton className="h-3.5 flex-1 rounded" />
+            </div>
+          ) : accounts.length === 0 ? (
+            <Link
+              href="/accounts"
+              aria-label="Crear tu primera cuenta"
+              className="flex h-11 w-full items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-3 text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary"
+              >
+                <Plus size={14} />
               </span>
-            ) : (
-              <span className="flex-1 text-[13px] font-medium text-muted-foreground">
-                Sin cuentas — crea una en /cuentas
+              <span className="flex-1 text-[13px] font-semibold text-primary">
+                Crear tu primera cuenta
               </span>
-            )}
-          </button>
+              <ChevronRight
+                size={16}
+                aria-hidden="true"
+                className="text-primary"
+              />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAccountDrawerOpen(true)}
+              aria-label={
+                account
+                  ? `Cuenta ${account.label}, toca para cambiar`
+                  : "Sin cuenta seleccionada"
+              }
+              aria-haspopup="dialog"
+              aria-expanded={accountDrawerOpen}
+              className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {account ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
+                  >
+                    <account.Icon size={14} />
+                  </span>
+                  <span className="flex-1 text-[13px] font-semibold">
+                    {account.label}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {account.currency}
+                  </span>
+                  <ChevronRight
+                    size={16}
+                    aria-hidden="true"
+                    className="text-muted-foreground"
+                  />
+                </>
+              ) : (
+                <span className="flex-1 text-[13px] font-medium text-muted-foreground">
+                  Elige una cuenta
+                </span>
+              )}
+            </button>
+          )}
 
           {/* TODO(ux): note input se quitó de mobile. Reubicar — quizás en
               una expand-on-demand row inline. El state `note` y el
@@ -1259,7 +1261,7 @@ function CapturePageInner() {
                     </div>
                   </li>
                 ))
-              : displayAccounts.map((a) => {
+              : accounts.map((a) => {
                   const Icon = a.Icon;
                   const selected = accountId === a.id;
                   return (

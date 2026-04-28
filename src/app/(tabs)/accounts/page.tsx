@@ -106,7 +106,11 @@ const ACCOUNT_TINT: Record<AccountKind, string> = {
   plin: "bg-[oklch(0.92_0.05_185)] text-[oklch(0.45_0.12_185)]",
 };
 
-const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank", "yape", "plin"];
+// Yape / Plin are exposed via brand presets only (see BRAND_PRESETS below)
+// — they're brand-specific surfaces, not generic "kinds" the user has to
+// understand. Keeping them out of the kind picker stops the form from
+// asking two near-identical questions in a row.
+const KIND_OPTIONS: AccountKind[] = ["cash", "card", "bank"];
 
 // Account name char cap. 24 covers legitimate names ("Cuenta Ahorro BCP",
 // "Tarjeta Interbank") while preventing visual spam — 32 chars of garbage
@@ -120,6 +124,26 @@ const LOCKED_KIND_NAMES: Partial<Record<AccountKind, string>> = {
   plin: "Plin",
 };
 const CURRENCY_OPTIONS: Currency[] = ["PEN", "USD"];
+
+// Curated brand suggestions for first-time account setup. The three banks
+// cover the bulk of Peruvian retail; Yape and Plin are the wallet brands
+// that previously lived in the kind picker. Picking a preset auto-fills
+// both kind + label so the user only has to confirm currency. Bank presets
+// pre-fill a starter label the user can extend ("BCP" → "BCP Soles");
+// wallet presets keep the name locked (yape/plin paths still flow through
+// LOCKED_KIND_NAMES so the input stays read-only).
+type BrandPreset = {
+  id: string;
+  label: string;
+  kind: AccountKind;
+};
+const BRAND_PRESETS: BrandPreset[] = [
+  { id: "bcp",       label: "BCP",       kind: "bank" },
+  { id: "interbank", label: "Interbank", kind: "bank" },
+  { id: "bbva",      label: "BBVA",      kind: "bank" },
+  { id: "yape",      label: "Yape",      kind: "yape" },
+  { id: "plin",      label: "Plin",      kind: "plin" },
+];
 
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function AccountsPage() {
@@ -451,6 +475,28 @@ function AccountFormSheet({
     }
   }
 
+  // One-tap brand preset: auto-fills kind + label. For BCP / Interbank /
+  // BBVA we seed the brand name as a starter the user can extend (e.g.
+  // append "Soles"). For Yape / Plin the name is locked downstream by
+  // LOCKED_KIND_NAMES so the input stays read-only after the pick.
+  function handlePresetPick(preset: BrandPreset) {
+    if (submitting) return;
+    setKind(preset.kind);
+    setLabel(preset.label);
+    setShowError(false);
+  }
+
+  // Determine which brand preset is "active" given the current form state.
+  // For wallet presets (yape / plin) we just match the kind. For bank
+  // presets we additionally require the trimmed label to start with the
+  // brand name so a custom "Banco de la Nación" doesn't accidentally
+  // light up "BCP".
+  function isPresetActive(preset: BrandPreset): boolean {
+    if (kind !== preset.kind) return false;
+    if (preset.kind === "yape" || preset.kind === "plin") return true;
+    return label.trim().toLowerCase().startsWith(preset.label.toLowerCase());
+  }
+
   // Optimistic close pattern: dismiss the sheet BEFORE the round-trip so the
   // UX feels instant. We surface a toast on either path and reload to
   // reconcile any drift. Archive does NOT short-circuit close — destructive
@@ -547,6 +593,43 @@ function AccountFormSheet({
           </SheetHeader>
 
           <div className="mt-2 flex flex-col gap-4 px-0 pb-2">
+            {/* Brand suggestions — one-tap presets that fill kind + label.
+                Sit above the Nombre field so first-time users land on a
+                familiar label instead of a blank input. The pill turns
+                solid when the current draft matches its definition. */}
+            <fieldset>
+              <legend className="mb-1.5 text-[13px] font-semibold">
+                Sugerencias
+              </legend>
+              <div
+                role="group"
+                aria-label="Sugerencias de marca"
+                className="flex flex-wrap gap-2"
+              >
+                {BRAND_PRESETS.map((preset) => {
+                  const active = isPresetActive(preset);
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handlePresetPick(preset)}
+                      disabled={submitting}
+                      aria-pressed={active}
+                      className={cn(
+                        "inline-flex h-9 items-center rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        active
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-card text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <Label
@@ -629,12 +712,13 @@ function AccountFormSheet({
             <fieldset>
               <legend className="mb-1.5 text-[13px] font-semibold">Tipo</legend>
               {/* Text-only chips per UX feedback (icons removed to keep the
-                  picker calm on small screens). 5 options on one row at md+,
-                  wraps to 3+2 on phones via grid-cols-3. */}
+                  picker calm on small screens). Three options now that
+                  Yape / Plin live as brand presets — fits one row on every
+                  viewport. */}
               <RadioGroup
                 value={kind}
                 onValueChange={(v) => handleKindChange(v as AccountKind)}
-                className="grid grid-cols-3 gap-2 md:grid-cols-5"
+                className="grid grid-cols-3 gap-2"
               >
                 {KIND_OPTIONS.map((k) => {
                   const selected = kind === k;

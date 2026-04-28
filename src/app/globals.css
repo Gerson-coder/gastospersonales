@@ -380,3 +380,49 @@
 @theme inline {
   --animate-lumi-scan: lumi-scan 1.8s linear infinite;
 }
+
+/* ============================================================
+   Lumi toast — Sonner notifications styling.
+   Sonner already animates the slide-in; we layer a subtle
+   pop (scale 0.97 -> 1) + a soft bounce on the icon + a
+   left-edge accent stripe so each variant (success / info /
+   warning / error) reads at a glance without yelling.
+   ============================================================ */
+@keyframes lumi-toast-pop {
+  0%   { transform: scale(0.96); opacity: 0; }
+  60%  { transform: scale(1.015); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes lumi-toast-icon-bounce {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.cn-toast {
+  /* Override Sonner's default shadow with a warm, more present one. */
+  box-shadow: var(--shadow-float, 0 4px 8px rgba(0,0,0,0.08), 0 16px 32px rgba(0,0,0,0.12)) !important;
+  border-radius: var(--radius-lg, 1rem) !important;
+  border-left-width: 3px !important;
+  animation: lumi-toast-pop 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Per-variant left stripe colour. Sonner sets data-type on the toast root. */
+.cn-toast[data-type="success"] { border-left-color: oklch(0.53 0.17 162); }
+.cn-toast[data-type="info"]    { border-left-color: oklch(0.66 0.17 250); }
+.cn-toast[data-type="warning"] { border-left-color: oklch(0.78 0.15 75);  }
+.cn-toast[data-type="error"]   { border-left-color: oklch(0.52 0.22 25);  }
+.cn-toast[data-type="loading"] { border-left-color: oklch(0.45 0.005 95); }
+
+/* Bounce the icon as the toast pops in. */
+.cn-toast [data-icon] {
+  animation: lumi-toast-icon-bounce 380ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Respect motion preferences — strip the entrance animations entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .cn-toast,
+  .cn-toast [data-icon] {
+    animation: none !important;
+  }
+}
