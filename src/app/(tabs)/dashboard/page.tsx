@@ -1124,10 +1124,8 @@ export default function DashboardPage() {
                       period={period}
                       onPeriodChange={setPeriod}
                       spent={heroNumbers.spent}
-                      remaining={heroNumbers.remaining}
-                      budget={heroNumbers.budget}
+                      saldo={heroNumbers.saldo}
                       currency={currency}
-                      onAddExpense={() => router.push("/capture")}
                     />
                     <StatTrendCard
                       kind="expense"
