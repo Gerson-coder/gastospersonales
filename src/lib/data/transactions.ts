@@ -442,6 +442,35 @@ export async function archiveTransaction(id: string): Promise<void> {
 }
 
 /**
+ * Bulk soft-delete EVERY active transaction owned by the current user. RLS
+ * scopes the UPDATE to `user_id = auth.uid()`; we add an explicit `user_id`
+ * filter as defense in depth. Returns the count of rows archived. Used by
+ * the factory-reset flow in /settings.
+ */
+export async function archiveAllUserTransactions(): Promise<number> {
+  const supabase = createSupabaseClient();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    throw new Error("Inicia sesión para continuar.");
+  }
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .is("archived_at", null)
+    .select("id");
+
+  if (error) {
+    throw new Error(error.message || "No pudimos restablecer los movimientos.");
+  }
+  return (data ?? []).length;
+}
+
+/**
  * Restore a soft-deleted transaction. Used by the undo toast within the
  * 5-second window after `archiveTransaction`.
  */

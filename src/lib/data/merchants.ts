@@ -286,6 +286,43 @@ export async function updateMerchant(
 }
 
 /**
+ * Bulk soft-delete only the user's own merchants. System seeds (user_id IS
+ * NULL) stay intact — RLS would block them anyway, but the explicit
+ * `user_id` filter makes the intent obvious. Returns the count of rows
+ * archived. Used by the factory-reset flow in /settings.
+ *
+ * If the merchants table doesn't exist yet (pre-migration 00006) this
+ * gracefully returns 0 rather than throwing — the rest of the factory
+ * reset still has work to do.
+ */
+export async function archiveAllUserMerchants(): Promise<number> {
+  const supabase = createSupabaseClient();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    throw new Error("Inicia sesión para continuar.");
+  }
+
+  const { data, error } = await supabase
+    .from("merchants")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .is("archived_at", null)
+    .select("id");
+
+  if (error) {
+    if (isMissingFeatureError(error.code)) {
+      warnTableMissingOnce("archiveAllUserMerchants");
+      return 0;
+    }
+    throw new Error(error.message || "No pudimos restablecer los comercios.");
+  }
+  return (data ?? []).length;
+}
+
+/**
  * Soft-delete: set `archived_at = now()`. The list query filters these out
  * automatically. RLS prevents users from archiving system merchants.
  */

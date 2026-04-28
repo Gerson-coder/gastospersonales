@@ -173,3 +173,61 @@ export async function archiveAccount(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Bulk soft-delete EVERY active account owned by the current user. Unlike
+ * `archiveAccount`, this does NOT enforce the "keep at least one active
+ * account" floor — it's intended for factory-reset / "Restablecer cuentas"
+ * flows where the user is intentionally wiping their setup. The next account
+ * creation re-seeds the floor.
+ *
+ * RLS scopes UPDATE to the user's own rows; we still filter by `user_id`
+ * explicitly as defense in depth. Returns the count of rows archived.
+ */
+export async function archiveAllUserAccounts(): Promise<number> {
+  const supabase = createClient();
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData.user) {
+    throw new Error("Inicia sesión para continuar.");
+  }
+
+  const { data, error } = await supabase
+    .from("accounts")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("user_id", userData.user.id)
+    .is("archived_at", null)
+    .select("id");
+
+  if (error) {
+    throw new Error(error.message || "No pudimos restablecer las cuentas.");
+  }
+  return (data ?? []).length;
+}
+
+/**
+ * Bulk soft-delete every active account of a specific kind (cash / card /
+ * bank / yape / plin). Same "no floor" semantics as `archiveAllUserAccounts`.
+ * Returns the count of rows archived.
+ */
+export async function archiveUserAccountsByKind(
+  kind: AccountKind,
+): Promise<number> {
+  const supabase = createClient();
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData.user) {
+    throw new Error("Inicia sesión para continuar.");
+  }
+
+  const { data, error } = await supabase
+    .from("accounts")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("user_id", userData.user.id)
+    .eq("type", kind)
+    .is("archived_at", null)
+    .select("id");
+
+  if (error) {
+    throw new Error(error.message || "No pudimos restablecer las cuentas.");
+  }
+  return (data ?? []).length;
+}

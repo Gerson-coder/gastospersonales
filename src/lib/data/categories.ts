@@ -172,6 +172,41 @@ export async function updateCategory(
 }
 
 /**
+ * Bulk soft-delete every user-owned (non-system) category in one round-trip.
+ *
+ * RLS already restricts UPDATE to rows where `user_id = auth.uid()`, so the
+ * `.eq("user_id", user.id)` here is belt-and-suspenders against ever
+ * accidentally touching system rows (which have `user_id IS NULL` and would
+ * be filtered by RLS anyway). The `.is("archived_at", null)` filter avoids
+ * stomping rows that were already archived from another device.
+ *
+ * Returns the count of rows archived. Used by the "Restablecer categorías"
+ * affordance in /settings.
+ */
+export async function archiveAllUserCategories(): Promise<number> {
+  const supabase = createSupabaseClient();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    throw new Error("Inicia sesión para continuar.");
+  }
+
+  const { data, error } = await supabase
+    .from("categories")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .is("archived_at", null)
+    .select("id");
+
+  if (error) {
+    throw new Error(error.message || "No pudimos restablecer las categorías.");
+  }
+  return (data ?? []).length;
+}
+
+/**
  * Soft-delete: set `archived_at = now()`. The list query filters these out
  * automatically. RLS prevents users from archiving system categories.
  */

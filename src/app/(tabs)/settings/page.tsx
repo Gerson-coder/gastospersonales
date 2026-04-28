@@ -38,10 +38,16 @@ import {
   Info,
   Globe,
   Clock,
+  Download,
+  AlertTriangle,
+  Trash2,
+  RotateCcw,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,12 +62,20 @@ import {
 } from "@/components/ui/sheet";
 import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
 import {
+  archiveAllUserCategories,
   archiveCategory,
   createCategory,
   listCategories,
   type Category as DbCategory,
   updateCategory,
 } from "@/lib/data/categories";
+import {
+  archiveUserAccountsByKind,
+  archiveAllUserAccounts,
+  type AccountKind,
+} from "@/lib/data/accounts";
+import { factoryReset } from "@/lib/data/factory-reset";
+import { exportLocalOnly, exportUserData } from "@/lib/data/export-data";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/types";
@@ -451,6 +465,16 @@ export default function SettingsPage() {
               </li>
             </ul>
           </Card>
+        </SettingsSection>
+
+        {/* Tus datos — export safety net */}
+        <SettingsSection title="Tus datos" headingId="settings-data">
+          <DataExportCard />
+        </SettingsSection>
+
+        {/* Zona de peligro — destructive resets */}
+        <SettingsSection title="Zona de peligro" headingId="settings-danger">
+          <DangerZoneCard />
         </SettingsSection>
 
         {/* Sign out */}
@@ -902,6 +926,553 @@ function CategoriesCardLive() {
         />
       ) : null}
     </>
+  );
+}
+
+// ─── Data export ──────────────────────────────────────────────────────────
+/**
+ * "Descargar mis datos" — exports a JSON snapshot of the user's data.
+ * In demo mode (SUPABASE_ENABLED=false) we fall back to a local-only
+ * export (just the localStorage keys) so the affordance still does
+ * something useful when no Supabase env is wired.
+ */
+function DataExportCard() {
+  const [busy, setBusy] = React.useState(false);
+
+  async function handleDownload() {
+    setBusy(true);
+    try {
+      const blob = SUPABASE_ENABLED ? await exportUserData() : exportLocalOnly();
+      const today = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lumi-export-${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoke after a tick so the browser has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      toast.success("Descarga iniciada", {
+        description: "Guarda este archivo en un lugar seguro.",
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No pudimos exportar tus datos.";
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden rounded-2xl border-border p-0">
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={busy}
+        aria-label="Descargar mis datos"
+        className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-60"
+      >
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+        >
+          <Download size={16} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold">Descargar mis datos</div>
+          <div className="text-[12px] text-muted-foreground">
+            Exporta tu información en un archivo JSON.
+          </div>
+        </div>
+        <ChevronRight
+          size={16}
+          className="text-muted-foreground"
+          aria-hidden="true"
+        />
+      </button>
+    </Card>
+  );
+}
+
+// ─── Danger zone ──────────────────────────────────────────────────────────
+const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
+  cash: "Efectivo",
+  card: "Tarjeta",
+  bank: "Banco",
+  yape: "Yape",
+  plin: "Plin",
+};
+
+const ACCOUNT_KIND_OPTIONS: AccountKind[] = [
+  "cash",
+  "card",
+  "bank",
+  "yape",
+  "plin",
+];
+
+/**
+ * Three destructive resets with explicit confirmation. Each row opens a
+ * Sheet with a clear "Esta acción no se puede deshacer" warning and a
+ * single confirm button. Factory reset additionally requires the user to
+ * type "BORRAR" exactly to enable the destructive action.
+ *
+ * In demo mode (no Supabase env) the rows are disabled with a hint, since
+ * there's nothing to reset on the server.
+ */
+function DangerZoneCard() {
+  const router = useRouter();
+
+  const [resetCatsOpen, setResetCatsOpen] = React.useState(false);
+  const [resetAccountsOpen, setResetAccountsOpen] = React.useState(false);
+  const [factoryOpen, setFactoryOpen] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  // For the accounts sub-flow we use an "armed" pattern: tapping a button
+  // once moves it into a confirm state showing "¿Confirmar?"; a second tap
+  // executes. The armed kind ("all" or one of AccountKind) tracks which
+  // button is currently primed.
+  const [armedKind, setArmedKind] = React.useState<"all" | AccountKind | null>(
+    null,
+  );
+
+  // Factory reset confirm — user must type BORRAR exactly.
+  const [factoryConfirmText, setFactoryConfirmText] = React.useState("");
+
+  // Reset transient state whenever a sheet closes so the next open starts
+  // fresh (no stale "armed" button or pre-filled confirmation text).
+  React.useEffect(() => {
+    if (!resetAccountsOpen) setArmedKind(null);
+  }, [resetAccountsOpen]);
+  React.useEffect(() => {
+    if (!factoryOpen) setFactoryConfirmText("");
+  }, [factoryOpen]);
+
+  async function handleResetCategories() {
+    setSubmitting(true);
+    try {
+      const count = await archiveAllUserCategories();
+      setResetCatsOpen(false);
+      toast.success(
+        count === 0
+          ? "No tenías categorías propias."
+          : `Borramos ${count} ${count === 1 ? "categoría" : "categorías"}.`,
+      );
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos restablecer las categorías.";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResetAccounts(kind: "all" | AccountKind) {
+    setSubmitting(true);
+    try {
+      const count =
+        kind === "all"
+          ? await archiveAllUserAccounts()
+          : await archiveUserAccountsByKind(kind);
+      setResetAccountsOpen(false);
+      setArmedKind(null);
+      toast.success(
+        count === 0
+          ? "No había cuentas para borrar."
+          : `Borramos ${count} ${count === 1 ? "cuenta" : "cuentas"}.`,
+      );
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos restablecer las cuentas.";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleFactoryReset() {
+    if (factoryConfirmText !== "BORRAR") return;
+    setSubmitting(true);
+    try {
+      const counts = await factoryReset();
+      setFactoryOpen(false);
+      setFactoryConfirmText("");
+      toast.success("Listo, comenzamos de nuevo.", {
+        description: `Borramos ${counts.transactions} movimientos, ${counts.accounts} cuentas, ${counts.categories} categorías y ${counts.merchants} comercios.`,
+      });
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos restablecer la cuenta.";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const disabledHint = SUPABASE_ENABLED
+    ? undefined
+    : "Inicia sesión para continuar.";
+
+  return (
+    <>
+      <Card className="overflow-hidden rounded-2xl border border-destructive/30 bg-destructive/5 p-0">
+        <ul className="divide-y divide-destructive/20" role="list">
+          <li>
+            <button
+              type="button"
+              onClick={() => setResetCatsOpen(true)}
+              disabled={!SUPABASE_ENABLED || submitting}
+              aria-label="Restablecer categorías"
+              className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none disabled:opacity-60"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+              >
+                <Tag size={16} aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-semibold">
+                  Restablecer categorías
+                </div>
+                <div className="text-[12px] text-muted-foreground">
+                  {disabledHint ??
+                    "Borra solo las categorías que creaste tú."}
+                </div>
+              </div>
+              <ChevronRight
+                size={16}
+                className="text-muted-foreground"
+                aria-hidden="true"
+              />
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => setResetAccountsOpen(true)}
+              disabled={!SUPABASE_ENABLED || submitting}
+              aria-label="Restablecer cuentas"
+              className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none disabled:opacity-60"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+              >
+                <Wallet size={16} aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-semibold">
+                  Restablecer cuentas
+                </div>
+                <div className="text-[12px] text-muted-foreground">
+                  {disabledHint ??
+                    "Borra todas tus cuentas o solo las de un tipo."}
+                </div>
+              </div>
+              <ChevronRight
+                size={16}
+                className="text-muted-foreground"
+                aria-hidden="true"
+              />
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => setFactoryOpen(true)}
+              disabled={!SUPABASE_ENABLED || submitting}
+              aria-label="Restablecer todo de fábrica"
+              className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none disabled:opacity-60"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive"
+              >
+                <RotateCcw size={16} aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-semibold text-destructive">
+                  Restablecer todo de fábrica
+                </div>
+                <div className="text-[12px] text-muted-foreground">
+                  {disabledHint ??
+                    "Borra movimientos, cuentas, categorías y comercios."}
+                </div>
+              </div>
+              <ChevronRight
+                size={16}
+                className="text-muted-foreground"
+                aria-hidden="true"
+              />
+            </button>
+          </li>
+        </ul>
+      </Card>
+
+      {/* Reset categorías — single confirm */}
+      <Sheet open={resetCatsOpen} onOpenChange={setResetCatsOpen}>
+        <SheetContent
+          side="bottom"
+          role="alertdialog"
+          aria-labelledby="reset-cats-title"
+          aria-describedby="reset-cats-desc"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <SheetHeader>
+            <SheetTitle
+              id="reset-cats-title"
+              className="flex items-center gap-2"
+            >
+              <AlertTriangle
+                size={18}
+                className="text-destructive"
+                aria-hidden="true"
+              />
+              ¿Borrar tus categorías?
+            </SheetTitle>
+            <SheetDescription id="reset-cats-desc">
+              Las categorías predeterminadas se mantienen. Las que creaste
+              se eliminarán. Esta acción no se puede deshacer.
+            </SheetDescription>
+          </SheetHeader>
+          <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setResetCatsOpen(false)}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleResetCategories}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Sí, borrar categorías
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Reset cuentas — armed inline confirm */}
+      <Sheet open={resetAccountsOpen} onOpenChange={setResetAccountsOpen}>
+        <SheetContent
+          side="bottom"
+          role="alertdialog"
+          aria-labelledby="reset-accounts-title"
+          aria-describedby="reset-accounts-desc"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <SheetHeader>
+            <SheetTitle
+              id="reset-accounts-title"
+              className="flex items-center gap-2"
+            >
+              <AlertTriangle
+                size={18}
+                className="text-destructive"
+                aria-hidden="true"
+              />
+              ¿Borrar tus cuentas?
+            </SheetTitle>
+            <SheetDescription id="reset-accounts-desc">
+              Toca una opción para prepararla, vuelve a tocarla para
+              confirmar. Esta acción no se puede deshacer.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 px-1 pb-1">
+            <ArmedDestructiveButton
+              label="Borrar todas las cuentas"
+              armed={armedKind === "all"}
+              disabled={submitting}
+              onArm={() => setArmedKind("all")}
+              onConfirm={() => handleResetAccounts("all")}
+            />
+            <div>
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                Borrar solo de tipo
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ACCOUNT_KIND_OPTIONS.map((kind) => (
+                  <ArmedKindPill
+                    key={kind}
+                    label={ACCOUNT_KIND_LABELS[kind]}
+                    armed={armedKind === kind}
+                    disabled={submitting}
+                    onArm={() => setArmedKind(kind)}
+                    onConfirm={() => handleResetAccounts(kind)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setResetAccountsOpen(false)}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Factory reset — type BORRAR to confirm */}
+      <Sheet open={factoryOpen} onOpenChange={setFactoryOpen}>
+        <SheetContent
+          side="bottom"
+          role="alertdialog"
+          aria-labelledby="factory-title"
+          aria-describedby="factory-desc"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <SheetHeader>
+            <SheetTitle
+              id="factory-title"
+              className="flex items-center gap-2"
+            >
+              <AlertTriangle
+                size={18}
+                className="text-destructive"
+                aria-hidden="true"
+              />
+              ¿Restablecer todo?
+            </SheetTitle>
+            <SheetDescription id="factory-desc">
+              Vamos a borrar tus movimientos, cuentas, categorías propias,
+              comercios y presupuestos. Tu perfil y tu sesión se mantienen.
+              Esta acción no se puede deshacer.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-3 px-1 pb-1">
+            <Label
+              htmlFor="factory-confirm"
+              className="text-[13px] font-semibold"
+            >
+              Escribe{" "}
+              <span className="font-mono text-destructive">BORRAR</span> para
+              confirmar
+            </Label>
+            <Input
+              id="factory-confirm"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              value={factoryConfirmText}
+              onChange={(e) => setFactoryConfirmText(e.target.value)}
+              placeholder="BORRAR"
+              disabled={submitting}
+              className="h-11 font-mono"
+            />
+          </div>
+          <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setFactoryOpen(false)}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleFactoryReset}
+              disabled={submitting || factoryConfirmText !== "BORRAR"}
+              className="min-h-11"
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              <span className="ml-1">Restablecer todo</span>
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/**
+ * Two-tap "armed" destructive button: first tap shows "¿Confirmar?",
+ * second tap fires `onConfirm`. Mirrors the archive pattern from the
+ * AccountFormSheet / CategoryFormSheet.
+ */
+function ArmedDestructiveButton({
+  label,
+  armed,
+  disabled,
+  onArm,
+  onConfirm,
+}: {
+  label: string;
+  armed: boolean;
+  disabled: boolean;
+  onArm: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={armed ? "destructive" : "outline"}
+      onClick={armed ? onConfirm : onArm}
+      disabled={disabled}
+      className="h-11 w-full justify-center rounded-xl text-[14px] font-semibold"
+    >
+      {armed ? `¿Confirmar? ${label}` : label}
+    </Button>
+  );
+}
+
+/**
+ * Pill variant of the armed-confirm pattern, for the kind-specific row.
+ */
+function ArmedKindPill({
+  label,
+  armed,
+  disabled,
+  onArm,
+  onConfirm,
+}: {
+  label: string;
+  armed: boolean;
+  disabled: boolean;
+  onArm: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={armed ? onConfirm : onArm}
+      disabled={disabled}
+      className={cn(
+        "inline-flex min-h-9 items-center rounded-full border px-3 py-1.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        armed
+          ? "border-destructive bg-destructive text-destructive-foreground"
+          : "border-border bg-background text-foreground hover:bg-muted",
+        "disabled:opacity-60",
+      )}
+    >
+      {armed ? `¿Confirmar ${label}?` : label}
+    </button>
   );
 }
 
