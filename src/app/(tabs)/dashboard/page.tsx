@@ -35,16 +35,30 @@ import {
   Briefcase,
   Circle,
   Sparkles,
-  TrendingDown,
   TrendingUp,
-  Wallet,
+  TrendingDown,
   AlertTriangle,
+  Plus,
+  ArrowLeftRight,
+  PieChart,
+  BarChart2,
+  X,
+  Bell,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/lumi/AppHeader";
-import { MonthSummaryCard } from "@/components/lumi/MonthSummaryCard";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
+import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
+import { StatTrendCard } from "@/components/lumi/StatTrendCard";
+import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/CategoryDonut";
+import { AdvisorCard } from "@/components/lumi/AdvisorCard";
+import { ThemeToggle } from "@/components/lumi/ThemeToggle";
+import { ProfileMenu } from "@/components/lumi/ProfileMenu";
+import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
@@ -155,7 +169,6 @@ const DEMO_TOP_CATEGORIES = [
   { id: "other" as CategoryId, label: "Otros", value: 8 },
 ];
 
-const DEMO_ACCOUNTS_COUNT = 3;
 
 const CATEGORY_ICONS: Record<
   CategoryId,
@@ -212,9 +225,7 @@ function formatMoney(amount: number, currency: Currency = "PEN"): string {
 }
 
 // ─── Category color ladder ────────────────────────────────────────────────
-// We render a stable, ordered palette regardless of which category is on top.
-// The CategoryBars component receives an explicit `color` per item so the
-// distribution legend stays consistent across renders.
+// Used to assign a stable color per category bucket in donut + bar charts.
 const CHART_COLOR_LADDER = [
   "var(--color-chart-2)",
   "var(--color-chart-1)",
@@ -223,124 +234,6 @@ const CHART_COLOR_LADDER = [
   "var(--color-chart-5)",
   "var(--color-chart-6)",
 ];
-
-// ─── Insight helper ───────────────────────────────────────────────────────
-// One-sentence smart observation under the hero. Three rotation slots, picked
-// DETERMINISTICALLY from the data so SSR and CSR agree.
-type InsightDirection = "down" | "up" | "flat";
-type Insight = {
-  direction: InsightDirection;
-  parts: { text: string; emphasis?: boolean }[];
-};
-
-function getInsight(
-  txCount: number,
-  weekData: { label: string; value: number }[],
-  topCategoryLabel: string | null,
-  topCategoryPct: number | null,
-  currency: Currency,
-): Insight | null {
-  if (txCount === 0 || weekData.length === 0) return null;
-  const slot = txCount % 3;
-  const weekTotal = weekData.reduce((a, d) => a + d.value, 0);
-
-  if (slot === 0) {
-    // Slot 0 — week-over-week change. Mock prior week as +14% of this one.
-    if (weekTotal === 0) return null;
-    const prior = weekTotal * 1.14;
-    const pct = Math.round(((prior - weekTotal) / prior) * 100);
-    const direction: InsightDirection = pct > 0 ? "down" : pct < 0 ? "up" : "flat";
-    return {
-      direction,
-      parts: [
-        { text: "Esta semana gastaste " },
-        { text: formatMoney(weekTotal, currency), emphasis: true },
-        { text: " — un " },
-        { text: `${Math.abs(pct)}% ${pct >= 0 ? "menos" : "más"}`, emphasis: true },
-        { text: " que la pasada." },
-      ],
-    };
-  }
-
-  if (slot === 1 && topCategoryLabel !== null && topCategoryPct !== null) {
-    return {
-      direction: "flat",
-      parts: [
-        { text: "Lo más fuerte fue " },
-        { text: topCategoryLabel, emphasis: true },
-        { text: " — " },
-        { text: `${topCategoryPct}%`, emphasis: true },
-        { text: " de lo que gastaste." },
-      ],
-    };
-  }
-
-  // Slot 2 — peak day (or fallback to top category if week is flat).
-  const peak = weekData.reduce((m, d) => (d.value > m.value ? d : m), weekData[0]);
-  if (peak.value === 0) return null;
-  const dayLabel: Record<string, string> = {
-    Lun: "El lunes",
-    Mar: "El martes",
-    Mié: "El miércoles",
-    Jue: "El jueves",
-    Vie: "El viernes",
-    Sáb: "El sábado",
-    Dom: "El domingo",
-  };
-  return {
-    direction: "flat",
-    parts: [
-      { text: `${dayLabel[peak.label] ?? peak.label} fue tu día más fuerte: ` },
-      { text: formatMoney(peak.value, currency), emphasis: true },
-      { text: "." },
-    ],
-  };
-}
-
-function InsightChip({ insight }: { insight: Insight }) {
-  const Icon =
-    insight.direction === "down"
-      ? TrendingDown
-      : insight.direction === "up"
-        ? TrendingUp
-        : Sparkles;
-  const iconTone =
-    insight.direction === "down"
-      ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-      : insight.direction === "up"
-        ? "text-destructive"
-        : "text-primary";
-
-  return (
-    <div className="mx-4 mt-4 flex md:mx-0 md:mt-6">
-      <div className="inline-flex max-w-fit items-center gap-2.5 rounded-full border border-border bg-card px-4 py-2.5 shadow-[var(--shadow-card)]">
-        <Icon
-          size={14}
-          aria-hidden="true"
-          strokeWidth={2.4}
-          className={cn("flex-shrink-0", iconTone)}
-        />
-        <p className="text-[13px] leading-snug text-foreground">
-          {insight.parts.map((p, i) =>
-            p.emphasis ? (
-              <span
-                key={i}
-                className="font-semibold tabular-nums"
-                style={{ fontFeatureSettings: '"tnum","lnum"' }}
-              >
-                {p.text}
-              </span>
-            ) : (
-              <span key={i} className="text-muted-foreground">
-                {p.text}
-              </span>
-            ),
-          )}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 // ─── Account filter chip ──────────────────────────────────────────────────
 // Used by the dashboard's chip strip to scope all numbers to a single
@@ -411,261 +304,6 @@ function MoneyDisplay({
   );
 }
 
-// Interactive category breakdown — replaces the legacy donut. Each row is a
-// button (keyboard-native), with an animated proportional bar fill.
-type CategoryBarItem = {
-  id: string; // categoryId or "__uncat__"
-  iconKey: CategoryId; // resolved key into CATEGORY_ICONS / CATEGORY_TINT
-  label: string;
-  value: number; // percentage share (0-100)
-  color: string;
-};
-
-function CategoryBars({
-  items,
-  total,
-  currency = "PEN",
-}: {
-  items: CategoryBarItem[];
-  total: number;
-  currency?: Currency;
-}) {
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  // Mount-time animation: render bars at width 0, then flip to target.
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  const toggle = (id: string) => {
-    setSelectedId((curr) => (curr === id ? null : id));
-  };
-
-  return (
-    <ul className="flex flex-col gap-1.5" role="list">
-      {items.map((item) => {
-        const isSelected = selectedId === item.id;
-        const isDimmed = selectedId !== null && !isSelected;
-        const Icon = CATEGORY_ICONS[item.iconKey];
-        const tint = CATEGORY_TINT[item.iconKey];
-        const amount = (item.value / 100) * total;
-        const fillPct = mounted ? item.value : 0;
-
-        return (
-          <li key={item.id}>
-            <button
-              type="button"
-              onClick={() => toggle(item.id)}
-              aria-pressed={isSelected}
-              aria-label={`${item.label}: ${item.value}% (${formatMoney(amount, currency)})`}
-              className={cn(
-                "group flex w-full flex-col gap-2 rounded-xl px-2.5 py-2.5 text-left",
-                "transition-opacity duration-200 ease-out",
-                "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                isDimmed && "opacity-45",
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg",
-                    tint.bg,
-                    tint.text,
-                  )}
-                  aria-hidden="true"
-                >
-                  <Icon size={15} />
-                </span>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-[13.5px] leading-tight transition-[font-weight] duration-200",
-                    isSelected ? "font-bold" : "font-semibold",
-                  )}
-                >
-                  {item.label}
-                </span>
-                <span
-                  className={cn(
-                    "tabular-nums text-[12px] font-medium",
-                    isSelected ? "text-foreground" : "text-muted-foreground",
-                  )}
-                  style={{ fontFeatureSettings: '"tnum","lnum"' }}
-                >
-                  {item.value}%
-                </span>
-                <span
-                  className={cn(
-                    "min-w-[68px] text-right tabular-nums text-[13px]",
-                    isSelected ? "font-bold text-foreground" : "font-semibold text-foreground/80",
-                  )}
-                  style={{ fontFeatureSettings: '"tnum","lnum"' }}
-                >
-                  {formatMoney(amount, currency)}
-                </span>
-              </div>
-              <div
-                className="relative h-2 w-full overflow-hidden rounded-full bg-muted"
-                aria-hidden="true"
-              >
-                <span
-                  className="absolute inset-y-0 left-0 block rounded-full ease-[cubic-bezier(0.32,0.72,0,1)]"
-                  style={{
-                    width: `${fillPct}%`,
-                    backgroundColor: item.color,
-                    transitionProperty: "width, opacity, filter",
-                    transitionDuration: "600ms, 200ms, 200ms",
-                    opacity: selectedId !== null && !isSelected ? 0.55 : 1,
-                    filter: isSelected ? "saturate(1.15)" : "none",
-                  }}
-                />
-              </div>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-// Weekly bar chart — last 7 days of spend.
-function WeeklyBars({
-  data,
-  height = 140,
-  currency = "PEN",
-}: {
-  data: { label: string; value: number }[];
-  height?: number;
-  currency?: Currency;
-}) {
-  const todayIdx = data.length - 1;
-  const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
-  const activeIdx = selectedIdx ?? todayIdx;
-
-  const w = 320;
-  const padX = 10;
-  const padTop = 18;
-  const padBottom = 26;
-  const innerW = w - padX * 2;
-  const innerH = height - padTop - padBottom;
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const slot = innerW / data.length;
-  const barW = Math.min(28, slot * 0.55);
-
-  const toggle = (i: number) => {
-    setSelectedIdx((curr) => (curr === i ? null : i));
-  };
-
-  return (
-    <svg
-      width="100%"
-      height={height}
-      viewBox={`0 0 ${w} ${height}`}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label="Gasto de los últimos 7 días — toca un día para ver el monto"
-    >
-      <defs>
-        <linearGradient id="lumi-dashboard-week-today" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="1" />
-          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.55" />
-        </linearGradient>
-        <linearGradient id="lumi-dashboard-week-other" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-muted-foreground)" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="var(--color-muted-foreground)" stopOpacity="0.18" />
-        </linearGradient>
-        <linearGradient id="lumi-dashboard-week-selected" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-foreground)" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="var(--color-foreground)" stopOpacity="0.50" />
-        </linearGradient>
-      </defs>
-
-      <line
-        x1={padX}
-        x2={w - padX}
-        y1={padTop + innerH + 0.5}
-        y2={padTop + innerH + 0.5}
-        stroke="var(--color-border)"
-        strokeWidth="1"
-      />
-
-      {data.map((d, i) => {
-        const h = (d.value / max) * innerH;
-        const x = padX + slot * i + (slot - barW) / 2;
-        const y = padTop + (innerH - h);
-        const isToday = i === todayIdx;
-        const isActive = i === activeIdx;
-        const fill = isActive
-          ? isToday
-            ? "url(#lumi-dashboard-week-today)"
-            : "url(#lumi-dashboard-week-selected)"
-          : "url(#lumi-dashboard-week-other)";
-        return (
-          <g
-            key={d.label}
-            onClick={() => toggle(i)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggle(i);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-pressed={isActive}
-            aria-label={`${d.label}: ${formatMoney(d.value, currency)}`}
-            style={{ cursor: "pointer" }}
-            className="focus:outline-none focus-visible:[&_rect:first-of-type]:fill-foreground/5"
-          >
-            <rect
-              x={padX + slot * i}
-              y={padTop}
-              width={slot}
-              height={innerH + 6}
-              fill="transparent"
-            />
-            <rect
-              x={x}
-              y={y}
-              width={barW}
-              height={Math.max(2, h)}
-              rx={6}
-              ry={6}
-              fill={fill}
-              style={{ transition: "fill 150ms ease-out" }}
-            />
-            {isActive && (
-              <text
-                x={x + barW / 2}
-                y={y - 6}
-                textAnchor="middle"
-                fontSize="9"
-                fontFamily="var(--font-sans)"
-                fontWeight={700}
-                className="fill-foreground"
-                style={{ fontFeatureSettings: '"tnum","lnum"' }}
-              >
-                {formatMoney(d.value, currency)}
-              </text>
-            )}
-            <text
-              x={x + barW / 2}
-              y={padTop + innerH + 16}
-              textAnchor="middle"
-              fontSize="9"
-              fontWeight={isActive ? 700 : 500}
-              className={isActive ? "fill-foreground" : "fill-muted-foreground"}
-              fontFamily="var(--font-sans)"
-            >
-              {d.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 // ─── Recent transaction row ───────────────────────────────────────────────
 // Accepts a normalized shape so demo + real data converge here.
 type RecentRowItem = {
@@ -677,6 +315,8 @@ type RecentRowItem = {
   categoryLabel: string;
   merchant: string;
   occurredAt: string;
+  /** Nombre de la cuenta para el badge en mobile (e.g. "Tarjeta BCP", "Yape"). */
+  accountName?: string | null;
 };
 
 function TransactionRow({ t }: { t: RecentRowItem }) {
@@ -711,6 +351,48 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
   );
 }
 
+// Mobile recent-transaction row — usa MerchantAvatar (iniciales tinted) y
+// añade un badge con el nombre de la cuenta (Tarjeta/Cuenta/Yape/etc.). El
+// monto sigue las mismas reglas de signo que TransactionRow.
+function TransactionRowMobile({ t }: { t: RecentRowItem }) {
+  const isIncome = t.kind === "income";
+  return (
+    <div className="flex items-center gap-3 px-5 py-3.5">
+      <MerchantAvatar name={t.merchant} size="lg" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[14px] font-semibold leading-tight">
+          {t.merchant}
+        </div>
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {formatTxDate(t.occurredAt)}
+        </div>
+      </div>
+      {t.accountName ? (
+        (() => {
+          const isGreen = t.accountName?.toLowerCase() === "yape" || t.accountName?.toLowerCase() === "plin";
+          return (
+            <span className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap leading-tight",
+              isGreen
+                ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
+                : "border border-border bg-muted/40 text-muted-foreground"
+            )}>
+              {t.accountName}
+            </span>
+          );
+        })()
+      ) : null}
+      <MoneyDisplay
+        amount={isIncome ? t.amount : -t.amount}
+        currency={t.currency}
+        size="sm"
+        tone={isIncome ? "positive" : "negative"}
+        showSign={isIncome}
+      />
+    </div>
+  );
+}
+
 // Map a real TransactionView to the row shape this page renders. We use the
 // category name as a heuristic to pick an icon family; everything we don't
 // recognize falls back to "other" (Circle). When the merchant is missing we
@@ -729,6 +411,7 @@ function viewToRecent(t: TransactionView): RecentRowItem {
     categoryLabel,
     merchant: t.merchantName?.trim() || categoryLabel,
     occurredAt: t.occurredAt,
+    accountName: t.accountName,
   };
 }
 
@@ -753,6 +436,25 @@ function guessIconKey(name: string | null | undefined): CategoryId {
   if (n.includes("trabajo") || n.includes("sueldo") || n.includes("salario"))
     return "work";
   return "other";
+}
+
+function formatTxDate(occurredAt: string): string {
+  const txDate = occurredAt.slice(0, 10);
+  const time   = occurredAt.slice(11, 16);
+  const now    = new Date();
+  const today  = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const yesterday = (() => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  })();
+
+  if (txDate === today)     return `Hoy, ${time}`;
+  if (txDate === yesterday) return `Ayer, ${time}`;
+  // e.g. "19 Abr, 11:10"
+  const [, mm, dd] = txDate.split("-");
+  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  return `${parseInt(dd)} ${MONTHS[parseInt(mm)-1]}, ${time}`;
 }
 
 // ─── Empty-state card ──────────────────────────────────────────────────────
@@ -850,80 +552,90 @@ function HeroSkeleton() {
   );
 }
 
-function WeeklyBarsSkeleton() {
+
+// ─── Desktop tip bar ─────────────────────────────────────────────────────
+function DesktopTipBar() {
+  const [visible, setVisible] = React.useState(true);
+  if (!visible) return null;
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
-      <div className="flex items-baseline justify-between pb-4">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-        <Skeleton className="h-3 w-10" />
-      </div>
-      <div className="flex h-[150px] items-end justify-between gap-2 px-2 pb-6">
-        {[18, 36, 12, 56, 88, 100, 44].map((pct, i) => (
-          <Skeleton
-            key={i}
-            className="w-7 rounded-md"
-            style={{ height: `${pct}%` }}
-          />
-        ))}
-      </div>
-    </Card>
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-5 py-3.5 text-[13px] text-foreground">
+      <Sparkles size={15} className="shrink-0 text-primary" aria-hidden />
+      <p className="flex-1 leading-snug">
+        <span className="font-semibold">Tip del día: </span>
+        <span className="text-muted-foreground">
+          Pequeños gastos diarios pueden convertirse en grandes gastos mensuales. ¡Tú puedes controlarlo!
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={() => setVisible(false)}
+        aria-label="Cerrar tip"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X size={13} aria-hidden />
+      </button>
+    </div>
   );
 }
 
-function CategoryBarsSkeleton() {
-  return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8">
-      <div className="mb-3 flex items-baseline justify-between">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-3 w-12" />
-      </div>
-      <Skeleton className="mb-5 h-4 w-48" />
-      <ul className="flex flex-col gap-3">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <li key={i} className="flex flex-col gap-2 px-2.5 py-1">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-8 w-8 rounded-lg" />
-              <Skeleton className="h-3.5 flex-1" />
-              <Skeleton className="h-3 w-8" />
-              <Skeleton className="h-3.5 w-16" />
-            </div>
-            <Skeleton className="h-2 w-full rounded-full" />
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
+// ─── Mobile insight chip ──────────────────────────────────────────────────
+function MobileInsightCard({
+  spent,
+  income,
+  currency: _currency,
+}: {
+  spent: number;
+  income: number;
+  currency: "PEN" | "USD";
+}) {
+  if (income <= 0 || spent <= 0) return null;
+  const pct = Math.round(((income - spent) / income) * 100);
+  if (Math.abs(pct) < 1) return null;
+  const isGood = pct > 0;
 
-function RecentTransactionsSkeleton() {
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2 lg:col-span-3">
-      <div className="flex items-baseline justify-between px-5 pb-3 pt-5">
-        <Skeleton className="h-3 w-36" />
-        <Skeleton className="h-3 w-16" />
+    <div
+      className={cn(
+        "flex items-start gap-3 rounded-2xl p-4",
+        isGood
+          ? "bg-[oklch(0.95_0.05_162)]"
+          : "bg-[oklch(0.96_0.04_30)]",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          isGood
+            ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.45_0.16_162)]"
+            : "bg-[oklch(0.90_0.08_30)] text-[oklch(0.45_0.14_30)]",
+        )}
+        aria-hidden
+      >
+        {isGood ? (
+          <TrendingUp size={16} strokeWidth={2.4} />
+        ) : (
+          <TrendingDown size={16} strokeWidth={2.4} />
+        )}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p
+          className={cn(
+            "text-[13.5px] font-semibold leading-tight",
+            isGood
+              ? "text-[oklch(0.40_0.16_162)]"
+              : "text-[oklch(0.45_0.14_30)]",
+          )}
+        >
+          {isGood ? "Vas por buen camino" : "Cuidado con los gastos"}
+        </p>
+        <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
+          {isGood
+            ? `Tus gastos están ${pct}% por debajo de tus ingresos esta semana.`
+            : `Tus gastos superan tus ingresos en un ${Math.abs(pct)}% esta semana.`}
+        </p>
       </div>
-      <div>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className={cn(
-              "flex items-center gap-4 px-5 py-4 md:py-5",
-              i ? "border-t border-border" : "",
-            )}
-          >
-            <Skeleton className="h-10 w-10 rounded-full" />
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-            <Skeleton className="h-4 w-16" />
-          </div>
-        ))}
-      </div>
-    </Card>
+      <ChevronRight size={16} className="mt-1 shrink-0 text-muted-foreground" aria-hidden />
+    </div>
   );
 }
 
@@ -955,25 +667,16 @@ export default function DashboardPage() {
     debounceMs: 250,
   });
 
-  // Account count (real). Lives outside the window hook because the dashboard
-  // shows a small "Cuentas activas" tile separate from transactions. Same
-  // fetch also feeds the account-filter chip strip so we don't double-call.
-  const [accountsCount, setAccountsCount] = React.useState<number | null>(
-    SUPABASE_ENABLED ? null : DEMO_ACCOUNTS_COUNT,
-  );
+  // Account list — feeds the account-filter chip strip. Fetched once on mount.
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     let cancelled = false;
     void (async () => {
       try {
         const list = await listAccounts();
-        if (!cancelled) {
-          setAccounts(list);
-          setAccountsCount(list.length);
-        }
+        if (!cancelled) setAccounts(list);
       } catch {
-        // Non-fatal — keep null and the tile renders a dash placeholder.
-        if (!cancelled) setAccountsCount(null);
+        // Non-fatal — chip strip simply won't render without accounts.
       }
     })();
     return () => {
@@ -1001,27 +704,6 @@ export default function DashboardPage() {
       )
     : window.incomeCurrentMonth;
 
-  // Top categories — real path derives an icon key + color ladder from the
-  // bucket index. Demo path keeps the curated palette mapping.
-  const topCategories: CategoryBarItem[] = React.useMemo(() => {
-    if (isDemo) {
-      return DEMO_TOP_CATEGORIES.map((c, i) => ({
-        id: c.id,
-        iconKey: c.id,
-        label: c.label,
-        value: c.value,
-        color: CHART_COLOR_LADDER[i % CHART_COLOR_LADDER.length],
-      }));
-    }
-    return window.topCategoriesAllWindow.slice(0, 6).map((b, i) => ({
-      id: b.categoryId ?? "__uncat__",
-      iconKey: guessIconKey(b.categoryName),
-      label: b.categoryName,
-      value: b.value,
-      color: CHART_COLOR_LADDER[i % CHART_COLOR_LADDER.length],
-    }));
-  }, [isDemo, window.topCategoriesAllWindow]);
-
   // Last 7 days bars.
   const weekData = React.useMemo(() => {
     if (isDemo) return DEMO_WEEK_SPEND.map((d) => ({ label: d.label, value: d.value }));
@@ -1034,7 +716,10 @@ export default function DashboardPage() {
   // Recent transactions (5 most recent).
   const recent: RecentRowItem[] = React.useMemo(() => {
     if (isDemo) {
-      return DEMO_TRANSACTIONS.slice(0, 5).map((t) => ({
+      // Demo: alternamos accountName entre los métodos comunes para que
+      // el badge de cuenta se vea bonito sin Supabase.
+      const DEMO_ACCOUNT_LABELS = ["Tarjeta", "Cuenta", "Yape", "Tarjeta", "Yape"];
+      return DEMO_TRANSACTIONS.slice(0, 5).map((t, i) => ({
         id: t.id,
         amount: t.amount,
         currency: t.currency,
@@ -1043,6 +728,7 @@ export default function DashboardPage() {
         categoryLabel: CATEGORY_LABEL[t.categoryId],
         merchant: t.merchant,
         occurredAt: t.occurredAt,
+        accountName: DEMO_ACCOUNT_LABELS[i % DEMO_ACCOUNT_LABELS.length],
       }));
     }
     return window.recentTransactions.map(viewToRecent);
@@ -1050,17 +736,114 @@ export default function DashboardPage() {
 
   const weekTotal = weekData.reduce((a, d) => a + d.value, 0);
 
-  const insight = React.useMemo(() => {
-    const top = topCategories[0] ?? null;
-    const txCount = isDemo ? DEMO_TRANSACTIONS.length : window.rows.length;
-    return getInsight(
-      txCount,
-      weekData,
-      top?.label ?? null,
-      top?.value ?? null,
-      currency,
-    );
-  }, [isDemo, window.rows.length, weekData, topCategories, currency]);
+  // ── Mobile hero — period selector + derived budget ────────────────────
+  // El presupuesto se DERIVA del ingreso mensual ÷ días del mes (no hay
+  // configuración de usuario aún). Si no hay ingresos, el hero degrada
+  // elegantemente: oculta progress bar y "Te quedan", solo muestra "Gastaste".
+  const [period, setPeriod] = React.useState<Period>("today");
+
+  const heroNumbers = React.useMemo(() => {
+    const now = new Date();
+    const daysInThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dailyBudget = income > 0 ? income / daysInThisMonth : null;
+
+    // Gasto del día actual (filtrar transacciones de hoy)
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    let spentToday = 0;
+    if (isDemo) {
+      for (const t of DEMO_TRANSACTIONS) {
+        if (t.kind === "expense" && t.occurredAt.startsWith(todayKey)) {
+          spentToday += t.amount;
+        }
+      }
+    } else {
+      for (const t of window.rows) {
+        if (t.kind === "expense" && t.occurredAt.startsWith(todayKey)) {
+          spentToday += t.amount;
+        }
+      }
+    }
+
+    // Gasto últimos 7 días = weekTotal (ya calculado arriba)
+    const spentWeek = weekTotal;
+    const weeklyBudget = dailyBudget !== null ? dailyBudget * 7 : null;
+
+    // Período mensual: usa los scalars del hook
+    const spentMonth = spent;
+    const monthlyBudget = income > 0 ? income : null;
+
+    if (period === "today") {
+      return {
+        spent: spentToday,
+        budget: dailyBudget,
+        remaining: dailyBudget !== null ? dailyBudget - spentToday : null,
+      };
+    }
+    if (period === "week") {
+      return {
+        spent: spentWeek,
+        budget: weeklyBudget,
+        remaining: weeklyBudget !== null ? weeklyBudget - spentWeek : null,
+      };
+    }
+    return {
+      spent: spentMonth,
+      budget: monthlyBudget,
+      remaining: monthlyBudget !== null ? monthlyBudget - spentMonth : null,
+    };
+  }, [period, income, spent, weekTotal, isDemo, window.rows]);
+
+  // Date range pill label que acompaña al saludo en mobile.
+  const dateRangeLabel = React.useMemo(() => {
+    const now = new Date();
+    const monthName = now.toLocaleDateString("es", { month: "long" });
+    const cap = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    if (period === "today") return `${now.getDate()} ${cap}, ${now.getFullYear()}`;
+    if (period === "month") return `${cap} ${now.getFullYear()}`;
+    // semana: lunes..domingo de la semana actual
+    const day = now.getDay();
+    const offsetToMon = (day + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - offsetToMon);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return `${monday.getDate()} - ${sunday.getDate()} ${cap}, ${now.getFullYear()}`;
+  }, [period]);
+
+  // Series para los sparklines de StatTrendCard — 6 meses de monthTotals.
+  const expenseSeries = React.useMemo(() => {
+    if (isDemo) return [40, 95, 30, 110, 50, 100, 25, 90, 60, 105, 35, 80];
+    return window.monthTotals.map((b) => b.spent);
+  }, [isDemo, window.monthTotals]);
+
+  const incomeSeries = React.useMemo(() => {
+    if (isDemo) return [60, 35, 75, 40, 70, 45, 80, 38, 72, 42, 68, 50];
+    return window.monthTotals.map((b) => b.income);
+  }, [isDemo, window.monthTotals]);
+
+  // CategoryDonut items — top 5 del mes actual, palette del color ladder.
+  const donutItems: CategoryDonutItem[] = React.useMemo(() => {
+    const source = isDemo
+      ? DEMO_TOP_CATEGORIES.map((c) => ({
+          id: c.id,
+          name: c.label,
+          value: c.value,
+          amount: (c.value / 100) * spent,
+        }))
+      : window.byCategoryCurrentMonth.slice(0, 5).map((b) => ({
+          id: b.categoryId ?? "__uncat__",
+          name: b.categoryName,
+          value: b.value,
+          amount: b.amount,
+        }));
+    return source.slice(0, 5).map((c, i) => ({
+      id: c.id,
+      label: c.name,
+      value: c.value,
+      amount: c.amount,
+      color: CHART_COLOR_LADDER[i % CHART_COLOR_LADDER.length],
+    }));
+  }, [isDemo, spent, window.byCategoryCurrentMonth]);
 
   // Empty: no rows for the active currency in the entire window. We only
   // show the full-page empty card in this case. If rows exist but the current
@@ -1077,28 +860,87 @@ export default function DashboardPage() {
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
-        {/* AppHeader — header is now greeting + persistent right cluster only.
-            The PEN/USD CurrencySwitch was moved INSIDE the MonthSummaryCard,
-            centered between the separator and the Gasto/Ingreso row, where it
-            reads as part of the money chrome instead of header noise. */}
-        <AppHeader title={greeting} titleStyle="page" />
+        {/* Mobile header — saludo + date range pill + bell decorativo.
+            En mobile reemplazamos AppHeader con un layout más rico (Figma),
+            donde la fecha es un pill clickeable que cicla los 3 períodos.
+            En md+ usamos AppHeader como antes. */}
+        <header className="flex items-start justify-between gap-3 px-5 pt-3 pr-4 md:hidden">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[20px] font-bold leading-tight tracking-tight">
+              {greeting}{" "}
+              <span aria-hidden="true" className="inline-block">
+                👋
+              </span>
+            </h1>
+            <button
+              type="button"
+              onClick={() => {
+                const order: Period[] = ["today", "week", "month"];
+                const idx = order.indexOf(period);
+                setPeriod(order[(idx + 1) % order.length]);
+              }}
+              aria-label={`Cambiar período. Actual: ${dateRangeLabel}`}
+              className="mt-1 inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span className="tabular-nums" style={{ fontFeatureSettings: '"tnum","lnum"' }}>
+                {dateRangeLabel}
+              </span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => toast.info("Notificaciones próximamente")}
+              aria-label="Notificaciones"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Bell size={18} aria-hidden="true" />
+            </button>
+            <ThemeToggle className="h-9 w-9" />
+            <ProfileMenu />
+          </div>
+        </header>
+
+        {/* Desktop header — siempre visible en md+ */}
+        <div className="hidden md:block">
+          <AppHeader title={greeting} titleStyle="page" />
+        </div>
 
         {isLoading ? (
           <>
-            <HeroSkeleton />
-            <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-3">
-              <WeeklyBarsSkeleton />
-              <CategoryBarsSkeleton />
-              <Card className="mx-4 mt-4 hidden rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:block">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="mt-3 h-8 w-12" />
-                <Skeleton className="mt-2 h-3 w-28" />
-              </Card>
-              <RecentTransactionsSkeleton />
+            {/* Mobile loading */}
+            <div className="md:hidden">
+              <HeroSkeleton />
+            </div>
+            {/* Desktop loading */}
+            <div className="hidden md:flex md:flex-col md:gap-5 md:mt-5">
+              <div className="grid grid-cols-[2fr_1fr_1fr] gap-5">
+                <Skeleton className="h-[280px] rounded-3xl" />
+                <Skeleton className="h-[280px] rounded-2xl" />
+                <Skeleton className="h-[280px] rounded-2xl" />
+              </div>
+              <Skeleton className="h-[72px] rounded-2xl" />
+              <div className="grid grid-cols-[3fr_2fr] gap-5">
+                <Skeleton className="h-[400px] rounded-2xl" />
+                <div className="flex flex-col gap-5">
+                  <Skeleton className="h-[280px] rounded-2xl" />
+                  <Skeleton className="h-[180px] rounded-2xl" />
+                </div>
+              </div>
             </div>
           </>
         ) : hasError ? (
-          <DashboardErrorCard onRetry={window.refetch} />
+          <>
+            {/* Mobile error */}
+            <div className="md:hidden">
+              <DashboardErrorCard onRetry={window.refetch} />
+            </div>
+            {/* Desktop error */}
+            <div className="hidden md:flex md:flex-col md:gap-5 md:mt-5">
+              <DashboardErrorCard onRetry={window.refetch} />
+            </div>
+          </>
         ) : (
           <>
             {/* Account filter — chip strip. Renders only when the user has
@@ -1129,163 +971,257 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Hero — vertical "Este mes · abril" summary card. */}
-            <MonthSummaryCard
-              periodLabel={(() => {
-                const now = new Date();
-                const month = now.toLocaleDateString("es", { month: "long" });
-                return `${month.charAt(0).toUpperCase() + month.slice(1)} ${now.getFullYear()}`;
-              })()}
-              spent={spent}
-              income={income}
-              currency={currency}
-              currencySwitch={<CurrencySwitch />}
-              onFilterChange={(next) => {
-                if (next === "all") {
-                  router.push("/movements");
-                } else if (next === "expense") {
-                  router.push("/movements?filter=gastos");
-                } else {
-                  router.push("/movements?filter=ingresos");
-                }
-              }}
-            />
-
-            {/* Mini insight chip — only renders with data. */}
-            {!isEmpty && insight && <InsightChip insight={insight} />}
+            {/* Mobile hero — verde con presupuesto derivado + period selector + CTA.
+                CurrencySwitch va en una fila separada arriba en mobile para no
+                competir con los CTAs del hero. */}
+            {!isEmpty && (
+              <div className="mx-4 mt-4 flex justify-end md:hidden">
+                <CurrencySwitch />
+              </div>
+            )}
+            <div className="mx-4 mt-4 md:hidden">
+              <DashboardHero
+                period={period}
+                onPeriodChange={setPeriod}
+                spent={heroNumbers.spent}
+                remaining={heroNumbers.remaining}
+                budget={heroNumbers.budget}
+                currency={currency}
+              />
+            </div>
 
             {isEmpty ? (
               <EmptyDashboardCard currency={currency} />
             ) : (
-              <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-3">
-                {/* Recent transactions — full-width band on top. */}
-                <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2 lg:col-span-3 lg:order-1">
-                  <div className="flex items-baseline justify-between px-5 pb-3 pt-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      Últimas transacciones
-                    </div>
-                    <Link
-                      href="/movements"
-                      className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Ver todas →
-                    </Link>
+              <>
+                {/* ─── MOBILE LAYOUT ──────────────────────────────────────
+                    Stack vertical: insight chip, 2-col stat cards, lista de
+                    últimas transacciones flat, donut de distribución,
+                    AdvisorCard. */}
+                <div className="mx-4 mt-4 flex flex-col gap-4 md:hidden">
+                  {/* Insight chip */}
+                  <MobileInsightCard spent={spent} income={income} currency={currency} />
+
+                  {/* StatTrendCards */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <StatTrendCard
+                      kind="expense"
+                      amount={spent}
+                      delta={isDemo ? 0.12 : window.spentDeltaVsPrevMonth}
+                      comparedTo="el mes anterior"
+                      series={expenseSeries}
+                      currency={currency}
+                    />
+                    <StatTrendCard
+                      kind="income"
+                      amount={income}
+                      delta={isDemo ? 0.08 : window.incomeDeltaVsPrevMonth}
+                      comparedTo="el mes anterior"
+                      series={incomeSeries}
+                      currency={currency}
+                    />
                   </div>
+
+                  {/* Últimas transacciones */}
                   <div>
-                    {recent.length > 0 ? (
-                      recent.map((t, i) => (
-                        <div key={t.id} className={i ? "border-t border-border" : ""}>
-                          <TransactionRow t={t} />
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-5 pb-5 pt-2 text-[13px] text-muted-foreground">
-                        Sin movimientos este mes.
-                      </div>
-                    )}
-                  </div>
-                </Card>
-
-                {/* Distribución — interactive category bars */}
-                <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:order-2">
-                  <div className="mb-3 flex items-baseline justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      Distribución
-                    </div>
-                    <Link
-                      href="/insights"
-                      className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Ver todo →
-                    </Link>
-                  </div>
-                  <div className="mb-5">
-                    <div
-                      className="text-[20px] font-semibold leading-tight tabular-nums text-foreground"
-                      style={{ fontFeatureSettings: '"tnum","lnum"' }}
-                    >
-                      {formatMoney(spent, currency)}
-                    </div>
-                    <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-                      gastado en {topCategories.length} categorías
-                    </p>
-                  </div>
-                  {topCategories.length > 0 ? (
-                    <CategoryBars items={topCategories} total={spent} currency={currency} />
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">
-                      Sin gastos para mostrar.
-                    </p>
-                  )}
-                </Card>
-
-                {/* Weekly bars */}
-                <Card className="mx-4 mt-4 rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:order-3">
-                  <div className="flex items-baseline justify-between pb-4">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                        Esta semana
-                      </div>
-                      <div className="mt-1 text-sm font-semibold tabular-nums">
-                        {formatMoney(weekTotal, currency)}{" "}
-                        <span className="font-medium text-muted-foreground">en 7 días</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                      <span
-                        className="h-2 w-2 rounded-sm bg-primary"
-                        aria-hidden="true"
-                      />
-                      hoy
-                    </div>
-                  </div>
-                  <WeeklyBars data={weekData} height={150} currency={currency} />
-                </Card>
-
-                {/* Cuentas mini — lg+ only. */}
-                <Card className="mx-4 mt-4 hidden rounded-2xl border-border p-6 md:mx-0 md:mt-0 md:p-8 lg:flex lg:flex-col">
-                  <div className="mb-3 flex items-baseline justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      Cuentas
-                    </div>
-                    <Link
-                      href="/accounts"
-                      className="-m-2 inline-flex min-h-11 items-center rounded p-2 text-xs font-semibold text-foreground decoration-foreground/40 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Ver cuentas →
-                    </Link>
-                  </div>
-                  <div className="flex flex-1 items-center gap-4">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
-                      <Wallet size={22} aria-hidden="true" strokeWidth={2.2} />
-                    </span>
-                    <div className="min-w-0">
-                      <div
-                        className="font-semibold tabular-nums text-[32px] leading-none tracking-tight"
-                        style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[15px] font-bold text-foreground">Últimas transacciones</span>
+                      <Link
+                        href="/movements"
+                        className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
                       >
-                        {accountsCount ?? "—"}
-                      </div>
-                      <div className="mt-1.5 text-[12px] text-muted-foreground">
-                        cuentas activas
-                      </div>
+                        Ver todas
+                      </Link>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                      {recent.length > 0 ? (
+                        recent.map((t, i) => (
+                          <div key={t.id} className={i ? "border-t border-border/60" : ""}>
+                            <TransactionRowMobile t={t} />
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-5 py-5 text-[13px] text-muted-foreground">
+                          Sin movimientos este mes.
+                        </div>
+                      )}
                     </div>
                   </div>
-                </Card>
-              </div>
+
+                  {/* Distribución de gastos */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[15px] font-bold text-foreground">Distribución de gastos</span>
+                      <Link
+                        href="/insights"
+                        className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
+                      >
+                        Ver reporte
+                      </Link>
+                    </div>
+                    <CategoryDonut items={donutItems} currency={currency} variant="full" />
+                  </div>
+
+                </div>
+
+                {/* ─── DESKTOP LAYOUT ─────────────────────────────────── */}
+                <div className="hidden md:flex md:flex-col md:gap-5 md:mt-5">
+                  {/* ROW 1: Hero + StatTrend x2 */}
+                  <div className="grid grid-cols-[2fr_1fr_1fr] gap-5 items-stretch">
+                    <DashboardHero
+                      period={period}
+                      onPeriodChange={setPeriod}
+                      spent={heroNumbers.spent}
+                      remaining={heroNumbers.remaining}
+                      budget={heroNumbers.budget}
+                      currency={currency}
+                      onAddExpense={() => router.push("/capture")}
+                    />
+                    <StatTrendCard
+                      kind="expense"
+                      amount={spent}
+                      delta={isDemo ? 0.12 : window.spentDeltaVsPrevMonth}
+                      comparedTo="el mes anterior"
+                      series={expenseSeries}
+                      currency={currency}
+                    />
+                    <StatTrendCard
+                      kind="income"
+                      amount={income}
+                      delta={isDemo ? 0.08 : window.incomeDeltaVsPrevMonth}
+                      comparedTo="el mes anterior"
+                      series={incomeSeries}
+                      currency={currency}
+                    />
+                  </div>
+
+                  {/* ROW 2: Quick actions */}
+                  <Card className="rounded-2xl border-border px-6 py-4">
+                    <div className="flex items-center justify-around">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/capture")}
+                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105 group-active:scale-95">
+                          <Plus size={22} aria-hidden strokeWidth={2.5} />
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground">Agregar gasto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/capture")}
+                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                          <TrendingUp size={20} aria-hidden />
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground">Agregar ingreso</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toast.info("Transferencias próximamente")}
+                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                          <ArrowLeftRight size={20} aria-hidden />
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground">Transferir</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toast.info("Presupuestos próximamente")}
+                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                          <PieChart size={20} aria-hidden />
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground">Crear presupuesto</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/insights")}
+                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                          <BarChart2 size={20} aria-hidden />
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground">Ver reportes</span>
+                      </button>
+                    </div>
+                  </Card>
+
+                  {/* ROW 3: Transacciones (3fr) + columna derecha (2fr) */}
+                  <div className="grid grid-cols-[3fr_2fr] gap-5 items-start">
+                    {/* Últimas transacciones — desktop */}
+                    <Card className="rounded-2xl border-border p-0">
+                      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                        <span className="text-[15px] font-semibold text-foreground">Últimas transacciones</span>
+                        <Link
+                          href="/movements"
+                          className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
+                        >
+                          Ver todas
+                        </Link>
+                      </div>
+                      <div>
+                        {recent.length > 0 ? (
+                          recent.map((t, i) => (
+                            <div key={t.id} className={i ? "border-t border-border" : ""}>
+                              <TransactionRow t={t} />
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-6 py-5 text-[13px] text-muted-foreground">Sin movimientos este mes.</div>
+                        )}
+                      </div>
+                      <div className="border-t border-border px-6 py-4">
+                        <Link
+                          href="/movements"
+                          className="text-[13px] font-semibold text-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        >
+                          Ver todas las transacciones →
+                        </Link>
+                      </div>
+                    </Card>
+
+                    {/* Columna derecha: Donut + Advisor */}
+                    <div className="flex flex-col gap-5">
+                      <CategoryDonut
+                        variant="full"
+                        items={donutItems}
+                        currency={currency}
+                        periodLabel="Este mes"
+                      />
+                      <AdvisorCard
+                        onTalk={() =>
+                          toast.info("El asesor financiero llegará pronto", {
+                            description: "Próximamente podrás conversar con tu asistente IA.",
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tip bar */}
+                  <DesktopTipBar />
+                </div>
+
+              </>
             )}
           </>
         )}
       </div>
 
-      {/* Camera FAB — mobile only. */}
+      {/* Camera FAB — mobile only. Solo en md+ ocultamos; en mobile sigue
+          visible para acceder a OCR de tickets sin pasar por TabBar. */}
       {showFab && (
         <button
           type="button"
           onClick={() => router.push("/receipt")}
           aria-label="Escanear ticket con la cámara"
           className={cn(
-            "fixed bottom-[calc(80px+env(safe-area-inset-bottom))] right-4 z-20",
+            "fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-4 z-20",
             "flex h-12 w-12 items-center justify-center rounded-full",
             "border border-border bg-card text-foreground",
             "shadow-[var(--shadow-card)] ring-2 ring-primary/15",

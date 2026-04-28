@@ -57,9 +57,9 @@ export default function RootLayout({
     <html
       lang="es"
       suppressHydrationWarning
-      className={`${jakarta.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${jakarta.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased [overflow-x:clip]`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col overscroll-none">
         <Providers>{children}</Providers>
       </body>
     </html>

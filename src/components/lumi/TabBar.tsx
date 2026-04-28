@@ -24,7 +24,7 @@ import {
   Plus,
   Check,
   BarChart3,
-  Wallet,
+  Menu,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,11 +51,11 @@ export interface TabBarProps {
 
 // Default Lumi tab structure — order matches the source TabBar.jsx + index.html.
 export const DEFAULT_ITEMS: TabBarItem[] = [
-  { href: "/dashboard", label: "Inicio", icon: Home },
-  { href: "/movements", label: "Movimientos", icon: List },
-  { href: "/capture", label: "Capturar", icon: Plus, primary: true },
-  { href: "/insights", label: "Análisis", icon: BarChart3 },
-  { href: "/accounts", label: "Cuentas", icon: Wallet },
+  { href: "/dashboard",   label: "Resumen",       icon: Home      },
+  { href: "/movements",   label: "Transacciones", icon: List      },
+  { href: "/capture",     label: "Capturar",      icon: Plus,     primary: true },
+  { href: "/insights",    label: "Reportes",      icon: BarChart3 },
+  { href: "/more",        label: "Más",           icon: Menu      },
 ];
 
 /**

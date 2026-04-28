@@ -45,6 +45,9 @@ next-env.d.ts
 .claude/skills/customize/
 .claude/skills/release/
 
+# Agent worktrees (ephemeral, per-session)
+.claude/worktrees/
+
 # Local temp files
 temp/
 

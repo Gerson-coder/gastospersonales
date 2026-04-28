@@ -37,8 +37,10 @@ export function TabsTopBar() {
       role="toolbar"
       aria-label="Acciones de la cuenta"
       className={cn(
-        "fixed top-3 right-3 z-30 flex items-center gap-1 md:top-5 md:right-6",
-        hideOnMobile && "hidden md:flex",
+        // Mobile: completamente oculto (los iconos van en el header de cada página)
+        // Desktop: fixed top-right como antes
+        "hidden md:fixed md:top-5 md:right-6 md:z-30 md:flex items-center gap-1",
+        hideOnMobile && "md:hidden",
       )}
     >
       <Link
