@@ -562,24 +562,51 @@ function CapturePageInner() {
     );
   }, [accounts, kind]);
 
-  // When the user toggles to income, the previously-selected account or
-  // merchant may no longer be valid (a bank account is hidden, a merchant
-  // doesn't make sense for an income). Reconcile state so the FAB never
-  // saves with a stale id.
+  // When the user toggles between expense and income, the previously-selected
+  // account, category or merchant may no longer be valid for the new kind:
+  //   - income hides bank/Plin accounts
+  //   - income has no merchant
+  //   - the category column should always match the active kind so we don't
+  //     save a Comida-tagged income (which would then surface restaurants
+  //     from the merchant catalogue if the user toggles back to expense).
+  // Reconcile state so the FAB never saves with a stale id.
   React.useEffect(() => {
-    if (kind !== "income") return;
-    if (
-      accountId !== null &&
-      !displayAccounts.some((a) => a.id === accountId)
-    ) {
-      setAccountId(displayAccounts[0]?.id ?? null);
+    if (kind === "income") {
+      if (
+        accountId !== null &&
+        !displayAccounts.some((a) => a.id === accountId)
+      ) {
+        setAccountId(displayAccounts[0]?.id ?? null);
+      }
+      if (merchantId !== null) setMerchantId(null);
+      const incomeCategories = categories.filter(
+        (c) => c.defaultKind === "income",
+      );
+      const currentMatches = categories.find(
+        (c) => c.id === categoryId && c.defaultKind === "income",
+      );
+      if (!currentMatches) {
+        setCategoryId(incomeCategories[0]?.id ?? null);
+      }
+    } else {
+      // Expense: if the current category is an income one (e.g. Trabajo, Ahorro),
+      // fall back to the first expense category so the chip strip and the
+      // merchant picker stay coherent.
+      const currentIsIncome = categories.find(
+        (c) => c.id === categoryId && c.defaultKind === "income",
+      );
+      if (currentIsIncome) {
+        const firstExpense = categories.find(
+          (c) => c.defaultKind === "expense",
+        );
+        setCategoryId(firstExpense?.id ?? null);
+      }
     }
-    if (merchantId !== null) setMerchantId(null);
-    // We only react to kind / displayAccounts changes; accountId / merchantId
-    // are read for the reconcile decision but writing to them mid-effect is
-    // intentional and converges in one pass.
+    // We only react to kind / displayAccounts / categories changes; the
+    // *Id reads inside the body are intentional reconcile inputs and
+    // converge in a single pass.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, displayAccounts]);
+  }, [kind, displayAccounts, categories]);
 
   // `account` may be null briefly while we wait for the first fetch tick.
   // The picker chip shows a skeleton in that window; downstream consumers
@@ -962,48 +989,57 @@ function CapturePageInner() {
         {/* MRU category chips — header row with "Ver más →" link replaces
             the old in-strip "Ver más" chip. Three primary chips
             (Comida / Transporte / Salud for expense) now have room to
-            breathe on a 360px viewport. */}
-        <section className="mt-4 px-4" aria-label="Categorías recientes">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Categoría
-            </span>
-            <button
-              type="button"
-              onClick={() => setCategoryDrawerOpen(true)}
-              disabled={categoriesLoading || categories.length === 0}
-              aria-label="Ver todas las categorías"
-              aria-haspopup="dialog"
-              aria-expanded={categoryDrawerOpen}
-              className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Ver más
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categoriesLoading ? (
-              // Skeleton chips — match the real chip height (h-11) and the
-              // ~w-24 horizontal footprint of a 1-2 word label so the strip
-              // doesn't reflow when data lands.
-              [0, 1, 2].map((i) => (
-                <Skeleton
-                  key={i}
-                  className="h-11 w-24 flex-shrink-0 rounded-full"
-                />
-              ))
-            ) : (
-              mruCategories.map((c) => (
-                <CategoryChip
-                  key={c.id}
-                  category={c}
-                  selected={categoryId === c.id}
-                  onClick={() => handlePickCategory(c.id)}
-                />
-              ))
-            )}
-          </div>
-        </section>
+            breathe on a 360px viewport.
+
+            Hidden on income: the income flow (recibir dinero) does NOT
+            ask for category context — the reconcile effect above auto-
+            selects the first income category (Trabajo) so the save
+            payload still carries one. Letting the user pick "Comida"
+            on income would surface the restaurant merchant strip on
+            an unrelated flow, which is what we want to avoid. */}
+        {kind === "expense" && (
+          <section className="mt-4 px-4" aria-label="Categorías recientes">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Categoría
+              </span>
+              <button
+                type="button"
+                onClick={() => setCategoryDrawerOpen(true)}
+                disabled={categoriesLoading || categories.length === 0}
+                aria-label="Ver todas las categorías"
+                aria-haspopup="dialog"
+                aria-expanded={categoryDrawerOpen}
+                className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Ver más
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categoriesLoading ? (
+                // Skeleton chips — match the real chip height (h-11) and the
+                // ~w-24 horizontal footprint of a 1-2 word label so the strip
+                // doesn't reflow when data lands.
+                [0, 1, 2].map((i) => (
+                  <Skeleton
+                    key={i}
+                    className="h-11 w-24 flex-shrink-0 rounded-full"
+                  />
+                ))
+              ) : (
+                mruCategories.map((c) => (
+                  <CategoryChip
+                    key={c.id}
+                    category={c}
+                    selected={categoryId === c.id}
+                    onClick={() => handlePickCategory(c.id)}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Merchant picker — "¿Dónde? (opcional)". Hidden on income because
             ingresos don't have a "merchant" (you don't pay to anyone — you
