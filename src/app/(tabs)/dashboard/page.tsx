@@ -273,12 +273,14 @@ function MoneyDisplay({
   size = "md",
   tone = "default",
   showSign = false,
+  className,
 }: {
   amount: number;
   currency?: Currency;
   size?: "hero" | "lg" | "md" | "sm";
   tone?: "default" | "positive" | "negative" | "muted";
   showSign?: boolean;
+  className?: string;
 }) {
   const sign = amount < 0 ? "– " : showSign && amount > 0 ? "+ " : "";
   const sizeClass = {
@@ -295,7 +297,12 @@ function MoneyDisplay({
   }[tone];
   return (
     <span
-      className={`font-semibold tabular-nums leading-none tracking-tight whitespace-nowrap ${sizeClass} ${toneClass}`}
+      className={cn(
+        "font-semibold tabular-nums leading-none tracking-tight whitespace-nowrap",
+        sizeClass,
+        toneClass,
+        className,
+      )}
       style={{ fontFeatureSettings: '"tnum","lnum"' }}
     >
       {sign}
@@ -356,39 +363,46 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
 // monto sigue las mismas reglas de signo que TransactionRow.
 function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   const isIncome = t.kind === "income";
+  const isGreen =
+    t.accountName?.toLowerCase() === "yape" ||
+    t.accountName?.toLowerCase() === "plin";
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5">
+    <div className="flex items-start gap-3 px-5 py-3.5">
       <MerchantAvatar name={t.merchant} size="lg" />
+      {/* Two-row stack: top row aligns merchant + badge + amount; bottom row
+          shows the date directly under the merchant. `items-start` on the
+          parent + `items-center` here keeps the trio visually balanced and
+          guarantees badges across rows line up vertically. */}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[14px] font-semibold leading-tight">
-          {t.merchant}
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-tight">
+            {t.merchant}
+          </span>
+          {t.accountName ? (
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight whitespace-nowrap",
+                isGreen
+                  ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
+                  : "border border-border bg-muted/40 text-muted-foreground",
+              )}
+            >
+              {t.accountName}
+            </span>
+          ) : null}
+          <MoneyDisplay
+            amount={isIncome ? t.amount : -t.amount}
+            currency={t.currency}
+            size="sm"
+            tone={isIncome ? "positive" : "negative"}
+            showSign={isIncome}
+            className="shrink-0"
+          />
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {formatTxDate(t.occurredAt)}
         </div>
       </div>
-      {t.accountName ? (
-        (() => {
-          const isGreen = t.accountName?.toLowerCase() === "yape" || t.accountName?.toLowerCase() === "plin";
-          return (
-            <span className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap leading-tight",
-              isGreen
-                ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
-                : "border border-border bg-muted/40 text-muted-foreground"
-            )}>
-              {t.accountName}
-            </span>
-          );
-        })()
-      ) : null}
-      <MoneyDisplay
-        amount={isIncome ? t.amount : -t.amount}
-        currency={t.currency}
-        size="sm"
-        tone={isIncome ? "positive" : "negative"}
-        showSign={isIncome}
-      />
     </div>
   );
 }

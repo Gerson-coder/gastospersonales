@@ -43,11 +43,22 @@ const TABULAR_STYLE: React.CSSProperties = {
   fontFeatureSettings: '"tnum","lnum"',
 };
 
-function getHeroAmountClass(amount: number): string {
-  if (amount >= 1_000_000) return "text-xl leading-tight";
-  if (amount >= 100_000)   return "text-2xl leading-tight";
-  if (amount >= 10_000)    return "text-[22px] leading-tight";
-  return "text-3xl leading-tight";
+// Char-length-based tiers — value-based tiers ignore the currency symbol,
+// thousands separators and decimals which is what actually drives overflow.
+// `twoColumn` is set when the hero is split into Spent | Remaining (budget
+// path). Each column gets ~130-150px on a 360px viewport so we shrink
+// aggressively. Single-column path gets the full card content width.
+function getHeroAmountClass(formattedLength: number, twoColumn: boolean): string {
+  if (twoColumn) {
+    if (formattedLength <= 8)  return "text-2xl leading-tight";
+    if (formattedLength <= 11) return "text-xl leading-tight";
+    if (formattedLength <= 14) return "text-lg leading-tight";
+    return "text-base leading-tight";
+  }
+  if (formattedLength <= 11) return "text-3xl leading-tight";
+  if (formattedLength <= 14) return "text-2xl leading-tight";
+  if (formattedLength <= 17) return "text-xl leading-tight";
+  return "text-lg leading-tight";
 }
 
 export function DashboardHero({
@@ -75,6 +86,15 @@ export function DashboardHero({
   const clampedPct = Math.max(0, Math.min(100, rawPct));
   const overBudget = hasBudget && spent > (budget as number);
   const pctLabel = `${Math.round(rawPct)}% utilizado`;
+  // Pre-format both sides so we can size against the actual rendered string
+  // length (tier helper is char-based, not value-based).
+  const twoColumn = hasBudget && remaining !== null;
+  const spentText = hidden ? "••••••" : formatter.format(spent);
+  const remainingText = hidden
+    ? "••••••"
+    : formatter.format(Math.max(0, remaining ?? 0));
+  const spentClass = getHeroAmountClass(spentText.length, twoColumn);
+  const remainingClass = getHeroAmountClass(remainingText.length, twoColumn);
 
   // Animar progress bar al montar (de 0 → valor real)
   const [animatedPct, setAnimatedPct] = React.useState(0);
@@ -118,37 +138,40 @@ export function DashboardHero({
 
       {/* Two columns */}
       <div className="relative mt-5 flex items-start gap-4">
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-primary-foreground/80">
             {SPENT_LABEL[period]}
           </p>
           <p
-            className={cn("mt-1 font-semibold tabular-nums", getHeroAmountClass(spent))}
+            className={cn(
+              "mt-1 max-w-full truncate font-semibold tabular-nums",
+              spentClass,
+            )}
             style={TABULAR_STYLE}
           >
-            {hidden ? "••••••" : formatter.format(spent)}
+            {spentText}
           </p>
         </div>
 
-        {hasBudget && remaining !== null ? (
+        {twoColumn ? (
           <>
             <div
               aria-hidden="true"
               className="h-12 w-px self-center bg-white/20"
             />
-            <div className="flex-1 min-w-0 text-right">
+            <div className="min-w-0 flex-1 text-right">
               <p className="text-xs font-medium text-primary-foreground/80">
                 Te quedan
               </p>
               <p
                 className={cn(
-                  "mt-1 font-semibold tabular-nums",
-                  getHeroAmountClass(Math.max(0, remaining ?? 0)),
+                  "mt-1 max-w-full truncate font-semibold tabular-nums",
+                  remainingClass,
                   overBudget && "text-white/90",
                 )}
                 style={TABULAR_STYLE}
               >
-                {hidden ? "••••••" : formatter.format(Math.max(0, remaining))}
+                {remainingText}
               </p>
             </div>
           </>
@@ -172,11 +195,14 @@ export function DashboardHero({
             />
           </div>
 
-          <div className="relative mt-2 flex items-center justify-between text-xs text-primary-foreground/80">
-            <span style={TABULAR_STYLE} className="tabular-nums">
+          <div className="relative mt-2 flex items-center justify-between gap-2 text-xs text-primary-foreground/80">
+            <span style={TABULAR_STYLE} className="min-w-0 truncate tabular-nums">
               {BUDGET_LABEL[period]}: {formatter.format(budget as number)}
             </span>
-            <span style={TABULAR_STYLE} className="tabular-nums">
+            <span
+              style={TABULAR_STYLE}
+              className="shrink-0 tabular-nums"
+            >
               {pctLabel}
             </span>
           </div>
