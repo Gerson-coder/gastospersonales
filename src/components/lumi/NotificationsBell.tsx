@@ -34,7 +34,10 @@ const READ_KEY = "lumi-notifs-read-at";
 type NotifIcon = React.ComponentType<{
   size?: number;
   className?: string;
-  "aria-hidden"?: boolean;
+  // ARIA accepts both boolean and the literal strings "true" / "false";
+  // lucide passes through whatever React allows so we widen the type to
+  // match. Without this, JSX `aria-hidden="true"` won't compile.
+  "aria-hidden"?: boolean | "true" | "false";
 }>;
 
 type Notif = {
