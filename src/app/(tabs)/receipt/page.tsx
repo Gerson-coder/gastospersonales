@@ -24,6 +24,7 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -522,7 +523,7 @@ function dataUrlToFile(dataUrl: string, mime: string, name: string): File | null
   }
 }
 
-export default function ReceiptPage() {
+function ReceiptPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1204,5 +1205,13 @@ export default function ReceiptPage() {
         </DrawerContent>
       </Drawer>
     </div>
+  );
+}
+
+export default function ReceiptPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReceiptPageInner />
+    </Suspense>
   );
 }
