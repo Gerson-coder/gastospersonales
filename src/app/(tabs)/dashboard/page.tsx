@@ -43,7 +43,6 @@ import {
   PieChart,
   BarChart2,
   X,
-  Bell,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -65,6 +64,7 @@ import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/Categor
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
 import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { ProfileMenu } from "@/components/lumi/ProfileMenu";
+import { NotificationsBell } from "@/components/lumi/NotificationsBell";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -933,11 +933,8 @@ export default function DashboardPage() {
             En md+ usamos AppHeader como antes. */}
         <header className="flex items-start justify-between gap-3 px-5 pt-3 pr-4 md:hidden">
           <div className="min-w-0 flex-1">
-            <h1 className="text-[20px] font-bold leading-tight tracking-tight">
-              {greeting}{" "}
-              <span aria-hidden="true" className="inline-block">
-                👋
-              </span>
+            <h1 className="text-[16px] font-semibold leading-tight tracking-tight">
+              {greeting}
             </h1>
             <button
               type="button"
@@ -947,7 +944,7 @@ export default function DashboardPage() {
                 setPeriod(order[(idx + 1) % order.length]);
               }}
               aria-label={`Cambiar período. Actual: ${dateRangeLabel}`}
-              className="mt-1 inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
+              className="mt-1 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
             >
               <span className="tabular-nums" style={{ fontFeatureSettings: '"tnum","lnum"' }}>
                 {dateRangeLabel}
@@ -956,16 +953,9 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => toast.info("Notificaciones próximamente")}
-              aria-label="Notificaciones"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Bell size={18} aria-hidden="true" />
-            </button>
+            <NotificationsBell />
             <ThemeToggle className="h-9 w-9" />
-            <ProfileMenu />
+            <ProfileMenu className="h-9 w-9 items-center justify-center" />
           </div>
         </header>
 
@@ -1055,13 +1045,13 @@ export default function DashboardPage() {
                             aria-label="Ver todas las cuentas"
                             aria-haspopup="dialog"
                             className={cn(
-                              "inline-flex h-9 items-center gap-1 rounded-sm px-2 text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors",
+                              "ml-1 inline-flex h-9 items-center gap-0.5 rounded-sm pl-2 pr-1 text-[12px] font-semibold whitespace-nowrap shrink-0 transition-colors",
                               "text-primary hover:text-primary/80 active:scale-[0.98]",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             )}
                           >
                             Ver todos
-                            <ChevronRight className="h-4 w-4" aria-hidden />
+                            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
                           </button>
                         )}
                       </>

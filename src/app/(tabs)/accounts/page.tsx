@@ -118,10 +118,12 @@ const ACCOUNT_TINT: Record<AccountKind, string> = {
 // schema still accepts `card` so legacy rows render unchanged.
 const KIND_OPTIONS: AccountKind[] = ["cash", "bank"];
 
-// Account name char cap. 20 covers legitimate names ("BCP Ahorros",
-// "Visa Interbank") and stops longer strings from overflowing the
-// row in /accounts and the chip in /dashboard on narrow phones.
-const LABEL_MAX_LENGTH = 20;
+// Account name char cap. 12 chars covers brand labels (BCP, Interbank,
+// BBVA, Yape, Plin, Banco Nación, Crédito) and short custom names
+// without ever overflowing the row in /accounts or the chip in
+// /dashboard on a 320px phone. Differentiation happens via subtype
+// rather than long descriptive labels.
+const LABEL_MAX_LENGTH = 12;
 
 // Account names that are auto-locked when the corresponding kind is picked.
 // Mirrored in the DB as plain text — defensive trim/match in handleSubmit.
@@ -341,6 +343,7 @@ export default function AccountsPage() {
       <AccountFormSheet
         mode="create"
         open={createOpen}
+        existingAccounts={accounts}
         onOpenChange={setCreateOpen}
         onOptimisticClose={() => setCreateOpen(false)}
         reload={reload}
@@ -353,6 +356,7 @@ export default function AccountsPage() {
         <AccountFormSheet
           mode="edit"
           account={editing}
+          existingAccounts={accounts}
           open={true}
           onOpenChange={(open) => {
             if (!open) setEditing(null);
@@ -398,6 +402,11 @@ type AccountFormSheetProps = {
   mode: "create" | "edit";
   open: boolean;
   account?: Account | null;
+  /** All currently-active accounts. Used to dedupe brand presets — if the
+   * user already has a "Yape" account, the Yape preset is disabled in
+   * the next create flow. Bank brands stay enabled because subtypes can
+   * differentiate multiple accounts at the same institution. */
+  existingAccounts: Account[];
   onOpenChange: (open: boolean) => void;
   /** Close the sheet from the parent (used by the optimistic submit path). */
   onOptimisticClose: () => void;
@@ -409,6 +418,7 @@ function AccountFormSheet({
   mode,
   open,
   account,
+  existingAccounts,
   onOpenChange,
   onOptimisticClose,
   reload,
@@ -506,6 +516,10 @@ function AccountFormSheet({
     }
     // Subtype is bank-only. Leaving the bank kind clears it.
     if (next !== "bank") setSubtype(null);
+    // Yape / Plin are PEN-only in Peru. Force the currency back so a
+    // user who set USD before flipping the kind doesn't end up with a
+    // dollar Yape account that the brand never supports.
+    if (next === "yape" || next === "plin") setCurrency("PEN");
   }
 
   // One-tap brand preset: auto-fills kind + label and locks the input.
@@ -518,8 +532,42 @@ function AccountFormSheet({
     setLabel(preset.label);
     setLockedBrand(preset.label);
     setShowError(false);
-    // Wallet brands don't have product subtypes (Yape is just Yape).
-    if (preset.kind !== "bank") setSubtype(null);
+    // Wallet brands don't have product subtypes (Yape is just Yape) and
+    // are PEN-only — force both back so picking the preset is a clean
+    // slate regardless of what the previous draft was.
+    if (preset.kind !== "bank") {
+      setSubtype(null);
+      setCurrency("PEN");
+    }
+  }
+
+  // Brand preset is "used" when the user already has an active account
+  // matching this preset's identity:
+  //   - Wallet brands (Yape / Plin): one row per brand is the cap, so any
+  //     active row of that kind locks the preset.
+  //   - Bank brands (BCP / Interbank / BBVA): the lock is per (label,
+  //     subtype) pair — multiple BCP rows are valid as long as they
+  //     differ in subtype. With no subtype slot left in the form, the
+  //     existing collision-by-name still applies.
+  // Edit mode never disables the preset that currently matches the row
+  // we're editing — the user has to be able to keep the existing brand.
+  function isPresetUsed(preset: BrandPreset): boolean {
+    if (mode === "edit" && account) {
+      const matchesCurrent =
+        preset.kind === account.kind && preset.label === account.label;
+      if (matchesCurrent) return false;
+    }
+    if (preset.kind === "bank") {
+      // Bank brand uses (label, subtype). With subtype the user picks,
+      // disable only the exact (label, subtype) pair already taken.
+      return existingAccounts.some(
+        (a) =>
+          a.kind === "bank" &&
+          a.label === preset.label &&
+          a.subtype === subtype,
+      );
+    }
+    return existingAccounts.some((a) => a.kind === preset.kind);
   }
 
   // Auto-pick USD when the user picks "dolares" subtype (most users keep
@@ -670,19 +718,22 @@ function AccountFormSheet({
               >
                 {BRAND_PRESETS.map((preset) => {
                   const active = isPresetActive(preset);
+                  const used = isPresetUsed(preset);
                   return (
                     <button
                       key={preset.id}
                       type="button"
                       onClick={() => handlePresetPick(preset)}
-                      disabled={submitting}
+                      disabled={submitting || used}
                       aria-pressed={active}
+                      title={used ? "Ya tienes una cuenta con esta marca" : undefined}
                       className={cn(
                         "inline-flex h-9 items-center rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         active
                           ? "border-foreground bg-foreground text-background"
                           : "border-border bg-card text-foreground hover:bg-muted",
+                        used && "cursor-not-allowed opacity-40 line-through",
                       )}
                     >
                       {preset.label}
@@ -882,6 +933,11 @@ function AccountFormSheet({
                 {CURRENCY_OPTIONS.map((c) => {
                   const selected = currency === c;
                   const inputId = `account-currency-${c}`;
+                  // Yape and Plin only operate in PEN — disable USD so
+                  // a user can't create a USD wallet that the brand
+                  // never supports.
+                  const walletPenOnly =
+                    (kind === "yape" || kind === "plin") && c === "USD";
                   return (
                     <label
                       key={c}
@@ -892,13 +948,20 @@ function AccountFormSheet({
                         selected
                           ? "border-foreground bg-muted text-foreground"
                           : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+                        walletPenOnly &&
+                          "cursor-not-allowed opacity-40 line-through hover:bg-card hover:text-muted-foreground",
                       )}
+                      title={
+                        walletPenOnly
+                          ? "Yape y Plin solo trabajan en soles"
+                          : undefined
+                      }
                     >
                       <RadioGroupItem
                         id={inputId}
                         value={c}
                         className="sr-only"
-                        disabled={submitting}
+                        disabled={submitting || walletPenOnly}
                       />
                       {CURRENCY_LABEL[c]}
                     </label>

@@ -59,12 +59,16 @@ export function ProfileMenu({ className }: { className?: string }) {
       <DropdownMenuTrigger
         aria-label="Abrir perfil"
         className={cn(
-          "inline-flex shrink-0 rounded-full transition-colors hover:opacity-90",
+          "inline-flex shrink-0 items-center justify-center rounded-full transition-colors hover:bg-muted",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className,
         )}
       >
-        <UserAvatarCircle size="md" />
+        {/* Avatar at sm (h-6 w-6 = 24px) so the visible mark matches the
+            other header glyphs (Bell + Theme are 18px icons inside a 36px
+            button — comparable proportion). The 36px tap target is
+            preserved by the trigger button itself. */}
+        <UserAvatarCircle size="sm" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-[240px] p-2">
         {/* Identity header */}

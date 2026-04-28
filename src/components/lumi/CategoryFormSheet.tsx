@@ -59,10 +59,12 @@ type EditProps = {
 
 type Props = CreateProps | EditProps;
 
-// Category name cap — 20 chars keeps the chip strip in /capture and the
-// row in /categories from overflowing on narrow phones. Existing rows
-// longer than 20 still render via the truncate fallback in the list.
-const NAME_MAX_LENGTH = 20;
+// Category name cap — 12 chars keeps the chip strip in /capture and
+// the row in /categories from overflowing on narrow phones. The chip
+// row otherwise broke into a second line on phones with longer names.
+// Existing rows longer than 12 still render via the truncate fallback
+// in the list.
+const NAME_MAX_LENGTH = 12;
 
 export function CategoryFormSheet(props: Props) {
   const isEdit = props.mode === "edit";
