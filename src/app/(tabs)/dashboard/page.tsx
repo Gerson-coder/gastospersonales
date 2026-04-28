@@ -950,10 +950,10 @@ export default function DashboardPage() {
                 `accountId` arg fed to `useTransactionsWindow`. */}
             {accounts.length > 1 && (
               <div
-                className="mx-4 mt-4 -mr-4 overflow-x-auto md:mx-0 md:mr-0 md:mt-6"
+                className="mx-4 mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:mt-6"
                 aria-label="Filtrar por cuenta"
               >
-                <div className="flex gap-2 w-max pr-4 md:pr-0">
+                <div className="flex gap-2 w-max pr-1 md:pr-0">
                   <AccountChip
                     label="Todas"
                     active={selectedAccountId === null}
