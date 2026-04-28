@@ -36,10 +36,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
+      duration={2500}
       toastOptions={{
         classNames: {
           toast: "cn-toast",
         },
+        // Mirror the duration as a CSS var so the progress bar in
+        // `.cn-toast::after` (see globals.css) drains in lockstep
+        // with Sonner's auto-dismiss timer.
+        style: {
+          "--lumi-toast-duration": "2500ms",
+        } as React.CSSProperties,
       }}
       {...props}
     />

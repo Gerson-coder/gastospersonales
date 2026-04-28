@@ -383,28 +383,43 @@
 
 /* ============================================================
    Lumi toast — Sonner notifications styling.
-   Sonner already animates the slide-in; we layer a subtle
-   pop (scale 0.97 -> 1) + a soft bounce on the icon + a
-   left-edge accent stripe so each variant (success / info /
-   warning / error) reads at a glance without yelling.
+   Three layers of polish on top of Sonner's defaults:
+     1. Drop-in: slides down from -10px while scaling 0.94 -> 1 with
+        a subtle elastic overshoot (smooth-out-back curve). Replaces
+        the previous flat scale pop which felt static for a 2.5s
+        notification.
+     2. Per-variant left stripe + a subtle radial halo of the same
+        hue on the top-left corner, so the success / warning / error
+        identity is unmistakable without yelling.
+     3. A 2px progress bar across the bottom that drains over the
+        toast lifetime — the user can SEE the dismiss timer instead
+        of waiting and wondering if they need to dismiss manually.
+   The icon also bounces in (back-out curve, 320ms) for a touch of
+   character on success / info / warning / error variants.
    ============================================================ */
-@keyframes lumi-toast-pop {
-  0%   { transform: scale(0.96); opacity: 0; }
-  60%  { transform: scale(1.015); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes lumi-toast-enter {
+  0%   { transform: translateY(-10px) scale(0.94); opacity: 0; }
+  60%  { transform: translateY(2px)   scale(1.015); opacity: 1; }
+  100% { transform: translateY(0)     scale(1);     opacity: 1; }
 }
-@keyframes lumi-toast-icon-bounce {
-  0%   { transform: scale(0.4); opacity: 0; }
-  60%  { transform: scale(1.15); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+@keyframes lumi-toast-icon-pop {
+  0%   { transform: scale(0.4) rotate(-6deg); opacity: 0; }
+  55%  { transform: scale(1.18) rotate(2deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg);    opacity: 1; }
+}
+@keyframes lumi-toast-progress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
 }
 
 .cn-toast {
-  /* Override Sonner's default shadow with a warm, more present one. */
-  box-shadow: var(--shadow-float, 0 4px 8px rgba(0,0,0,0.08), 0 16px 32px rgba(0,0,0,0.12)) !important;
+  position: relative !important;
+  overflow: hidden !important;
+  /* Bigger float shadow + subtle warm tint */
+  box-shadow: var(--shadow-float, 0 4px 8px rgba(0,0,0,0.08), 0 16px 32px rgba(0,0,0,0.14)) !important;
   border-radius: var(--radius-lg, 1rem) !important;
   border-left-width: 3px !important;
-  animation: lumi-toast-pop 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: lumi-toast-enter 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Per-variant left stripe colour. Sonner sets data-type on the toast root. */
@@ -414,15 +429,59 @@
 .cn-toast[data-type="error"]   { border-left-color: oklch(0.52 0.22 25);  }
 .cn-toast[data-type="loading"] { border-left-color: oklch(0.45 0.005 95); }
 
-/* Bounce the icon as the toast pops in. */
+/* Soft halo of the variant hue on the top-left corner — gives the toast
+   a subtle ambient glow without a heavy background fill. */
+.cn-toast::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    160px 80px at 0% 0%,
+    var(--lumi-toast-halo, transparent),
+    transparent 70%
+  );
+  opacity: 0.55;
+}
+.cn-toast[data-type="success"] { --lumi-toast-halo: oklch(0.53 0.17 162 / 0.18); }
+.cn-toast[data-type="info"]    { --lumi-toast-halo: oklch(0.66 0.17 250 / 0.16); }
+.cn-toast[data-type="warning"] { --lumi-toast-halo: oklch(0.78 0.15 75  / 0.20); }
+.cn-toast[data-type="error"]   { --lumi-toast-halo: oklch(0.52 0.22 25  / 0.18); }
+
+/* 2px progress bar at the bottom that drains over the toast lifetime.
+   Sonner exposes the duration on the toast container — falls back to
+   the default 2500ms set in providers.tsx when not present. */
+.cn-toast::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--lumi-toast-halo, oklch(0.53 0.17 162 / 0.6));
+  transform-origin: left center;
+  animation: lumi-toast-progress var(--lumi-toast-duration, 2500ms) linear forwards;
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+/* Hide the progress bar for indefinite (loading) toasts. */
+.cn-toast[data-type="loading"]::after {
+  display: none;
+}
+
+/* Bounce the icon in. Skip for `loading` so the spinner doesn't fight. */
 .cn-toast [data-icon] {
-  animation: lumi-toast-icon-bounce 380ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: lumi-toast-icon-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cn-toast[data-type="loading"] [data-icon] {
+  animation: none;
 }
 
 /* Respect motion preferences — strip the entrance animations entirely. */
 @media (prefers-reduced-motion: reduce) {
   .cn-toast,
-  .cn-toast [data-icon] {
+  .cn-toast [data-icon],
+  .cn-toast::after {
     animation: none !important;
   }
 }
