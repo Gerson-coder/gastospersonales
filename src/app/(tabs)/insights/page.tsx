@@ -212,7 +212,7 @@ function PeriodSelector({
   return (
     <div
       role="radiogroup"
-      aria-label="Período del análisis"
+      aria-label="Período del reporte"
       className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {PERIOD_OPTIONS.map((opt) => {
@@ -267,15 +267,15 @@ function HeroMetric({
       : "text-destructive";
 
   return (
-    <Card className="rounded-3xl border-border p-6 md:p-8">
-      <div>
+    <Card className="rounded-3xl border-border p-5 md:p-6">
+      <div className="min-w-0">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Gasto vs ingreso · {monthLabel}
         </div>
-        <div className="mt-1.5 flex items-baseline gap-3">
+        <div className="mt-1.5 flex min-w-0 items-baseline gap-3">
           <span
             className={cn(
-              "font-semibold tabular-nums leading-none tracking-tight whitespace-nowrap",
+              "max-w-full truncate font-semibold tabular-nums leading-none tracking-tight",
               // Hero scale: shrinks predictably for long amounts (≥ 1M, etc).
               getMoneyDisplaySizeClass(spent, currency, "hero"),
             )}
@@ -284,21 +284,23 @@ function HeroMetric({
             {formatMoney(spent, currency)}
           </span>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
           <span
             className={cn(
-              "inline-flex items-center gap-1 text-[12px] font-semibold",
+              "inline-flex min-w-0 max-w-full items-center gap-1 truncate text-[12px] font-semibold",
               deltaToneClass,
             )}
           >
-            <DeltaIcon size={14} aria-hidden="true" />
-            {prevSpent <= 0
-              ? "sin datos previos"
-              : delta === 0
-                ? "sin cambios"
-                : `${Math.abs(delta * 100).toFixed(1)}% vs ${prevMonthLabel}`}
+            <DeltaIcon size={14} aria-hidden="true" className="flex-shrink-0" />
+            <span className="min-w-0 truncate">
+              {prevSpent <= 0
+                ? "sin datos previos"
+                : delta === 0
+                  ? "sin cambios"
+                  : `${Math.abs(delta * 100).toFixed(1)}% vs ${prevMonthLabel}`}
+            </span>
           </span>
-          <span className="text-[12px] font-medium text-muted-foreground">
+          <span className="min-w-0 max-w-full truncate text-[12px] font-medium tabular-nums text-muted-foreground">
             Ahorrado {formatMoney(net, currency)}
           </span>
         </div>
@@ -598,7 +600,7 @@ function MonthCompareCard({
         : "bg-muted text-muted-foreground";
 
   return (
-    <Card className="relative mx-4 mt-4 overflow-hidden rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
+    <Card className="relative overflow-hidden rounded-2xl border-border p-5 md:p-6">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
@@ -610,16 +612,19 @@ function MonthCompareCard({
       />
 
       <div className="flex items-start justify-between gap-3 pb-3">
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Comparativa mensual
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex min-w-0 items-baseline gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               Promedio
             </span>
             <span
-              className="font-semibold leading-none tracking-tight tabular-nums text-[26px] md:text-[30px]"
+              className={cn(
+                "min-w-0 max-w-full truncate font-semibold leading-none tracking-tight tabular-nums",
+                getMoneyDisplaySizeClass(avgSpent, currency, "secondary"),
+              )}
               style={{ fontFeatureSettings: '"tnum","lnum"' }}
             >
               {formatMoney(avgSpent, currency)}
@@ -706,9 +711,9 @@ function CategoryBars({
               <Icon size={14} />
             </span>
             <div className="min-w-0">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-[13px] font-semibold">{c.label}</span>
-                <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              <div className="flex min-w-0 items-baseline justify-between gap-2">
+                <span className="min-w-0 truncate text-[13px] font-semibold">{c.label}</span>
+                <span className="flex-shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                   {c.value}%
                 </span>
               </div>
@@ -726,7 +731,7 @@ function CategoryBars({
                 />
               </div>
             </div>
-            <span className="text-[13px] font-semibold tabular-nums">
+            <span className="max-w-[40vw] truncate text-[13px] font-semibold tabular-nums sm:max-w-none">
               {formatMoney(amt, currency)}
             </span>
           </li>
@@ -958,10 +963,10 @@ function TopMovementRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[14px] font-semibold">{merchantLabel}</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">{categoryLabel}</div>
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{categoryLabel}</div>
       </div>
       <span
-        className="text-[15px] font-semibold tabular-nums"
+        className="max-w-[40vw] flex-shrink-0 truncate text-[15px] font-semibold tabular-nums sm:max-w-none"
         style={{ fontFeatureSettings: '"tnum","lnum"' }}
       >
         {formatMoney(t.amount, t.currency)}
@@ -974,7 +979,7 @@ function TopMovementRow({
 
 function CardSkeleton({ height = 180 }: { height?: number }) {
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
+    <Card className="rounded-2xl border-border p-5 md:p-6">
       <div className="flex items-baseline justify-between pb-3">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-3 w-12" />
@@ -986,7 +991,7 @@ function CardSkeleton({ height = 180 }: { height?: number }) {
 
 function HeroSkeleton() {
   return (
-    <Card className="rounded-3xl border-border p-6 md:p-8">
+    <Card className="rounded-3xl border-border p-5 md:p-6">
       <Skeleton className="h-3 w-40" />
       <Skeleton className="mt-3 h-12 w-56 md:h-16 md:w-72" />
       <div className="mt-4 flex gap-3">
@@ -999,7 +1004,7 @@ function HeroSkeleton() {
 
 function EmptyInsightsCard({ currency }: { currency: Currency }) {
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
+    <Card className="rounded-2xl border-border bg-[var(--color-card)] p-5 text-center md:p-6">
       <div className="mx-auto flex flex-col items-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
           <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
@@ -1032,9 +1037,9 @@ function ErrorInsightsCard({
   onRetry: () => void;
 }) {
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-destructive/40 bg-destructive/5 p-6 text-center md:mx-0 md:mt-6">
+    <Card className="rounded-2xl border-destructive/40 bg-destructive/5 p-5 text-center md:p-6">
       <h2 className="text-[15px] font-semibold text-destructive">
-        No pudimos cargar tu análisis
+        No pudimos cargar tu reporte
       </h2>
       <p className="mt-1 text-[13px] text-muted-foreground">{message}</p>
       <button
@@ -1183,7 +1188,7 @@ export default function InsightsPage() {
         title: `Llevas ${formatMoney(saved, currency)} ahorrados — ${savedPct.toFixed(0)}% de los ingresos`,
         body:
           saved > 0
-            ? "Mantenés un margen sano. Buen ritmo."
+            ? "Mantienes un margen sano. Buen ritmo."
             : "Estás gastando por encima de tus ingresos este mes.",
         tone: saved > 0 ? "positive" : "negative",
         Icon: PiggyBank,
@@ -1200,7 +1205,7 @@ export default function InsightsPage() {
           ? `Este mes gastaste ${pct}% menos que en ${prevBucket.label}`
           : `Este mes gastaste ${pct}% más que en ${prevBucket.label}`,
         body: less
-          ? "Mantené el ritmo en las próximas semanas."
+          ? "Mantén el ritmo en las próximas semanas."
           : "Revisa las categorías que más subieron.",
         tone: less ? "positive" : "negative",
         Icon: Sparkles,
@@ -1221,35 +1226,36 @@ export default function InsightsPage() {
     !win.loading && !win.error && win.rows.length === 0;
 
   return (
-    <div className="relative min-h-dvh bg-background text-foreground">
-      <div className="mx-auto w-full max-w-[1280px] md:px-12 md:py-10">
+    <main className="relative min-h-dvh bg-background pb-32 text-foreground">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-8 md:pt-10">
         {/* Header */}
         <AppHeader
-          eyebrow={currentBucket ? `${monthLabel} · ${currentBucket.monthKey.slice(0, 4)}` : "Análisis"}
-          title="Análisis"
-          titleStyle="display"
+          eyebrow={
+            currentBucket
+              ? `${monthLabel} · ${currentBucket.monthKey.slice(0, 4)}`
+              : "Reportes"
+          }
+          title="Reportes"
+          titleStyle="page"
+          className="px-0 pt-0"
         />
 
         {/* Period selector */}
-        <div className="mt-4 px-4 md:mt-6 md:px-0">
+        <div>
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
 
         {showError && (
-          <div className="md:mt-2">
-            <ErrorInsightsCard
-              message={win.error?.message ?? "Hubo un problema cargando los datos."}
-              onRetry={win.refetch}
-            />
-          </div>
+          <ErrorInsightsCard
+            message={win.error?.message ?? "Hubo un problema cargando los datos."}
+            onRetry={win.refetch}
+          />
         )}
 
         {!showError && showLoading && (
           <>
-            <div className="mx-4 mt-4 md:mx-0 md:mt-6">
-              <HeroSkeleton />
-            </div>
-            <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
+            <HeroSkeleton />
+            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
               <CardSkeleton />
               <CardSkeleton />
               <div className="md:col-span-2">
@@ -1266,26 +1272,24 @@ export default function InsightsPage() {
         {!showError && !showLoading && !showEmpty && currentBucket && (
           <>
             {/* Hero metric */}
-            <div className="mx-4 mt-4 md:mx-0 md:mt-6">
-              <HeroMetric
-                spent={currentBucket.spent}
-                income={currentBucket.income}
-                prevSpent={prevBucket?.spent ?? 0}
-                currency={currency}
-                monthLabel={monthLabel}
-                prevMonthLabel={prevMonthLabel}
-              />
-            </div>
+            <HeroMetric
+              spent={currentBucket.spent}
+              income={currentBucket.income}
+              prevSpent={prevBucket?.spent ?? 0}
+              currency={currency}
+              monthLabel={monthLabel}
+              prevMonthLabel={prevMonthLabel}
+            />
 
             {/* Charts grid */}
-            <div className="md:mt-6 md:grid md:grid-cols-2 md:gap-6">
+            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
               {/* Cross-month comparison */}
               <MonthCompareCard allMonths={monthTotals} currency={currency} />
 
               {/* Spending velocity */}
-              <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:p-6">
+              <Card className="rounded-2xl border-border p-5 md:p-6">
                 <div className="flex items-baseline justify-between pb-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Velocidad de gasto
                   </div>
                   <div className="text-[11px] font-medium text-muted-foreground">
@@ -1298,7 +1302,7 @@ export default function InsightsPage() {
                   daysInMonth={currentDaysInMonth}
                   currency={currency}
                 />
-                <div className="mt-3 flex items-center gap-4 text-[11px] text-muted-foreground">
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
                   <span className="inline-flex items-center gap-1.5">
                     <span
                       aria-hidden="true"
@@ -1319,9 +1323,9 @@ export default function InsightsPage() {
               </Card>
 
               {/* Category breakdown */}
-              <Card className="mx-4 mt-4 rounded-2xl border-border p-5 md:mx-0 md:mt-0 md:col-span-2 md:p-6">
+              <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
                 <div className="flex items-baseline justify-between pb-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Por categoría
                   </div>
                   <div className="text-[11px] font-medium text-muted-foreground">
@@ -1345,9 +1349,9 @@ export default function InsightsPage() {
               {insights.length > 0 && (
                 <section
                   aria-label="Observaciones del período"
-                  className="mx-4 mt-4 md:mx-0 md:mt-0 md:col-span-2"
+                  className="md:col-span-2"
                 >
-                  <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Observaciones
                   </div>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1360,7 +1364,7 @@ export default function InsightsPage() {
 
               {/* Top movements */}
               {win.topMovementsCurrentMonth.length > 0 && (
-                <Card className="mx-4 mt-4 rounded-2xl border-border p-0 md:mx-0 md:mt-0 md:col-span-2">
+                <Card className="rounded-2xl border-border p-0 md:col-span-2">
                   <div className="flex items-baseline justify-between px-4 pb-1.5 pt-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                       Top movimientos
@@ -1384,10 +1388,7 @@ export default function InsightsPage() {
             </div>
           </>
         )}
-
-        {/* Bottom spacer so TabBar doesn't overlap last card on mobile */}
-        <div className="h-24 md:h-0" aria-hidden="true" />
       </div>
-    </div>
+    </main>
   );
 }

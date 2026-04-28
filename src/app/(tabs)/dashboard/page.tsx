@@ -367,41 +367,46 @@ function TransactionRowMobile({ t }: { t: RecentRowItem }) {
     t.accountName?.toLowerCase() === "yape" ||
     t.accountName?.toLowerCase() === "plin";
   return (
-    <div className="flex items-start gap-3 px-5 py-3.5">
+    <div className="grid grid-cols-[40px_minmax(0,1fr)_64px_88px] items-center gap-2 px-3 py-3.5">
       <MerchantAvatar name={t.merchant} size="lg" />
-      {/* Two-row stack: top row aligns merchant + badge + amount; bottom row
-          shows the date directly under the merchant. `items-start` on the
-          parent + `items-center` here keeps the trio visually balanced and
-          guarantees badges across rows line up vertically. */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-tight">
-            {t.merchant}
-          </span>
-          {t.accountName ? (
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight whitespace-nowrap",
-                isGreen
-                  ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
-                  : "border border-border bg-muted/40 text-muted-foreground",
-              )}
-            >
-              {t.accountName}
-            </span>
-          ) : null}
-          <MoneyDisplay
-            amount={isIncome ? t.amount : -t.amount}
-            currency={t.currency}
-            size="sm"
-            tone={isIncome ? "positive" : "negative"}
-            showSign={isIncome}
-            className="shrink-0"
-          />
+      {/* Col 2 — merchant + date stack. Truncates so the fixed columns to the
+          right stay anchored at consistent x positions across rows. */}
+      <div className="min-w-0">
+        <div className="truncate text-[14px] font-semibold leading-tight">
+          {t.merchant}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {formatTxDate(t.occurredAt)}
         </div>
+      </div>
+      {/* Col 3 — account badge. Fixed-width slot keeps the pill at the same
+          x across every row regardless of label length (Yape vs BCP Soles). */}
+      <div className="flex justify-center">
+        {t.accountName ? (
+          <span
+            className={cn(
+              "max-w-full truncate rounded-full px-2 py-0.5 text-center text-[10px] font-medium leading-tight",
+              isGreen
+                ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
+                : "border border-border bg-muted/40 text-muted-foreground",
+            )}
+            title={t.accountName}
+          >
+            {t.accountName}
+          </span>
+        ) : null}
+      </div>
+      {/* Col 4 — amount. Right-aligned + slightly smaller (text-sm = 13px)
+          so values up to S/ 99,999.99 fit without overflowing the slot. */}
+      <div className="text-right">
+        <MoneyDisplay
+          amount={isIncome ? t.amount : -t.amount}
+          currency={t.currency}
+          size="sm"
+          tone={isIncome ? "positive" : "negative"}
+          showSign={isIncome}
+          className="text-sm"
+        />
       </div>
     </div>
   );
