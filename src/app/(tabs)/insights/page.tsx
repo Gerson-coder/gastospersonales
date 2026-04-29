@@ -958,12 +958,28 @@ function TopMovementRow({
       >
         {rank}
       </span>
-      <span
-        aria-hidden="true"
-        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
-      >
-        <Icon size={16} />
-      </span>
+      {t.merchantLogoSlug ? (
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
+          <img
+            src={`/logos/merchants/${t.merchantLogoSlug}.svg`}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="h-6 w-6 object-contain"
+          />
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
+        >
+          <Icon size={16} />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-[14px] font-semibold">{merchantLabel}</div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{categoryLabel}</div>

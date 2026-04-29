@@ -66,7 +66,7 @@ export type TransactionRow = {
   updated_at: string;
   // Joined fields from nested SELECT.
   categories?: { name: string } | null;
-  merchants?: { name: string } | null;
+  merchants?: { name: string; logo_slug: string | null } | null;
   accounts?: { name: string } | null;
 };
 
@@ -81,6 +81,10 @@ export type TransactionView = {
   categoryName: string | null;
   merchantId: string | null;
   merchantName: string | null;
+  /** Filename stem for /public/logos/merchants/{slug}.svg. Null when the
+   *  merchant has no hand-prepared logo (or no merchant at all) — the row
+   *  then renders the deterministic initials avatar. */
+  merchantLogoSlug: string | null;
   accountId: string;
   accountName: string | null;
   note: string | null;
@@ -137,6 +141,7 @@ export function toView(row: TransactionRow): TransactionView {
     categoryName: row.categories?.name ?? null,
     merchantId: row.merchant_id,
     merchantName: row.merchants?.name ?? null,
+    merchantLogoSlug: row.merchants?.logo_slug ?? null,
     accountId: row.account_id,
     accountName: row.accounts?.name ?? null,
     note: row.note,
@@ -212,7 +217,7 @@ export function toInsertPayload(
  * `accountName` for the UI.
  */
 const SELECT_WITH_JOINS =
-  "id, user_id, account_id, category_id, merchant_id, kind, amount_minor, currency, occurred_at, note, source, receipt_id, transfer_group_id, archived_at, created_at, updated_at, categories(name), merchants(name), accounts(name)";
+  "id, user_id, account_id, category_id, merchant_id, kind, amount_minor, currency, occurred_at, note, source, receipt_id, transfer_group_id, archived_at, created_at, updated_at, categories(name), merchants(name, logo_slug), accounts(name)";
 
 /**
  * Map a Supabase error to a friendly Spanish message. PGRST116 means the

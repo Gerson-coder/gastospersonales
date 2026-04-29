@@ -427,6 +427,13 @@ function CapturePageInner() {
   const [categoryId, setCategoryId] = React.useState<CategoryId | null>(
     SUPABASE_ENABLED ? null : "food",
   );
+  // When the user picks a category from the "Ver todos" drawer that
+  // ISN'T in the default visible trio (e.g. Salud / Ocio while in expense
+  // mode), we pin it to the head of the chip strip so the chosen card is
+  // visually anchored next to Comida / Transporte / etc. Cleared on kind
+  // change because the visible trio depends on kind. Mirrors the same
+  // pinning logic in MerchantPicker.
+  const [pinnedCategoryId, setPinnedCategoryId] = React.useState<CategoryId | null>(null);
 
   // Load real categories when Supabase is configured. Kept as a dedicated
   // effect (separate from accounts) to keep the demo branch trivial.
@@ -676,36 +683,58 @@ function CapturePageInner() {
     [],
   );
   const mruCategories = React.useMemo<Category[]>(() => {
-    if (!SUPABASE_ENABLED) {
-      const ids =
-        kind === "income"
-          ? categories.filter((c) => c.defaultKind === "income").map((c) => c.id)
-          : MRU_CATEGORY_IDS;
-      return ids
-        .map((id) => categories.find((c) => c.id === id))
-        .filter((c): c is Category => Boolean(c))
-        .slice(0, 3);
+    // Build the default trio first, then pin a recently-picked category
+    // at the head if the user reached for one outside the trio. Same
+    // pattern as MerchantPicker's `visible` memo.
+    const buildDefault = (): Category[] => {
+      if (!SUPABASE_ENABLED) {
+        const ids =
+          kind === "income"
+            ? categories.filter((c) => c.defaultKind === "income").map((c) => c.id)
+            : MRU_CATEGORY_IDS;
+        return ids
+          .map((id) => categories.find((c) => c.id === id))
+          .filter((c): c is Category => Boolean(c));
+      }
+      if (kind === "income") {
+        return categories.filter((c) => c.defaultKind === "income");
+      }
+      const primary = PRIMARY_EXPENSE_NAMES.map((name) =>
+        categories.find(
+          (c) => c.label === name && c.defaultKind === "expense",
+        ),
+      ).filter((c): c is Category => Boolean(c));
+      const primaryIds = new Set(primary.map((c) => c.id));
+      const rest = categories.filter(
+        (c) =>
+          !primaryIds.has(c.id) &&
+          c.defaultKind === "expense" &&
+          c.label !== "Ahorro",
+      );
+      return [...primary, ...rest];
+    };
+
+    const defaults = buildDefault();
+    const head: Category[] = [];
+    const seen = new Set<CategoryId>();
+    if (
+      pinnedCategoryId &&
+      !defaults.slice(0, 3).some((c) => c.id === pinnedCategoryId)
+    ) {
+      const pinned = categories.find((c) => c.id === pinnedCategoryId);
+      if (pinned) {
+        head.push(pinned);
+        seen.add(pinned.id);
+      }
     }
-    if (kind === "income") {
-      return categories
-        .filter((c) => c.defaultKind === "income")
-        .slice(0, 3);
+    for (const c of defaults) {
+      if (head.length >= 3) break;
+      if (seen.has(c.id)) continue;
+      head.push(c);
+      seen.add(c.id);
     }
-    // Expense: primary trio first, then any extras (filtered).
-    const primary = PRIMARY_EXPENSE_NAMES.map((name) =>
-      categories.find(
-        (c) => c.label === name && c.defaultKind === "expense",
-      ),
-    ).filter((c): c is Category => Boolean(c));
-    const primaryIds = new Set(primary.map((c) => c.id));
-    const rest = categories.filter(
-      (c) =>
-        !primaryIds.has(c.id) &&
-        c.defaultKind === "expense" &&
-        c.label !== "Ahorro",
-    );
-    return [...primary, ...rest].slice(0, 3);
-  }, [categories, kind, PRIMARY_EXPENSE_NAMES]);
+    return head;
+  }, [categories, kind, PRIMARY_EXPENSE_NAMES, pinnedCategoryId]);
 
   const press = React.useCallback((k: KeypadKey) => {
     setAmountBuffer((s) => {
@@ -907,6 +936,12 @@ function CapturePageInner() {
     (id: CategoryId) => {
       setCategoryId(id);
       setCategoryDrawerOpen(false);
+      // Pin the picked category to the head of the visible strip when it
+      // wasn't already there. Same UX as MerchantPicker — the chosen
+      // badge is anchored next to the default trio so the user sees their
+      // pick land in the row instead of just "Ver todos" highlighted.
+      const isAlreadyVisible = mruCategories.some((c) => c.id === id);
+      if (!isAlreadyVisible) setPinnedCategoryId(id);
       // Merchants are scoped per-category — switching categories MUST clear
       // the previously-selected merchant. The MerchantPicker also bails out
       // visually when the category has no merchants, but the state reset is
@@ -920,8 +955,16 @@ function CapturePageInner() {
         setKind(picked.defaultKind);
       }
     },
-    [kind, categories],
+    [kind, categories, mruCategories],
   );
+
+  // Kind toggles between expense / income — the visible category trio
+  // depends on kind, so a category pinned in one mode might not even
+  // belong to the other. Cleanest reset is to drop the pin on every
+  // kind change and let the user re-pin if they reach for an extra.
+  React.useEffect(() => {
+    setPinnedCategoryId(null);
+  }, [kind]);
 
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"

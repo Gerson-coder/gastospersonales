@@ -84,25 +84,32 @@ export function MerchantPicker({
   onChange,
 }: MerchantPickerProps) {
   const [mru, setMru] = React.useState<Merchant[]>([]);
-  // We hydrate the total-count probe alongside the MRU fetch so we can
-  // decide whether to render at all. Storing the boolean (not the full
-  // list) keeps the component lightweight.
-  const [hasAny, setHasAny] = React.useState(false);
+  // Full merchant list for the active category, kept around so we can
+  // resolve a "pinned" merchant id (one the user picked from the drawer
+  // that isn't in the MRU strip) back to a Merchant object for rendering.
+  const [all, setAll] = React.useState<Merchant[]>([]);
+  // The most recent merchant the user picked from the drawer that wasn't
+  // in the MRU. Prepended to the visible strip so the chosen badge is
+  // visually anchored next to KFC / Norky's / etc. Cleared when the
+  // category changes (different list, different relevance).
+  const [pinnedId, setPinnedId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
-  // Re-fetch MRU + total presence whenever the parent category changes.
+  // Re-fetch MRU + the full list whenever the parent category changes.
   // Both calls degrade gracefully (the data layer catches missing-table /
   // missing-function errors and returns []), so a thrown error here is
   // genuinely unexpected and we still render null.
   React.useEffect(() => {
     if (!categoryId) {
       setMru([]);
-      setHasAny(false);
+      setAll([]);
+      setPinnedId(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setPinnedId(null);
     void (async () => {
       try {
         const [mruRows, allRows] = await Promise.all([
@@ -111,13 +118,13 @@ export function MerchantPicker({
         ]);
         if (cancelled) return;
         setMru(mruRows);
-        setHasAny(allRows.length > 0);
+        setAll(allRows);
       } catch {
         // Soft-fail — the section will simply not render. The data layer
         // already logs once on first failure.
         if (cancelled) return;
         setMru([]);
-        setHasAny(false);
+        setAll([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -126,6 +133,45 @@ export function MerchantPicker({
       cancelled = true;
     };
   }, [categoryId]);
+
+  const hasAny = all.length > 0;
+
+  // Visible strip = pinned (if outside MRU) + MRU, deduped by id, capped
+  // at MRU_LIMIT. The pinned merchant lands at index 0 so the user sees
+  // their pick land in the visible row immediately after closing the
+  // drawer; the existing top-MRU chips slide right by one and the last
+  // gets dropped if the cap is exceeded.
+  const visible = React.useMemo<Merchant[]>(() => {
+    const head: Merchant[] = [];
+    const seen = new Set<string>();
+    if (pinnedId && !mru.slice(0, MRU_LIMIT).some((m) => m.id === pinnedId)) {
+      const pinned = all.find((m) => m.id === pinnedId);
+      if (pinned) {
+        head.push(pinned);
+        seen.add(pinned.id);
+      }
+    }
+    for (const m of mru) {
+      if (head.length >= MRU_LIMIT) break;
+      if (seen.has(m.id)) continue;
+      head.push(m);
+      seen.add(m.id);
+    }
+    return head;
+  }, [pinnedId, mru, all]);
+
+  // Selection callback wrapper — drives both `onChange` (parent state)
+  // and the pinning logic. When the picked id isn't already visible in
+  // the strip, we mark it as pinned so it appears in the next render.
+  const handleSelect = React.useCallback(
+    (id: string | null) => {
+      onChange(id);
+      if (id === null) return;
+      if (visible.some((m) => m.id === id)) return;
+      setPinnedId(id);
+    },
+    [onChange, visible],
+  );
 
   // Bail out when there's no category context, when the category has zero
   // visible merchants, or while we're still on the first hydration tick
@@ -136,7 +182,7 @@ export function MerchantPicker({
 
   const handleChipClick = (id: string) => {
     // Toggle: tapping the selected chip clears the selection.
-    onChange(value === id ? null : id);
+    handleSelect(value === id ? null : id);
   };
 
   return (
@@ -176,7 +222,7 @@ export function MerchantPicker({
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {mru.map((m) => {
+          {visible.map((m) => {
             const selected = value === m.id;
             return (
               <button
@@ -214,7 +260,7 @@ export function MerchantPicker({
         categoryId={categoryId}
         categoryName={categoryName}
         selectedMerchantId={value}
-        onSelect={onChange}
+        onSelect={handleSelect}
       />
     </>
   );

@@ -340,16 +340,32 @@ function TransactionRow({
       style={{ WebkitTouchCallout: "none" }}
       {...longPressHandlers}
     >
-      <div
-        aria-hidden="true"
-        className={cn(
-          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
-          tint.bg,
-          tint.text,
-        )}
-      >
-        <Icon size={20} />
-      </div>
+      {t.merchantLogoSlug ? (
+        <span
+          aria-hidden="true"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
+          <img
+            src={`/logos/merchants/${t.merchantLogoSlug}.svg`}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="h-7 w-7 object-contain"
+          />
+        </span>
+      ) : (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+            tint.bg,
+            tint.text,
+          )}
+        >
+          <Icon size={20} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
           {titleText}

@@ -335,6 +335,11 @@ type RecentRowItem = {
   occurredAt: string;
   /** Nombre de la cuenta para el badge en mobile (e.g. "Tarjeta BCP", "Yape"). */
   accountName?: string | null;
+  /** Filename stem for /public/logos/merchants/{slug}.svg. When set,
+   *  TransactionRow + TransactionRowMobile render the SVG over the
+   *  category-icon / initials fallback. Null when the merchant has no
+   *  hand-prepared logo or no merchant at all. */
+  merchantLogoSlug?: string | null;
 };
 
 function TransactionRow({ t }: { t: RecentRowItem }) {
@@ -346,13 +351,30 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
   // date (Hoy / Ayer / DD MMM) in muted text.
   const title = isIncome ? (t.accountName ?? t.merchant) : t.merchant;
   const subtitle = formatTxDate(t.occurredAt);
+  // When the row's merchant has a hand-prepared logo (e.g. KFC, Starbucks),
+  // we swap the category icon circle for the SVG; the surrounding bg-muted
+  // chip keeps the visual rhythm of the list. Otherwise the existing
+  // category-tinted icon stays.
   return (
     <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
-      <div
-        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
-      >
-        <Icon size={20} />
-      </div>
+      {t.merchantLogoSlug ? (
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
+          <img
+            src={`/logos/merchants/${t.merchantLogoSlug}.svg`}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="h-7 w-7 object-contain"
+          />
+        </span>
+      ) : (
+        <div
+          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${tint.bg} ${tint.text}`}
+        >
+          <Icon size={20} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-semibold leading-snug">
           {title}
@@ -387,7 +409,9 @@ function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   const subtitle = formatTxDate(t.occurredAt);
   return (
     <div className="grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5">
-      <MerchantAvatar name={title} size="lg" />
+      {/* MerchantAvatar swaps to an SVG when logoSlug is set (KFC, Starbucks,
+          Inkafarma…) and falls back to deterministic initials otherwise. */}
+      <MerchantAvatar name={title} logoSlug={t.merchantLogoSlug} size="lg" />
       <div className="min-w-0">
         <div className="truncate text-[14px] font-semibold leading-tight">
           {title}
@@ -429,6 +453,7 @@ function viewToRecent(t: TransactionView): RecentRowItem {
     merchant: t.merchantName?.trim() || categoryLabel,
     occurredAt: t.occurredAt,
     accountName: t.accountName,
+    merchantLogoSlug: t.merchantLogoSlug,
   };
 }
 
