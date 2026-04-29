@@ -480,6 +480,11 @@ function CapturePageInner() {
   // the current state. Absent keys = zero balance. Demo mode skips this — no
   // backend to query.
   const [balances, setBalances] = React.useState<Record<string, number>>({});
+  // Distinguishes "fetch hasn't returned yet" from "every account is zero".
+  // Without this, the picker would flash "S/ 0.00 saldo" on every row during
+  // the first paint after mount and currency switches — visually identical to
+  // a real empty account, so the user can't tell loading from depleted.
+  const [balancesLoaded, setBalancesLoaded] = React.useState(false);
   // Modal shown on the expense flow when the picked account either has no
   // saldo at all (`empty`) or has saldo but less than the typed amount
   // (`insufficient`). Same Drawer, two copies — keeps the dismiss UX
@@ -494,14 +499,24 @@ function CapturePageInner() {
   // user confirms. False after a normal manual open of the drawer.
   const [pendingSave, setPendingSave] = React.useState(false);
   React.useEffect(() => {
-    if (!SUPABASE_ENABLED) return;
+    if (!SUPABASE_ENABLED) {
+      // Demo mode has no backend — there's nothing to load and balances
+      // stay at their initial empty map. Mark as loaded immediately so the
+      // picker renders "S/ 0.00 sin saldo" on every account instead of an
+      // infinite skeleton.
+      setBalancesLoaded(true);
+      return;
+    }
     let cancelled = false;
+    setBalancesLoaded(false);
     void (async () => {
       try {
         const map = await getAccountBalances(currency);
         if (!cancelled) setBalances(map);
       } catch {
         // Soft-fail — guard simply won't trigger; save flow still validates.
+      } finally {
+        if (!cancelled) setBalancesLoaded(true);
       }
     })();
     return () => {
@@ -1398,11 +1413,15 @@ function CapturePageInner() {
             {accountsLoading
               ? [0, 1, 2].map((i) => (
                   <li key={i}>
-                    <div className="flex h-14 w-full items-center gap-3 rounded-2xl px-3">
+                    <div className="flex h-16 w-full items-center gap-3 rounded-2xl px-3">
                       <Skeleton className="h-9 w-9 flex-shrink-0 rounded-full" />
                       <div className="flex-1 space-y-1.5">
                         <Skeleton className="block h-3.5 w-1/3 rounded" />
                         <Skeleton className="block h-3 w-1/4 rounded" />
+                      </div>
+                      <div className="ml-2 space-y-1.5 text-right">
+                        <Skeleton className="block h-3.5 w-16 rounded" />
+                        <Skeleton className="block h-3 w-10 rounded" />
                       </div>
                     </div>
                   </li>
@@ -1416,6 +1435,29 @@ function CapturePageInner() {
                 : availableAccounts.map((a) => {
                   const Icon = a.Icon;
                   const selected = accountId === a.id;
+                  const balance = balances[a.id] ?? 0;
+                  const balanceTone =
+                    !balancesLoaded
+                      ? "text-muted-foreground"
+                      : balance > 0
+                        ? "text-foreground"
+                        : balance < 0
+                          ? "text-destructive"
+                          : "text-muted-foreground";
+                  // Account-kind subtitle. Yape/Plin used to fall through to
+                  // "cuenta bancaria" — bug. Each rail now has its own label
+                  // so the user can't confuse a Yape balance with a savings
+                  // account on a quick scan.
+                  const kindLabel =
+                    a.kind === "cash"
+                      ? "Efectivo"
+                      : a.kind === "card"
+                        ? "Tarjeta"
+                        : a.kind === "yape"
+                          ? "Yape"
+                          : a.kind === "plin"
+                            ? "Plin"
+                            : "Cuenta bancaria";
                   return (
                     <li key={a.id}>
                       <button
@@ -1428,26 +1470,27 @@ function CapturePageInner() {
                           // `insufficient` only fires if the user already typed
                           // an amount; otherwise we just check for empty.
                           if (kind === "expense") {
-                            const balance = balances[a.id] ?? 0;
-                            if (balance <= 0) {
+                            const b = balances[a.id] ?? 0;
+                            if (b <= 0) {
                               setNoBalanceReason("empty");
                               setNoBalanceOpen(true);
-                            } else if (amount > 0 && balance < amount) {
+                            } else if (amount > 0 && b < amount) {
                               setNoBalanceReason("insufficient");
                               setNoBalanceOpen(true);
                             }
                           }
                         }}
                         aria-pressed={selected}
+                        aria-label={`${accountDisplayLabel(a)}, ${kindLabel}, saldo ${formatMoney(balance, a.currency)}`}
                         className={cn(
-                          "flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
+                          "flex h-16 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          selected ? "bg-muted" : "hover:bg-muted",
+                          selected ? "bg-muted ring-1 ring-foreground/15" : "hover:bg-muted",
                         )}
                       >
                         <span
                           aria-hidden="true"
-                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground"
+                          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-background text-foreground ring-1 ring-border"
                         >
                           <AccountBrandIcon
                             label={a.label}
@@ -1455,15 +1498,42 @@ function CapturePageInner() {
                             size={20}
                           />
                         </span>
-                        <span className="flex-1">
-                          <span className="block text-[13px] font-semibold">{accountDisplayLabel(a)}</span>
-                          <span className="block text-[11px] text-muted-foreground">
-                            {CURRENCY_LABEL[a.currency]} · {a.kind === "cash" ? "efectivo" : a.kind === "card" ? "tarjeta" : "cuenta bancaria"}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-semibold">
+                            {accountDisplayLabel(a)}
+                          </span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {kindLabel}
                           </span>
                         </span>
-                        {selected ? (
-                          <Check size={16} aria-hidden="true" className="text-foreground" />
-                        ) : null}
+                        <span className="ml-2 flex flex-col items-end">
+                          <span className="flex items-center gap-1">
+                            {selected ? (
+                              <Check
+                                size={12}
+                                aria-hidden="true"
+                                strokeWidth={2.5}
+                                className="text-foreground"
+                              />
+                            ) : null}
+                            {balancesLoaded ? (
+                              <span
+                                className={cn(
+                                  "text-[13px] font-semibold tabular-nums whitespace-nowrap",
+                                  balanceTone,
+                                )}
+                                style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                              >
+                                {formatMoney(balance, a.currency)}
+                              </span>
+                            ) : (
+                              <Skeleton className="h-3.5 w-16 rounded" />
+                            )}
+                          </span>
+                          <span className="mt-0.5 text-[10px] uppercase tracking-[0.05em] text-muted-foreground/80">
+                            {balancesLoaded && balance <= 0 ? "sin saldo" : "saldo"}
+                          </span>
+                        </span>
                       </button>
                     </li>
                   );
