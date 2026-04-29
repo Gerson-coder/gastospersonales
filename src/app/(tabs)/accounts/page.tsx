@@ -610,6 +610,28 @@ function AccountFormSheet({
     const finalLabel = lockedName ?? trimmed;
     const action = mode;
     const targetId = account?.id;
+    // Subtype is only meaningful for bank accounts; the same coercion runs
+    // again below for the actual write, but we need it here to dedupe
+    // against existing rows correctly (a "card" with subtype="corriente"
+    // would otherwise look like a different tuple than the bank version
+    // even though the DB will store NULL).
+    const dupSubtype = kind === "bank" ? subtype : null;
+    // Duplicate guard — same (label, kind, subtype, currency) tuple is
+    // forbidden. Editing the same row excludes itself from the check so
+    // re-saving without changes still works.
+    const norm = (s: string) => s.trim().toLowerCase();
+    const isDuplicate = existingAccounts.some(
+      (a) =>
+        (action === "create" || a.id !== targetId) &&
+        norm(a.label) === norm(finalLabel) &&
+        a.kind === kind &&
+        a.subtype === dupSubtype &&
+        a.currency === currency,
+    );
+    if (isDuplicate) {
+      toast.error("Ya tienes una cuenta con esos datos.");
+      return;
+    }
     onOptimisticClose();
     setOverlayLabel(action === "create" ? "Creando cuenta…" : "Actualizando…");
     setSubmitting(true);

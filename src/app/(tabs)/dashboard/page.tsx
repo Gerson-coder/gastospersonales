@@ -23,7 +23,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Camera,
   UtensilsCrossed,
   Car,
   ShoppingCart,
@@ -965,8 +964,6 @@ export default function DashboardPage() {
   // Greeting: defaults to "Hola" until hydration completes.
   const greeting = hydrated && name ? `Hola, ${name}` : "Hola";
 
-  // FAB visibility: hide on loading/empty/error to avoid competing CTAs.
-  const showFab = !isLoading && !isEmpty && !hasError;
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
@@ -1413,27 +1410,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Camera FAB — mobile only. Solo en md+ ocultamos; en mobile sigue
-          visible para acceder a OCR de tickets sin pasar por TabBar. */}
-      {showFab && (
-        <button
-          type="button"
-          onClick={() => router.push("/receipt")}
-          aria-label="Escanear ticket con la cámara"
-          className={cn(
-            "fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-4 z-20",
-            "flex h-12 w-12 items-center justify-center rounded-full",
-            "border border-border bg-card text-foreground",
-            "shadow-[var(--shadow-card)] ring-2 ring-primary/15",
-            "transition-transform active:scale-95",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "animate-in zoom-in-50 duration-300",
-            "md:hidden",
-          )}
-        >
-          <Camera size={20} aria-hidden="true" />
-        </button>
-      )}
     </div>
   );
 }

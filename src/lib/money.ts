@@ -10,13 +10,13 @@ export type Currency = "PEN" | "USD";
 
 /**
  * Friendly UI labels for each currency. The code ("PEN" / "USD") is the
- * canonical DB / API value; "Sol" / "Dólar" is what the user sees in
+ * canonical DB / API value; "Soles" / "Dólares" is what the user sees in
  * pickers, account rows and the currency switch — Spanish-PE feels
  * native, technical codes felt like translated stock-tickers.
  */
 export const CURRENCY_LABEL: Record<Currency, string> = {
-  PEN: "Sol",
-  USD: "Dólar",
+  PEN: "Soles",
+  USD: "Dólares",
 };
 
 /** Format a minor-units amount as a localized currency string. */

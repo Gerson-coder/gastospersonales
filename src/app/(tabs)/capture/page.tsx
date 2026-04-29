@@ -22,14 +22,12 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Camera,
   Delete,
-  Plus,
   UtensilsCrossed,
   Car,
   Home as HomeIcon,
@@ -482,6 +480,11 @@ function CapturePageInner() {
   const [noBalanceReason, setNoBalanceReason] = React.useState<
     "empty" | "insufficient"
   >("empty");
+  // When the user hits Save without a picked account, we open the account
+  // drawer instead of saving. This flag rides through that round-trip so
+  // the picker callback knows to fire handleSave automatically once the
+  // user confirms. False after a normal manual open of the drawer.
+  const [pendingSave, setPendingSave] = React.useState(false);
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     let cancelled = false;
@@ -507,18 +510,16 @@ function CapturePageInner() {
     [accounts, currency],
   );
 
-  // Currency switch retargets the account: if the previously-selected one
-  // no longer matches the active currency, drop it and pick the first
-  // matching account (or null when the user has none in this currency).
-  // Edit-mode hydration sets accountId BEFORE this effect runs but the
-  // hydration also sets currency to match, so the find() succeeds and we
-  // leave accountId alone.
+  // Currency switch retargets the account: if a previously-selected one no
+  // longer matches the active currency, drop it so the modal-on-save flow
+  // forces a fresh pick. We never auto-select on currency change — the user
+  // explicitly chose "no defaults" to prevent silent mistakes.
   React.useEffect(() => {
+    if (!accountId) return;
     if (accounts.length === 0) return;
     const current = accounts.find((a) => a.id === accountId);
     if (current && current.currency === currency) return;
-    const next = accounts.find((a) => a.currency === currency) ?? null;
-    setAccountId(next?.id ?? null);
+    setAccountId(null);
   }, [currency, accounts, accountId]);
 
   // Load real accounts when Supabase is configured. Separate effect from any
@@ -532,10 +533,10 @@ function CapturePageInner() {
         if (cancelled) return;
         const mapped = list.map(fromDataAccount);
         setAccounts(mapped);
-        // Default-select the first active account (post-fetch, never hardcoded).
-        // Currency-aware re-selection lives in a dedicated effect below so this
-        // mount-only loader stays focused.
-        setAccountId((prev) => prev ?? mapped[0]?.id ?? null);
+        // Intentionally NO default-select here. Forcing the user to pick on
+        // every save (via the modal-on-check flow) was a deliberate UX
+        // decision: defaulting to the alphabetically-first account caused
+        // people to record movements against the wrong account.
       } catch {
         // Soft-fail: keep accounts empty; the picker shows an empty state.
       } finally {
@@ -778,8 +779,16 @@ function CapturePageInner() {
       toast.error("Sin conexión — podrás guardar cuando vuelva la red.");
       return;
     }
-    if (!categoryId || !accountId || amount <= 0) {
-      toast.error("Completa monto, categoría y cuenta para guardar.");
+    if (amount <= 0 || !categoryId) {
+      toast.error("Completa monto y categoría para guardar.");
+      return;
+    }
+    // No account picked yet — open the account drawer instead of saving.
+    // The pendingSave flag tells the picker callback to fire handleSave
+    // automatically once the user confirms a choice.
+    if (!accountId) {
+      setPendingSave(true);
+      setAccountDrawerOpen(true);
       return;
     }
     // Saldo guard — block expenses against an empty or insufficient account.
@@ -858,6 +867,18 @@ function CapturePageInner() {
     router,
     categories,
   ]);
+
+  // Auto-save bridge — when the user hits Save without an account picked
+  // we open the picker drawer and set pendingSave. This effect waits for
+  // accountId to flip from null to a real id, then fires handleSave so the
+  // user's intent (one tap on the check) carries through without a second
+  // tap. We clear the flag BEFORE calling handleSave to short-circuit any
+  // re-entry if handleSave's own guards (saldo, etc.) bounce.
+  React.useEffect(() => {
+    if (!pendingSave || !accountId) return;
+    setPendingSave(false);
+    void handleSave();
+  }, [pendingSave, accountId, handleSave]);
 
   // FAB-as-save bridge — while /capture is mounted, the bottom-nav center
   // button (rendered in the (tabs) layout) takes over save responsibility:
@@ -1118,85 +1139,13 @@ function CapturePageInner() {
           />
         )}
 
-        {/* Account picker + note. Two states:
-              - User has accounts -> button opens the chooser drawer.
-              - User has zero accounts -> Link straight to /accounts so the
-                first-run flow has a one-tap path to create one. The old
-                version showed a disabled grey row that left users stuck. */}
-        <section className="mt-3 space-y-3 px-4">
-          {accountsLoading ? (
-            <div className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3">
-              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
-              <Skeleton className="h-3.5 flex-1 rounded" />
-            </div>
-          ) : accounts.length === 0 ? (
-            <Link
-              href="/accounts"
-              aria-label="Crear tu primera cuenta"
-              className="flex h-11 w-full items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-3 text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span
-                aria-hidden="true"
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary"
-              >
-                <Plus size={14} />
-              </span>
-              <span className="flex-1 text-[13px] font-semibold text-primary">
-                Crear tu primera cuenta
-              </span>
-              <ChevronRight
-                size={16}
-                aria-hidden="true"
-                className="text-primary"
-              />
-            </Link>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAccountDrawerOpen(true)}
-              aria-label={
-                account
-                  ? `Cuenta ${accountDisplayLabel(account)}, toca para cambiar`
-                  : "Sin cuenta seleccionada"
-              }
-              aria-haspopup="dialog"
-              aria-expanded={accountDrawerOpen}
-              className="flex h-11 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {account ? (
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground"
-                  >
-                    <account.Icon size={14} />
-                  </span>
-                  <span className="flex-1 text-[13px] font-semibold">
-                    {accountDisplayLabel(account)}
-                  </span>
-                  <span className="text-[11px] font-medium text-muted-foreground">
-                    {CURRENCY_LABEL[account.currency]}
-                  </span>
-                  <ChevronRight
-                    size={16}
-                    aria-hidden="true"
-                    className="text-muted-foreground"
-                  />
-                </>
-              ) : (
-                <span className="flex-1 text-[13px] font-medium text-muted-foreground">
-                  Elige una cuenta
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* TODO(ux): note input se quitó de mobile. Reubicar — quizás en
-              una expand-on-demand row inline. El state `note` y el
-              `noteDrawer` siguen montados para que la hidratación de edit
-              mode (que puede traer una nota guardada) no se rompa: el draft
-              sigue persistiendo `note` en handleSave. */}
-        </section>
+        {/* Inline account picker removed by design — saving now opens the
+            account drawer when none is selected ("modal-on-check" flow).
+            Forcing the explicit pick on every fresh entry stops users from
+            silently saving against the alphabetically-first account. The
+            chosen account is shown only inside the drawer. The merchant
+            empty-state link to /accounts is gone too: the drawer's empty
+            state covers that path. */}
 
         {/* Keypad — the in-page hint ("Toca Guardar o elige otra categoría")
             was removed; the bottom-nav save-FAB chevron below is the only
@@ -1290,13 +1239,28 @@ function CapturePageInner() {
                 : "El monto del gasto supera el saldo de esta cuenta."}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-6">
+          <div className="flex flex-col gap-2 px-4 pb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setNoBalanceOpen(false);
+                // Re-open the picker with pendingSave set so the user can
+                // choose a different account and the save fires
+                // automatically. Without this, the inline picker is gone
+                // so the user has no way to switch accounts mid-flow.
+                setPendingSave(true);
+                setAccountDrawerOpen(true);
+              }}
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Cambiar cuenta
+            </button>
             <button
               type="button"
               onClick={() => setNoBalanceOpen(false)}
-              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-9 w-full items-center justify-center rounded-xl text-[13px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Entendido
+              Cerrar
             </button>
           </div>
         </DrawerContent>

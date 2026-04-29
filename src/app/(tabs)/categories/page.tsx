@@ -232,6 +232,12 @@ export default function CategoriesPage() {
       // Switch the tab to the kind we just created so the row is visible.
       setActiveKind(draft.kind);
       await reload();
+      // Scroll back to the top so the freshly-created category is in view —
+      // without this the page stays anchored at the bottom Add button and
+      // the user has to scroll up to see what they just added.
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "No pudimos crear la categoría.";
@@ -338,11 +344,18 @@ export default function CategoriesPage() {
             </Card>
           ) : userCategories.length === 0 ? (
             <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
-              Aún no tienes categorías propias. Toca{" "}
-              <span className="font-semibold text-foreground">
-                Agregar categoría
-              </span>{" "}
-              para crear una.
+              <p className="mb-3 text-center">
+                Aún no tienes categorías propias.
+              </p>
+              <Button
+                type="button"
+                onClick={handleAdd}
+                aria-label="Agregar categoría"
+                className="h-10 w-full rounded-xl text-[13px] font-semibold"
+              >
+                <Plus size={14} aria-hidden="true" />
+                <span className="ml-1">Agregar categoría</span>
+              </Button>
             </Card>
           ) : (
             <Card className="overflow-hidden rounded-2xl border-border p-0">
