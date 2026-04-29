@@ -186,17 +186,28 @@ export function NotificationsBell({ className }: { className?: string }) {
     writeReadAt(stamp);
   }
 
-  // Mobile bug guard: when the dropdown is open and the user swipes the
-  // page (a touchmove that bubbles into Radix's outside-pointer detection),
-  // Radix fires close → the closing pointerup lands on the trigger → the
-  // trigger fires open again → another stray event closes it. Net effect:
-  // the menu visibly flickers closed-open-closed instead of just closing.
-  // We dampen reopens that arrive within 250ms of a close — those are the
-  // bounce, not a real tap.
+  // Mobile bug guard. The DropdownMenu wrapper is Base UI v1.3.0 (NOT Radix
+  // — see src/components/ui/dropdown-menu.tsx, `@base-ui/react/menu`). On a
+  // touch-driven swipe-down: Base UI's Menu interprets the touchmove past
+  // its drag threshold as an outside-press dismiss → the popup unmounts under
+  // the finger → the closing pointerup falls through to whatever is now at
+  // that point, which (with `align="end"` + `sideOffset={8}`) is frequently
+  // the trigger itself → trigger registers a press → reopen → another stray
+  // event closes again. Net effect: visible close-open-close flicker.
+  //
+  // Two-layer fix:
+  //   1. Suppress touch-driven pointerdown on the trigger while open. This
+  //      stops the bounce-tap from synthesizing an open after the swipe-
+  //      driven close, regardless of timing.
+  //   2. 600ms time-window guard on `handleOpenChange` as belt-and-suspenders
+  //      for the case where the closing pointer event is interpreted as a
+  //      genuine new press by Base UI internally and bypasses the trigger
+  //      handler. The previous 250ms wasn't enough — slow swipes / momentum
+  //      release stretch the close→reopen gap past that window.
   const lastCloseAtRef = React.useRef(0);
 
   function handleOpenChange(next: boolean) {
-    if (next && Date.now() - lastCloseAtRef.current < 250) return;
+    if (next && Date.now() - lastCloseAtRef.current < 600) return;
     if (!next) lastCloseAtRef.current = Date.now();
     setOpen(next);
     // Mark as read when the user opens the dropdown — they've now seen
@@ -205,13 +216,20 @@ export function NotificationsBell({ className }: { className?: string }) {
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+    <DropdownMenu open={open} onOpenChange={handleOpenChange} modal={true}>
       <DropdownMenuTrigger
         aria-label={
           unreadCount > 0
             ? `Notificaciones, ${unreadCount} sin leer`
             : "Notificaciones"
         }
+        onPointerDown={(e) => {
+          // While the dropdown is open, swallow touch pointerdown events on
+          // the trigger so a finger-up landing here after a swipe-driven
+          // close can't synthesize an immediate reopen. Mouse/pen flows are
+          // unaffected — they get the default Base UI toggle behavior.
+          if (open && e.pointerType === "touch") e.preventDefault();
+        }}
         className={cn(
           "relative inline-flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
