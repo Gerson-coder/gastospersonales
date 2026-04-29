@@ -93,6 +93,14 @@ export type UseTransactionsWindowOpts = {
 
 export type TransactionsWindowResult = {
   rows: TransactionView[];
+  /**
+   * Same shape as `rows` but with the active `accountId` filter applied.
+   * Equal to `rows` when no account filter is set. Consumers that need to
+   * scope to the selected account (e.g. dashboard's "Resumen de hoy"
+   * heroNumbers) should iterate this instead of `rows` — otherwise the
+   * scoping breaks because `rows` is the raw fetch.
+   */
+  filteredRows: TransactionView[];
   loading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -535,6 +543,7 @@ export function useTransactionsWindow(
 
   return {
     rows,
+    filteredRows,
     loading,
     error,
     refetch,

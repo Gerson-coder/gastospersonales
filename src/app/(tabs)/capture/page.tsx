@@ -474,9 +474,14 @@ function CapturePageInner() {
   // the current state. Absent keys = zero balance. Demo mode skips this — no
   // backend to query.
   const [balances, setBalances] = React.useState<Record<string, number>>({});
-  // Modal shown when the user picks an empty account in expense flow OR tries
-  // to save an expense against one. Single boolean — message is short and fixed.
+  // Modal shown on the expense flow when the picked account either has no
+  // saldo at all (`empty`) or has saldo but less than the typed amount
+  // (`insufficient`). Same Drawer, two copies — keeps the dismiss UX
+  // identical so the user always knows how to close.
   const [noBalanceOpen, setNoBalanceOpen] = React.useState(false);
+  const [noBalanceReason, setNoBalanceReason] = React.useState<
+    "empty" | "insufficient"
+  >("empty");
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     let cancelled = false;
@@ -750,13 +755,22 @@ function CapturePageInner() {
       toast.error("Completa monto, categoría y cuenta para guardar.");
       return;
     }
-    // Saldo guard — block expenses against an empty account. The account
-    // picker already nudges the user, but a careful user could pick a valid
-    // account, switch to expense kind, and reach Save without retriggering
-    // the picker — so we re-check here.
-    if (kind === "expense" && (balances[accountId] ?? 0) <= 0) {
-      setNoBalanceOpen(true);
-      return;
+    // Saldo guard — block expenses against an empty or insufficient account.
+    // The account picker already nudges the user, but they could pick a
+    // valid account, switch to expense kind, then bump the amount above the
+    // saldo — so we re-check on submit.
+    if (kind === "expense") {
+      const balance = balances[accountId] ?? 0;
+      if (balance <= 0) {
+        setNoBalanceReason("empty");
+        setNoBalanceOpen(true);
+        return;
+      }
+      if (balance < amount) {
+        setNoBalanceReason("insufficient");
+        setNoBalanceOpen(true);
+        return;
+      }
     }
 
     const draft: TransactionDraft = {
@@ -1238,9 +1252,15 @@ function CapturePageInner() {
           className="bg-background"
         >
           <DrawerHeader>
-            <DrawerTitle>Sin saldo</DrawerTitle>
+            <DrawerTitle>
+              {noBalanceReason === "empty"
+                ? "Sin saldo"
+                : "Saldo insuficiente"}
+            </DrawerTitle>
             <DrawerDescription id="capture-no-balance-desc">
-              Esta cuenta no tiene saldo para realizar esta operación.
+              {noBalanceReason === "empty"
+                ? "Esta cuenta no tiene saldo para realizar esta operación."
+                : "El monto del gasto supera el saldo de esta cuenta."}
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-6">
@@ -1364,8 +1384,17 @@ function CapturePageInner() {
                           setAccountDrawerOpen(false);
                           // Saldo guard — only on expense flow. Income RECHARGES
                           // an empty account, so we must never block it.
-                          if (kind === "expense" && (balances[a.id] ?? 0) <= 0) {
-                            setNoBalanceOpen(true);
+                          // `insufficient` only fires if the user already typed
+                          // an amount; otherwise we just check for empty.
+                          if (kind === "expense") {
+                            const balance = balances[a.id] ?? 0;
+                            if (balance <= 0) {
+                              setNoBalanceReason("empty");
+                              setNoBalanceOpen(true);
+                            } else if (amount > 0 && balance < amount) {
+                              setNoBalanceReason("insufficient");
+                              setNoBalanceOpen(true);
+                            }
                           }
                         }}
                         aria-pressed={selected}

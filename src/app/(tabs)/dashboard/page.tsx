@@ -750,16 +750,37 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Seed the account filter to the first account once we have a list — the
-  // "Todas" chip was removed (each card now stands alone), so we need a
-  // concrete default instead of leaving selectedAccountId at null and
-  // showing combined totals nobody asked for. Subsequent re-renders are
-  // no-ops because selectedAccountId is no longer null.
+  // Order accounts by "most recently used" — `window.rows` is DESC by
+  // occurredAt, so the first time we see an `accountId` is also its latest
+  // tx. Accounts with no tx in the visible window keep their server
+  // (created_at) order at the tail. Drives both the chip strip and the
+  // "Ver todos" sheet so a fresh recharge surfaces immediately at the head
+  // without needing a separate persisted MRU.
+  const orderedAccounts = React.useMemo(() => {
+    if (accounts.length === 0) return accounts;
+    const seenAt = new Map<string, number>();
+    window.rows.forEach((r, idx) => {
+      if (!seenAt.has(r.accountId)) seenAt.set(r.accountId, idx);
+    });
+    return [...accounts].sort((a, b) => {
+      const ai = seenAt.get(a.id);
+      const bi = seenAt.get(b.id);
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  }, [accounts, window.rows]);
+
+  // Seed the account filter to the most-recently-used account once we have
+  // a list — matches the user's expectation after capturing a recharge
+  // ("the account I just used should be selected"). Subsequent re-renders
+  // are no-ops because selectedAccountId is no longer null.
   React.useEffect(() => {
     if (selectedAccountId !== null) return;
-    if (accounts.length === 0) return;
-    setSelectedAccountId(accounts[0].id);
-  }, [accounts, selectedAccountId]);
+    if (orderedAccounts.length === 0) return;
+    setSelectedAccountId(orderedAccounts[0].id);
+  }, [orderedAccounts, selectedAccountId]);
 
   // ── Branch on the data source ──────────────────────────────────────────
   // Demo mode: feed the legacy in-file dataset. Real mode: derive everything
@@ -838,7 +859,7 @@ export default function DashboardPage() {
           amount: t.amount,
           occurredAt: t.occurredAt,
         }))
-      : window.rows.map((t) => ({
+      : window.filteredRows.map((t) => ({
           kind: t.kind,
           amount: t.amount,
           occurredAt: t.occurredAt,
@@ -874,7 +895,7 @@ export default function DashboardPage() {
     // Expose the weekly totals separately so the insight chip (whose copy
     // says "esta semana") can use them regardless of the active period.
     return { ...result, spentWeek, incomeWeek };
-  }, [period, income, spent, isDemo, window.rows]);
+  }, [period, income, spent, isDemo, window.filteredRows]);
 
   // Date range pill label que acompaña al saludo en mobile.
   // Para semanas que cruzan meses ("27 abr - 3 may, 2026") incluimos los
@@ -1057,8 +1078,8 @@ export default function DashboardPage() {
                       visible window of 3. Followed by up to 3 others. */}
                   {(() => {
                     const visibleAccounts = (() => {
-                      const head = accounts.slice(0, 3);
-                      const active = accounts.find(
+                      const head = orderedAccounts.slice(0, 3);
+                      const active = orderedAccounts.find(
                         (a) => a.id === selectedAccountId,
                       );
                       if (!active || head.some((a) => a.id === active.id)) {
@@ -1066,7 +1087,7 @@ export default function DashboardPage() {
                       }
                       return [active, ...head.slice(0, 2)];
                     })();
-                    const remaining = accounts.length - visibleAccounts.length;
+                    const remaining = orderedAccounts.length - visibleAccounts.length;
                     return (
                       <>
                         {visibleAccounts.map((account) => (
@@ -1123,7 +1144,7 @@ export default function DashboardPage() {
                   </SheetDescription>
                 </SheetHeader>
                 <ul className="mt-2 flex flex-col gap-1">
-                  {accounts.map((account) => {
+                  {orderedAccounts.map((account) => {
                     const selected = selectedAccountId === account.id;
                     return (
                       <li key={account.id}>

@@ -341,8 +341,10 @@ export async function getTransactionById(
  * non-archived transactions (saldo is an all-time concept, not windowed —
  * matches the user's mental model of "how much is in this account").
  *
- * Returned as `Record<accountId, balance_minor>`. Accounts with no movements
- * are absent from the map; treat absence as zero.
+ * Returned in MAJOR units (e.g. soles, dollars) to match the rest of the UI
+ * — `TransactionView.amount` is also major, so callers can compare directly
+ * (`balances[id] < draft.amount`) without unit conversions. Accounts with
+ * no movements are absent from the map; treat absence as zero.
  */
 export async function getAccountBalances(
   currency: TransactionDraft["currency"],
@@ -358,12 +360,16 @@ export async function getAccountBalances(
     throw new Error(error.message || "No pudimos calcular el saldo.");
   }
 
-  const balances: Record<string, number> = {};
+  const minor: Record<string, number> = {};
   type Row = { account_id: string; kind: "income" | "expense"; amount_minor: number };
   for (const row of (data ?? []) as Row[]) {
     const sign = row.kind === "income" ? 1 : -1;
-    balances[row.account_id] = (balances[row.account_id] ?? 0) + sign * row.amount_minor;
+    minor[row.account_id] = (minor[row.account_id] ?? 0) + sign * row.amount_minor;
   }
+  // Convert to major in a second pass — keeps the inner sum on integers
+  // (no float drift) and only divides once per account.
+  const balances: Record<string, number> = {};
+  for (const id in minor) balances[id] = minor[id] / 100;
   return balances;
 }
 
