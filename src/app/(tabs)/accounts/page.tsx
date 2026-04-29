@@ -17,6 +17,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -167,6 +168,25 @@ export default function AccountsPage() {
   const [loading, setLoading] = React.useState<boolean>(SUPABASE_ENABLED);
   const [editing, setEditing] = React.useState<Account | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+
+  // Deep-link from /dashboard's empty state: when a brand-new user (only
+  // the auto-Efectivo) lands on the dashboard, the empty card primary CTA
+  // sends them here with `?create=1` so they go straight to creating
+  // their main wallet/bank instead of having to find the Agregar button.
+  // We open the create drawer once on mount, then strip the query so a
+  // refresh doesn't reopen it indefinitely.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const createParamConsumed = React.useRef(false);
+  React.useEffect(() => {
+    if (createParamConsumed.current) return;
+    if (searchParams.get("create") !== "1") return;
+    if (!SUPABASE_ENABLED) return;
+    createParamConsumed.current = true;
+    setCreateOpen(true);
+    // Drop the param from the URL bar so reload / share doesn't loop.
+    router.replace("/accounts", { scroll: false });
+  }, [searchParams, router]);
 
   const reload = React.useCallback(async () => {
     if (!SUPABASE_ENABLED) return;

@@ -44,6 +44,7 @@ import {
   X,
   ChevronRight,
   Landmark,
+  Wallet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -529,32 +530,63 @@ function guessIconKey(name: string | null | undefined): CategoryId {
 // hero + insight banner are also hidden in this branch so the screen has a
 // single CTA (no zero-filled "Gastaste hoy/semana/mes" cards competing for
 // attention with the "registra tu primero" prompt).
-function EmptyDashboardCard({ currency: _currency }: { currency: Currency }) {
+function EmptyDashboardCard({
+  currency: _currency,
+  accountsCount,
+}: {
+  currency: Currency;
+  accountsCount: number;
+}) {
+  // Two distinct first-time states share this card:
+  //   1. Brand-new user who only has the auto-seeded Efectivo (or zero
+  //      accounts if the signup trigger failed). Their next concrete
+  //      step is connecting a real wallet/bank — without it, every
+  //      expense lands on cash and the dashboard is structurally
+  //      uninformative. Primary CTA opens the account-create drawer
+  //      directly via /accounts?create=1.
+  //   2. Returning user who has multiple accounts but no transactions
+  //      in the active currency window. They've already onboarded —
+  //      what they're missing is movements. Primary CTA stays /capture.
+  const needsAccount = accountsCount <= 1;
+  const title = needsAccount
+    ? "Crea tu cuenta de saldo"
+    : "Registra tu primer gasto";
+  const body = needsAccount
+    ? "Antes de empezar, agrega la cuenta donde tienes tu dinero (BCP, Interbank, Yape, Plin…). Así podrás registrar gastos contra el saldo correcto."
+    : "Apenas tengamos un movimiento empezamos a armar tu historial: evolución, categorías y últimas transacciones.";
+  const primaryHref = needsAccount ? "/accounts?create=1" : "/capture";
+  const primaryLabel = needsAccount ? "Crear cuenta" : "Empezar";
+  const secondaryHref = needsAccount ? "/capture" : "/receipt";
+  const secondaryLabel = needsAccount ? "Registrar gasto" : "Escanear ticket";
+
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
       <div className="mx-auto flex flex-col items-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
-          <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
+          {needsAccount ? (
+            <Wallet size={22} aria-hidden="true" strokeWidth={2.2} />
+          ) : (
+            <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
+          )}
         </span>
         <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
-          Registra tu primer gasto
+          {title}
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
-          Apenas tengamos un movimiento empezamos a armar tu historial:
-          evolución, categorías y últimas transacciones.
+          {body}
         </p>
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
           <Link
-            href="/capture"
+            href={primaryHref}
             className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            Empezar
+            {primaryLabel}
           </Link>
           <Link
-            href="/receipt"
+            href={secondaryHref}
             className="inline-flex h-11 items-center justify-center rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Escanear ticket
+            {secondaryLabel}
           </Link>
         </div>
       </div>
@@ -723,6 +755,11 @@ export default function DashboardPage() {
   // chip strip would be a no-op.
   const [selectedAccountId, setSelectedAccountId] = React.useState<string | null>(null);
   const [accounts, setAccounts] = React.useState<Account[]>([]);
+  // Distinguishes "listAccounts hasn't returned yet" from "user genuinely
+  // has zero accounts". Without it, the dashboard's empty-state CTA flashes
+  // "Crea tu cuenta de saldo" on every mount before the fetch resolves,
+  // even when the user already has accounts.
+  const [accountsHydrated, setAccountsHydrated] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
 
   const window = useTransactionsWindow({
@@ -768,7 +805,12 @@ export default function DashboardPage() {
 
   // Account list — feeds the account-filter chip strip. Fetched once on mount.
   React.useEffect(() => {
-    if (!SUPABASE_ENABLED) return;
+    if (!SUPABASE_ENABLED) {
+      // Demo mode short-circuits the empty-state hydration check —
+      // there's no backend to wait for.
+      setAccountsHydrated(true);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
@@ -776,6 +818,8 @@ export default function DashboardPage() {
         if (!cancelled) setAccounts(list);
       } catch {
         // Non-fatal — chip strip simply won't render without accounts.
+      } finally {
+        if (!cancelled) setAccountsHydrated(true);
       }
     })();
     return () => {
@@ -1253,7 +1297,14 @@ export default function DashboardPage() {
             )}
 
             {isEmpty ? (
-              <EmptyDashboardCard currency={currency} />
+              <EmptyDashboardCard
+                currency={currency}
+                // Once accounts hydrate we know whether the user is brand-
+                // new (only auto-Efectivo / zero) or returning. Until then
+                // assume "returning" so we don't flash the wrong CTA on
+                // the first paint of every mount.
+                accountsCount={accountsHydrated ? accounts.length : 99}
+              />
             ) : (
               <>
                 {/* ─── MOBILE LAYOUT ──────────────────────────────────────
