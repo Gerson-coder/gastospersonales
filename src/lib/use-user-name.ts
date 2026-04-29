@@ -157,9 +157,24 @@ export function useUserName(): {
           // Caller decides how to surface this (toast, retry, etc.).
           throw new Error(error.message);
         }
+        // Refresh the shared session.profile so other useUserName mounts
+        // (dashboard greeting, sidebar, ProfileMenu) re-read the latest
+        // display_name on their next effect pass. Without this, when the
+        // user navigates away from /profile and the editing component
+        // unmounts, the dashboard's useUserName step-2 effect reads
+        // session.profile.display_name (still cached as the OLD value)
+        // and overwrites the localStorage value we just set — the user
+        // sees the old name on the dashboard until a hard reload.
+        // Best-effort: a refresh failure doesn't undo the optimistic UI
+        // update or the DB write, so swallow the error here.
+        try {
+          await session.refresh();
+        } catch {
+          /* ignore */
+        }
       }
     },
-    [session.user],
+    [session],
   );
 
   // Optimistic avatar update — call right after `uploadAvatar` returns

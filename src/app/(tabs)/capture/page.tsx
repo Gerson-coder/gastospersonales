@@ -76,6 +76,7 @@ import {
   type TransactionDraft,
 } from "@/lib/data/transactions";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { getCategoryIcon } from "@/lib/category-icons";
@@ -503,6 +504,11 @@ function CapturePageInner() {
   const [abonoMode, setAbonoMode] = React.useState(false);
   const [abonoAmount, setAbonoAmount] = React.useState("");
   const [abonoSubmitting, setAbonoSubmitting] = React.useState(false);
+  // Post-abono success drawer — replaces the green sonner toast with a
+  // proper modal acknowledgement so the user clearly sees the saldo
+  // landed before going back to the keypad.
+  const [abonoSuccessOpen, setAbonoSuccessOpen] = React.useState(false);
+  const [abonoSuccessAmount, setAbonoSuccessAmount] = React.useState(0);
   // When the user hits Save without a picked account, we open the account
   // drawer instead of saving. This flag rides through that round-trip so
   // the picker callback knows to fire handleSave automatically once the
@@ -1040,10 +1046,16 @@ function CapturePageInner() {
       } catch {
         // Soft-fail
       }
-      toast.success(`Abono registrado: ${formatMoney(n, currency)}`);
+      // Replace the old green sonner toast with a proper modal — the
+      // user explicitly asked for the new acknowledgement pattern. We
+      // close the saldo modal first so the success drawer doesn't stack
+      // on top of it, capture the amount we just confirmed for the
+      // success body, then open the result drawer.
       setAbonoMode(false);
       setAbonoAmount("");
       setNoBalanceOpen(false);
+      setAbonoSuccessAmount(n);
+      setAbonoSuccessOpen(true);
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -1530,6 +1542,26 @@ function CapturePageInner() {
           )}
         </DrawerContent>
       </Drawer>
+
+      {/* Abono success — replaces the previous green sonner toast.
+          Mounts as a sibling to the saldo modal so it renders cleanly
+          above the now-closed saldo drawer with the success state. */}
+      <ActionResultDrawer
+        open={abonoSuccessOpen}
+        onOpenChange={setAbonoSuccessOpen}
+        title="Abono registrado"
+        description={
+          <>
+            Sumamos{" "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {formatMoney(abonoSuccessAmount, currency)}
+            </span>{" "}
+            a tu cuenta. Ya puedes continuar con tu gasto.
+          </>
+        }
+        closeLabel="Continuar"
+        tone="success"
+      />
 
       {/* Category drawer — full grid */}
       <Drawer open={categoryDrawerOpen} onOpenChange={setCategoryDrawerOpen}>

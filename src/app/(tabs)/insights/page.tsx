@@ -35,6 +35,12 @@ import {
   GraduationCap,
   Briefcase,
   Smartphone,
+  Tv,
+  PawPrint,
+  Scissors,
+  Shirt,
+  Gift,
+  ScrollText,
   Circle,
   Sparkles,
   TrendingUp,
@@ -65,6 +71,12 @@ type CategoryId =
   | "fun"
   | "utilities"
   | "phone"
+  | "subscriptions"
+  | "pets"
+  | "personal-care"
+  | "clothing"
+  | "gifts"
+  | "taxes"
   | "home"
   | "edu"
   | "work"
@@ -101,6 +113,12 @@ const CATEGORY_ICONS: Record<
   fun: Film,
   utilities: Zap,
   phone: Smartphone,
+  subscriptions: Tv,
+  pets: PawPrint,
+  "personal-care": Scissors,
+  clothing: Shirt,
+  gifts: Gift,
+  taxes: ScrollText,
   home: Home,
   edu: GraduationCap,
   work: Briefcase,
@@ -115,6 +133,12 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   fun: "Entretenimiento",
   utilities: "Servicios",
   phone: "Telefonía",
+  subscriptions: "Suscripciones",
+  pets: "Mascotas",
+  "personal-care": "Cuidado personal",
+  clothing: "Vestimenta",
+  gifts: "Regalos",
+  taxes: "Impuestos",
   home: "Hogar",
   edu: "Educación",
   work: "Trabajo",
@@ -131,6 +155,14 @@ const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
   fun: { bg: "bg-[oklch(0.92_0.04_310)]", text: "text-[oklch(0.45_0.10_310)]" },
   utilities: { bg: "bg-[oklch(0.92_0.04_70)]", text: "text-[oklch(0.45_0.10_70)]" },
   phone: { bg: "bg-[oklch(0.92_0.04_50)]", text: "text-[oklch(0.45_0.12_50)]" },
+  // New categories from migration 00017. Hue picks pulled from the DB
+  // color column for visual continuity with the rest of the kit.
+  subscriptions: { bg: "bg-[oklch(0.92_0.04_295)]", text: "text-[oklch(0.45_0.12_295)]" },
+  pets: { bg: "bg-[oklch(0.92_0.04_55)]", text: "text-[oklch(0.45_0.12_55)]" },
+  "personal-care": { bg: "bg-[oklch(0.92_0.04_345)]", text: "text-[oklch(0.45_0.12_345)]" },
+  clothing: { bg: "bg-[oklch(0.92_0.04_205)]", text: "text-[oklch(0.45_0.10_205)]" },
+  gifts: { bg: "bg-[oklch(0.92_0.04_120)]", text: "text-[oklch(0.45_0.10_120)]" },
+  taxes: { bg: "bg-[oklch(0.92_0.02_250)]", text: "text-[oklch(0.45_0.06_250)]" },
   home: { bg: "bg-[oklch(0.92_0.04_162)]", text: "text-[oklch(0.45_0.10_162)]" },
   edu: { bg: "bg-[oklch(0.92_0.03_180)]", text: "text-[oklch(0.45_0.10_180)]" },
   work: { bg: "bg-[oklch(0.92_0.03_140)]", text: "text-[oklch(0.45_0.10_140)]" },
@@ -171,7 +203,20 @@ function categoryNameToId(name: string | null | undefined): CategoryId {
     return "transport";
   if (/(mercado|market|super|grocer)/.test(norm)) return "market";
   if (/(salud|health|farmac|clinic)/.test(norm)) return "health";
-  if (/(entreten|fun|cine|streaming|ocio)/.test(norm)) return "fun";
+  if (/(entreten|fun|cine|ocio)/.test(norm)) return "fun";
+  // Order matters — more specific terms first. Suscripciones (Netflix,
+  // Spotify, etc.) used to fall through to "fun" / "ocio" via the
+  // streaming keyword; promote it to its own bucket now that the
+  // category exists.
+  if (/(suscrip|streaming|netflix|spotify|disney|hbo|prime)/.test(norm))
+    return "subscriptions";
+  if (/(mascota|pet|veterinari|veterin)/.test(norm)) return "pets";
+  if (/(cuidado personal|peluquer|barber|gimnasio|cosmetic|spa)/.test(norm))
+    return "personal-care";
+  if (/(vestiment|ropa|calzado|zapato)/.test(norm)) return "clothing";
+  if (/(regalo|gift|cumple|aniversario|navidad)/.test(norm)) return "gifts";
+  if (/(impuesto|sunat|sunarp|peaje|multa|tramite)/.test(norm))
+    return "taxes";
   // Telefonía must be checked before "servicio" / "utilit" so the category
   // doesn't collapse into the lightning-bolt utilities bucket.
   if (/(telefon|recarga|postpago|movistar|claro|entel|bitel)/.test(norm))

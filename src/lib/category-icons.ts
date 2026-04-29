@@ -32,6 +32,11 @@ import {
   BookOpen,
   CircleEllipsis,
   Smartphone,
+  Tv,
+  PawPrint,
+  Scissors,
+  Shirt,
+  ScrollText,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -92,6 +97,15 @@ const ICON_ALIASES: Record<string, LucideIconLike> = {
   // the picker grid above (we keep the grid at 16 for a clean 4×4 layout)
   // but needs to render correctly when read back from the DB.
   smartphone: Smartphone,
+  // Seeded by migration 00017 — Suscripciones, Mascotas, Cuidado personal,
+  // Vestimenta, Regalos, Impuestos. Same reason: not in the picker grid
+  // (would push it to a 5th row of 4) but the DB lookup needs them. Gift
+  // is already in the grid above so no entry here for it.
+  tv: Tv,
+  "paw-print": PawPrint,
+  scissors: Scissors,
+  shirt: Shirt,
+  "scroll-text": ScrollText,
 };
 
 /**

@@ -83,6 +83,7 @@ import type { Database } from "@/lib/supabase/types";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
+import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
@@ -1044,6 +1045,20 @@ function DangerZoneCard() {
   // Factory reset confirm — user must type BORRAR exactly.
   const [factoryConfirmText, setFactoryConfirmText] = React.useState("");
 
+  // Result-acknowledgement drawer — replaces the green sonner toast for
+  // every destructive action below. The user explicitly asked for the
+  // modal pattern: a 3-second toast is too easy to miss for an
+  // irreversible operation.
+  const [resultOpen, setResultOpen] = React.useState(false);
+  const [resultTitle, setResultTitle] = React.useState("");
+  const [resultDescription, setResultDescription] = React.useState<React.ReactNode>(null);
+
+  function showResult(title: string, description?: React.ReactNode) {
+    setResultTitle(title);
+    setResultDescription(description ?? null);
+    setResultOpen(true);
+  }
+
   // Reset transient state whenever a sheet closes so the next open starts
   // fresh (no stale "armed" button or pre-filled confirmation text).
   React.useEffect(() => {
@@ -1058,10 +1073,11 @@ function DangerZoneCard() {
     try {
       const count = await archiveAllUserCategories();
       setResetCatsOpen(false);
-      toast.success(
+      showResult(
+        count === 0 ? "No había qué borrar" : "Categorías restablecidas",
         count === 0
-          ? "No tenías categorías propias."
-          : `Borramos ${count} ${count === 1 ? "categoría" : "categorías"}.`,
+          ? "No tenías categorías propias creadas."
+          : `Borramos ${count} ${count === 1 ? "categoría" : "categorías"} de tu cuenta. Las categorías del sistema se mantienen.`,
       );
       router.refresh();
     } catch (err) {
@@ -1084,10 +1100,11 @@ function DangerZoneCard() {
           : await archiveUserAccountsByKind(kind);
       setResetAccountsOpen(false);
       setArmedKind(null);
-      toast.success(
+      showResult(
+        count === 0 ? "No había qué borrar" : "Cuentas restablecidas",
         count === 0
-          ? "No había cuentas para borrar."
-          : `Borramos ${count} ${count === 1 ? "cuenta" : "cuentas"}.`,
+          ? "No tenías cuentas para borrar."
+          : `Borramos ${count} ${count === 1 ? "cuenta" : "cuentas"}. Tu cuenta principal se conserva.`,
       );
       router.refresh();
     } catch (err) {
@@ -1108,9 +1125,10 @@ function DangerZoneCard() {
       const counts = await factoryReset();
       setFactoryOpen(false);
       setFactoryConfirmText("");
-      toast.success("Listo, comenzamos de nuevo.", {
-        description: `Borramos ${counts.transactions} movimientos, ${counts.accounts} cuentas, ${counts.categories} categorías y ${counts.merchants} comercios.`,
-      });
+      showResult(
+        "Listo, comenzamos de nuevo",
+        `Borramos ${counts.transactions} ${counts.transactions === 1 ? "movimiento" : "movimientos"}, ${counts.accounts} ${counts.accounts === 1 ? "cuenta" : "cuentas"}, ${counts.categories} ${counts.categories === 1 ? "categoría" : "categorías"} y ${counts.merchants} ${counts.merchants === 1 ? "comercio" : "comercios"}.`,
+      );
       router.refresh();
     } catch (err) {
       const message =
@@ -1410,6 +1428,19 @@ function DangerZoneCard() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* Result acknowledgement — replaces the green sonner toast for
+          all 3 destructive actions above. Renders a clear ✓ + summary
+          + "Continuar" so the user has a definite end-of-action moment
+          for an irreversible operation. */}
+      <ActionResultDrawer
+        open={resultOpen}
+        onOpenChange={setResultOpen}
+        title={resultTitle}
+        description={resultDescription}
+        closeLabel="Continuar"
+        tone="success"
+      />
     </>
   );
 }
