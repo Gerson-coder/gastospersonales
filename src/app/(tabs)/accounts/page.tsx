@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { accountChipBgClass } from "@/lib/account-brand-slug";
 import {
   ACCOUNT_SUBTYPE_LABEL,
   ACCOUNT_SUBTYPE_OPTIONS,
@@ -110,15 +111,11 @@ const ACCOUNT_KIND_ICON: Record<
   plin: Wallet,
 };
 
-const ACCOUNT_TINT: Record<AccountKind, string> = {
-  cash: "bg-[oklch(0.92_0.04_70)] text-[oklch(0.45_0.10_70)]",
-  card: "bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]",
-  bank: "bg-[oklch(0.92_0.03_140)] text-[oklch(0.45_0.10_140)]",
-  // Yape brand purple, Plin brand teal — both at the calm soft-tint level
-  // used by the rest of the kinds so the row rhythm stays consistent.
-  yape: "bg-[oklch(0.92_0.05_310)] text-[oklch(0.45_0.16_310)]",
-  plin: "bg-[oklch(0.92_0.05_185)] text-[oklch(0.45_0.12_185)]",
-};
+// ACCOUNT_TINT removed — chip backgrounds are now keyed by brand label
+// via `accountChipBgClass`, not by `account.kind`. Kind-based colors made
+// every bank look identical (same green) and broke the brand-cutout SVGs
+// (Interbank). The new helper returns a neutral theme-aware bg for most
+// accounts and only keeps a colored chip for brands whose SVG needs one.
 
 // Yape / Plin live in BRAND_PRESETS (below); credit / debit cards are
 // always issued by a bank, so a separate "Tarjeta" kind ended up being
@@ -289,8 +286,13 @@ export default function AccountsPage() {
                         <div
                           aria-hidden="true"
                           className={cn(
-                            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl",
-                            ACCOUNT_TINT[account.kind],
+                            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-foreground",
+                            // Neutral theme-aware chip for every brand;
+                            // Interbank keeps a colored bg because its
+                            // SVG is a green-with-white-cutouts wordmark
+                            // that disappears on a white chip. See
+                            // accountChipBgClass for the rule.
+                            accountChipBgClass(account.label),
                           )}
                         >
                           <AccountBrandIcon

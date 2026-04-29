@@ -18,7 +18,7 @@ import { toast } from "sonner";
 
 import {
   Home,
-  List,
+  ArrowLeftRight,
   Tag,
   Clock,
   Target,
@@ -60,7 +60,7 @@ type SidebarNavItem = {
 
 const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/dashboard",  label: "Resumen",       icon: Home      },
-  { href: "/movements",  label: "Transacciones", icon: List      },
+  { href: "/movements",  label: "Movimientos",  icon: ArrowLeftRight },
   { href: "/categories", label: "Categorías",    icon: Tag       },
   { href: "/budgets",    label: "Presupuestos",  icon: Clock     },
   { href: "/goals",      label: "Metas",         icon: Target    },

@@ -77,6 +77,7 @@ import {
 } from "@/lib/data/transactions";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MerchantPicker } from "@/components/lumi/MerchantPicker";
@@ -824,7 +825,7 @@ function CapturePageInner() {
     }
 
     if (!user) {
-      toast.error("Necesitás iniciar sesión para registrar movimientos.");
+      toast.error("Necesitas iniciar sesión para registrar movimientos.");
       return;
     }
     if (!online) {
@@ -852,11 +853,17 @@ function CapturePageInner() {
     if (kind === "expense") {
       const balance = balances[accountId] ?? 0;
       if (balance <= 0) {
+        // Clear pendingSave when the modal opens — closing the modal
+        // (Cerrar / ESC / dismiss) must NEVER auto-retry a save the user
+        // didn't ask for. The original "Guardar" tap that set pendingSave
+        // has been answered by surfacing this modal.
+        setPendingSave(false);
         setNoBalanceReason("empty");
         setNoBalanceOpen(true);
         return;
       }
       if (balance < amount) {
+        setPendingSave(false);
         setNoBalanceReason("insufficient");
         setNoBalanceOpen(true);
         return;
@@ -1050,13 +1057,16 @@ function CapturePageInner() {
 
   // Reset abono state every time the saldo modal closes — opening it again
   // for a different account/amount should always start at the 3-button
-  // decision view, not at a half-typed abono input.
+  // decision view, not at a half-typed abono input. Also clear pendingSave
+  // so closing this modal can never retroactively auto-fire handleSave —
+  // the user dismissed, that's the answer.
   function handleNoBalanceOpenChange(next: boolean) {
     setNoBalanceOpen(next);
     if (!next) {
       setAbonoMode(false);
       setAbonoAmount("");
       setAbonoSubmitting(false);
+      setPendingSave(false);
     }
   }
 
@@ -1470,13 +1480,13 @@ function CapturePageInner() {
               <button
                 type="button"
                 onClick={() => {
+                  // Just open the picker. NO setPendingSave here — auto-
+                  // saving after the user picks a new account was the cause
+                  // of the "tap Cambiar cuenta → expense fires silently"
+                  // bug. The user lands back on the keypad with the new
+                  // account selected and saldo visible; they tap Save when
+                  // ready, fully in control.
                   setNoBalanceOpen(false);
-                  // Re-open the picker with pendingSave set so the user
-                  // can choose a different account and the save fires
-                  // automatically. Without this, the inline picker is
-                  // gone so the user has no way to switch accounts
-                  // mid-flow.
-                  setPendingSave(true);
                   setAccountDrawerOpen(true);
                 }}
                 className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1486,6 +1496,12 @@ function CapturePageInner() {
               <button
                 type="button"
                 onClick={() => {
+                  // Defensive: clear pendingSave so dismissing the abono
+                  // form (Volver / close) can't auto-fire the original
+                  // expense save. Abono is its own intent — the user is
+                  // recharging the account, not committing to the original
+                  // expense yet.
+                  setPendingSave(false);
                   // Pre-fill the abono input with the missing amount when
                   // the modal fired in "insufficient" mode — that's the
                   // exact gap the user needs to cover to make their
@@ -1655,20 +1671,16 @@ function CapturePageInner() {
                         onClick={() => {
                           setAccountId(a.id);
                           setAccountDrawerOpen(false);
-                          // Saldo guard — only on expense flow. Income RECHARGES
-                          // an empty account, so we must never block it.
-                          // `insufficient` only fires if the user already typed
-                          // an amount; otherwise we just check for empty.
-                          if (kind === "expense") {
-                            const b = balances[a.id] ?? 0;
-                            if (b <= 0) {
-                              setNoBalanceReason("empty");
-                              setNoBalanceOpen(true);
-                            } else if (amount > 0 && b < amount) {
-                              setNoBalanceReason("insufficient");
-                              setNoBalanceOpen(true);
-                            }
-                          }
+                          // No inline saldo guard here. Two saldo guards
+                          // racing on the same selection event was the cause
+                          // of the "modal fires for an account that has saldo
+                          // → tap Cambiar cuenta → auto-save fires silently"
+                          // bug. handleSave (reached via pendingSave or via a
+                          // manual Save tap) is the single source of truth
+                          // for the saldo guard now. Per-row saldo is already
+                          // visible in the picker so the user picks with
+                          // full information — the popup was a holdover from
+                          // the pre-saldo-column picker.
                         }}
                         aria-pressed={selected}
                         aria-label={`${accountDisplayLabel(a)}, ${kindLabel}, saldo ${formatMoney(balance, a.currency)}`}
@@ -1680,7 +1692,10 @@ function CapturePageInner() {
                       >
                         <span
                           aria-hidden="true"
-                          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-background text-foreground ring-1 ring-border"
+                          className={cn(
+                            "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+                            accountChipBgClass(a.label),
+                          )}
                         >
                           <AccountBrandIcon
                             label={a.label}

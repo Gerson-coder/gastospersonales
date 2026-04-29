@@ -42,9 +42,12 @@ import {
   X,
   Loader2,
   AlertCircle,
+  Landmark,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { formatTxDate } from "@/lib/format-tx-date";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -340,7 +343,25 @@ function TransactionRow({
       style={{ WebkitTouchCallout: "none" }}
       {...longPressHandlers}
     >
-      {t.merchantLogoSlug ? (
+      {isIncome && t.accountName ? (
+        // Income rows lead with the account NAME — the icon should be the
+        // account's brand logo (BCP, Interbank, Yape, Plin...) rather
+        // than a generic category icon. Falls back to Landmark when the
+        // label has no registered brand. Same chip-bg rule as /accounts:
+        // Interbank keeps a colored bg because its SVG depends on it.
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+            accountChipBgClass(t.accountName),
+          )}
+        >
+          <AccountBrandIcon
+            label={t.accountName}
+            fallback={<Landmark size={18} />}
+          />
+        </span>
+      ) : t.merchantLogoSlug ? (
         <span
           aria-hidden="true"
           className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
@@ -380,7 +401,7 @@ function TransactionRow({
           "font-semibold tabular-nums leading-none tracking-tight text-base",
           isIncome
             ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-            : "text-foreground",
+            : "text-destructive",
         )}
         style={{
           fontFeatureSettings: '"tnum","lnum"',

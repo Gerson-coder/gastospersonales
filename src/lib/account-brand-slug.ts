@@ -41,3 +41,40 @@ export function accountBrandSlug(label: string): string | null {
     .toLowerCase();
   return BRAND_LABEL_TO_SLUG[normalized] ?? null;
 }
+
+/**
+ * Brands whose SVG logo is a single-color silhouette with the brand text
+ * "punched out" via even-odd fill. On a white/transparent chip the cutout
+ * letters end up white-on-white and the logo reads as a solid blob. They
+ * NEED a colored chip background to render legibly.
+ *
+ * Today the only one in `public/logos/banks/` that hits this is Interbank
+ * (recolored from the original PNG-traced black silhouette to the brand
+ * green in commit 3f8e2fc). If we ever replace it with a proper layered
+ * vector source, this list can shrink.
+ *
+ * Merchants with the same problem (Bembos, Inkafarma, Tambo) live under
+ * `public/logos/merchants/` and render inside chips owned by the merchant-
+ * avatar pathway, not this one — they have their own visual treatment.
+ */
+const COLORED_CHIP_BG_SLUGS = new Set<string>(["interbank"]);
+
+/**
+ * Returns the chip background class for an account row's icon. Most
+ * accounts get a neutral theme-aware background (`bg-background` adapts
+ * to light/dark) with a subtle border so the chip still reads as a
+ * container. Brands in COLORED_CHIP_BG_SLUGS get a fixed low-chroma
+ * tint that survives both modes — the SVG cutouts depend on it.
+ *
+ * Pure / safe-during-render. Output is a Tailwind class string.
+ */
+export function accountChipBgClass(label: string): string {
+  const slug = accountBrandSlug(label);
+  if (slug && COLORED_CHIP_BG_SLUGS.has(slug)) {
+    // Same low-chroma green hue 140 the bank-kind tint used to apply
+    // across the board — kept as the Interbank exception so its
+    // wordmark cutouts stay readable.
+    return "bg-[oklch(0.92_0.03_140)] dark:bg-[oklch(0.30_0.06_140)]";
+  }
+  return "bg-background ring-1 ring-border";
+}

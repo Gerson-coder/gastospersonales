@@ -43,6 +43,7 @@ import {
   BarChart2,
   X,
   ChevronRight,
+  Landmark,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,6 +66,8 @@ import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { ProfileMenu } from "@/components/lumi/ProfileMenu";
 import { NotificationsBell } from "@/components/lumi/NotificationsBell";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
+import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
@@ -357,7 +360,24 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
   // category-tinted icon stays.
   return (
     <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
-      {t.merchantLogoSlug ? (
+      {isIncome && t.accountName ? (
+        // Income rows lead with the account NAME as their title — so the
+        // icon should be the account's brand logo (BCP, Interbank, etc.),
+        // not a generic piggy-bank category icon. Falls back to the
+        // Landmark glyph when the account label has no registered brand.
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+            accountChipBgClass(t.accountName),
+          )}
+        >
+          <AccountBrandIcon
+            label={t.accountName}
+            fallback={<Landmark size={18} />}
+          />
+        </span>
+      ) : t.merchantLogoSlug ? (
         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
           <img
@@ -387,7 +407,7 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
         amount={isIncome ? t.amount : -t.amount}
         currency={t.currency}
         size="sm"
-        tone={isIncome ? "positive" : "default"}
+        tone={isIncome ? "positive" : "negative"}
         showSign={isIncome}
       />
     </div>
@@ -409,9 +429,27 @@ function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   const subtitle = formatTxDate(t.occurredAt);
   return (
     <div className="grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5">
-      {/* MerchantAvatar swaps to an SVG when logoSlug is set (KFC, Starbucks,
-          Inkafarma…) and falls back to deterministic initials otherwise. */}
-      <MerchantAvatar name={title} logoSlug={t.merchantLogoSlug} size="lg" />
+      {/* For income rows the title is the account name, so the icon should
+          be the account's brand logo (BCP, Interbank, Yape...) instead of
+          the merchant initials of "BCP Sueldo" reading as "BS". For expense
+          rows MerchantAvatar still wins — KFC / Starbucks / Inkafarma logos
+          live there with deterministic-initials fallback. */}
+      {isIncome && t.accountName ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+            accountChipBgClass(t.accountName),
+          )}
+        >
+          <AccountBrandIcon
+            label={t.accountName}
+            fallback={<Landmark size={18} />}
+          />
+        </span>
+      ) : (
+        <MerchantAvatar name={title} logoSlug={t.merchantLogoSlug} size="lg" />
+      )}
       <div className="min-w-0">
         <div className="truncate text-[14px] font-semibold leading-tight">
           {title}
@@ -481,7 +519,7 @@ function guessIconKey(name: string | null | undefined): CategoryId {
 }
 
 // Moved to `@/lib/format-tx-date` so /movements rows share the exact
-// same formatting language as the dashboard's "Últimas transacciones".
+// same formatting language as the dashboard's "Últimos movimientos".
 
 // ─── Empty-state card ──────────────────────────────────────────────────────
 // Rendered when the user has zero transactions in the active-currency 6-month
@@ -1255,10 +1293,10 @@ export default function DashboardPage() {
                     />
                   </div>
 
-                  {/* Últimas transacciones */}
+                  {/* Últimos movimientos */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-[15px] font-bold text-foreground">Últimas transacciones</span>
+                      <span className="text-[15px] font-bold text-foreground">Últimos movimientos</span>
                       <Link
                         href="/movements"
                         className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
@@ -1384,10 +1422,10 @@ export default function DashboardPage() {
 
                   {/* ROW 3: Transacciones (3fr) + columna derecha (2fr) */}
                   <div className="grid grid-cols-[3fr_2fr] gap-5 items-start">
-                    {/* Últimas transacciones — desktop */}
+                    {/* Últimos movimientos — desktop */}
                     <Card className="rounded-2xl border-border p-0">
                       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-                        <span className="text-[15px] font-semibold text-foreground">Últimas transacciones</span>
+                        <span className="text-[15px] font-semibold text-foreground">Últimos movimientos</span>
                         <Link
                           href="/movements"
                           className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"

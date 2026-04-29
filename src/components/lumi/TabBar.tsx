@@ -20,7 +20,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Home,
-  List,
+  ArrowLeftRight,
   Plus,
   Check,
   BarChart3,
@@ -52,7 +52,7 @@ export interface TabBarProps {
 // Default Lumi tab structure — order matches the source TabBar.jsx + index.html.
 export const DEFAULT_ITEMS: TabBarItem[] = [
   { href: "/dashboard",   label: "Resumen",       icon: Home      },
-  { href: "/movements",   label: "Transacciones", icon: List      },
+  { href: "/movements",   label: "Movimientos",  icon: ArrowLeftRight },
   { href: "/capture",     label: "Capturar",      icon: Plus,     primary: true },
   { href: "/insights",    label: "Reportes",      icon: BarChart3 },
   { href: "/more",        label: "Más",           icon: Menu      },
