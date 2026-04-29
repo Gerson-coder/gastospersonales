@@ -31,6 +31,13 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -436,6 +443,11 @@ function AccountFormSheet({
   const [showError, setShowError] = React.useState(false);
   // Inline archive confirm — opens a small "¿Archivar?" row in-place.
   const [archiveArmed, setArchiveArmed] = React.useState(false);
+  // Modal shown when the user tries to save a duplicate (label, kind,
+  // subtype, currency). Replaces the legacy sonner toast — keeps the
+  // feedback inside the same Drawer-style modal language as the rest of
+  // the app (Sin saldo / Saldo insuficiente).
+  const [dupOpen, setDupOpen] = React.useState(false);
   // When non-null, the label is locked to a brand preset (BCP / Interbank /
   // BBVA / Yape / Plin) and the input becomes read-only. Cleared whenever
   // the user manually changes the kind picker — that signals "I want to
@@ -629,7 +641,7 @@ function AccountFormSheet({
         a.currency === currency,
     );
     if (isDuplicate) {
-      toast.error("Ya tienes una cuenta con esos datos.");
+      setDupOpen(true);
       return;
     }
     onOptimisticClose();
@@ -1080,6 +1092,31 @@ function AccountFormSheet({
         </form>
       </SheetContent>
     </Sheet>
+    {/* Duplicate-account modal — pops over the Sheet when the user tries
+        to save the same (label, kind, subtype, currency) tuple twice. */}
+    <Drawer open={dupOpen} onOpenChange={setDupOpen}>
+      <DrawerContent
+        aria-describedby="account-dup-desc"
+        className="bg-background"
+      >
+        <DrawerHeader>
+          <DrawerTitle>Cuenta duplicada</DrawerTitle>
+          <DrawerDescription id="account-dup-desc">
+            Ya tienes una cuenta con esos mismos datos. Cambia el nombre,
+            el tipo o la moneda para continuar.
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="px-4 pb-6">
+          <button
+            type="button"
+            onClick={() => setDupOpen(false)}
+            className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Entendido
+          </button>
+        </div>
+      </DrawerContent>
+    </Drawer>
     </>
   );
 }
