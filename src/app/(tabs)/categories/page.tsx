@@ -22,6 +22,13 @@ import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   archiveCategory,
@@ -140,6 +147,10 @@ export default function CategoriesPage() {
   const [editing, setEditing] = React.useState<Category | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [overlayLabel, setOverlayLabel] = React.useState<string>("Guardando…");
+  // Modal shown when create/update fails because the category name is
+  // already taken (UNIQUE_VIOLATION 23505). Replaces the legacy sonner
+  // toast — same Drawer modal language as Cuenta duplicada / Sin saldo.
+  const [dupCategoryOpen, setDupCategoryOpen] = React.useState(false);
 
   const reload = React.useCallback(async () => {
     if (!SUPABASE_ENABLED) return;
@@ -241,7 +252,14 @@ export default function CategoriesPage() {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "No pudimos crear la categoría.";
-      toast.error("No se pudo crear", { description: msg });
+      // UNIQUE_VIOLATION surfaces as this exact string from the data layer
+      // (see categories.ts) — show the dup modal instead of the legacy
+      // toast so the feedback matches Cuenta duplicada / Sin saldo.
+      if (msg === "Ya tienes una categoría con ese nombre.") {
+        setDupCategoryOpen(true);
+      } else {
+        toast.error("No se pudo crear", { description: msg });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -267,7 +285,11 @@ export default function CategoriesPage() {
         err instanceof Error
           ? err.message
           : "No pudimos actualizar la categoría.";
-      toast.error("No se pudo actualizar", { description: msg });
+      if (msg === "Ya tienes una categoría con ese nombre.") {
+        setDupCategoryOpen(true);
+      } else {
+        toast.error("No se pudo actualizar", { description: msg });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -447,6 +469,33 @@ export default function CategoriesPage() {
           onArchive={handleArchive}
         />
       ) : null}
+
+      {/* Duplicate-category modal — pops over the form sheet when the
+          UNIQUE_VIOLATION error bubbles up from create/update. Replaces
+          the legacy 'No se pudo crear · Ya tienes una categoría…' toast. */}
+      <Drawer open={dupCategoryOpen} onOpenChange={setDupCategoryOpen}>
+        <DrawerContent
+          aria-describedby="category-dup-desc"
+          className="bg-background"
+        >
+          <DrawerHeader>
+            <DrawerTitle>Categoría duplicada</DrawerTitle>
+            <DrawerDescription id="category-dup-desc">
+              Ya tienes una categoría con ese nombre. Elige uno distinto
+              para continuar.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-6">
+            <button
+              type="button"
+              onClick={() => setDupCategoryOpen(false)}
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Entendido
+            </button>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </main>
   );
 }

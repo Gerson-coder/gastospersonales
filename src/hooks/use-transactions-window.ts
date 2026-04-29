@@ -306,17 +306,18 @@ export function useTransactionsWindow(
     setTick((t) => t + 1);
   }, []);
 
-  // Compute `fromISO` (start of window). Memoized so it stays stable per
-  // (months, currency, tick) tuple — without this, `new Date()` on every
-  // render would re-trigger the fetch effect on every parent re-render.
+  // Compute `fromISO` (start of window). Stable per month — recomputes
+  // only when `months` changes or the calendar month rolls over (next
+  // render after midnight of the 1st). `tick` is NOT in this memo's deps
+  // because the computed value is the first instant of a calendar month
+  // and is identical regardless of "now" within that month — putting tick
+  // here gave the illusion of triggering refetches but `Object.is` on the
+  // resulting equal string short-circuited the fetch effect deps below.
   const fromISO = useMemo(() => {
     const now = new Date();
     const start = addMonths(startOfMonth(now), -(months - 1));
     return start.toISOString();
-    // `tick` is intentionally part of the dep set: bumping it should produce
-    // a fresh "now" anchor as well as restart the fetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [months, tick]);
+  }, [months]);
 
   useEffect(() => {
     let cancelled = false;
@@ -340,7 +341,12 @@ export function useTransactionsWindow(
     return () => {
       cancelled = true;
     };
-  }, [currency, fromISO]);
+    // `tick` is the dedicated refetch trigger — bumping it (via the public
+    // `refetch()` callback) MUST always re-run this effect, independent of
+    // currency/fromISO equality, so realtime + tx:upserted + visibility
+    // probes actually pick up new rows. Listed explicitly so the lint
+    // rule sees it.
+  }, [currency, fromISO, tick]);
 
   // ── Account filter ─────────────────────────────────────────────────────
   // Applied BEFORE every aggregation so the dashboard can scope all numbers
