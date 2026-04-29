@@ -5,8 +5,13 @@
 
 BEGIN;
 
+-- Idempotent so a partially-applied migration (column added, but a later
+-- statement in this file rolled back / errored / was retried by `supabase
+-- db push`) can be re-run cleanly. Without IF NOT EXISTS the retry blows
+-- up with "column logo_slug already exists" before getting to the slug
+-- assignments below.
 ALTER TABLE merchants
-  ADD COLUMN logo_slug TEXT NULL
+  ADD COLUMN IF NOT EXISTS logo_slug TEXT NULL
     CHECK (logo_slug IS NULL OR length(logo_slug) BETWEEN 1 AND 64);
 
 COMMENT ON COLUMN merchants.logo_slug IS
