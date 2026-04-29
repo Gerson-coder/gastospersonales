@@ -34,6 +34,7 @@ import {
   Home,
   GraduationCap,
   Briefcase,
+  Smartphone,
   Circle,
   Sparkles,
   TrendingUp,
@@ -63,6 +64,7 @@ type CategoryId =
   | "health"
   | "fun"
   | "utilities"
+  | "phone"
   | "home"
   | "edu"
   | "work"
@@ -98,6 +100,7 @@ const CATEGORY_ICONS: Record<
   health: Heart,
   fun: Film,
   utilities: Zap,
+  phone: Smartphone,
   home: Home,
   edu: GraduationCap,
   work: Briefcase,
@@ -111,6 +114,7 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   health: "Salud",
   fun: "Entretenimiento",
   utilities: "Servicios",
+  phone: "Telefonía",
   home: "Hogar",
   edu: "Educación",
   work: "Trabajo",
@@ -126,6 +130,7 @@ const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
   health: { bg: "bg-[oklch(0.92_0.04_10)]", text: "text-[oklch(0.50_0.12_10)]" },
   fun: { bg: "bg-[oklch(0.92_0.04_310)]", text: "text-[oklch(0.45_0.10_310)]" },
   utilities: { bg: "bg-[oklch(0.92_0.04_70)]", text: "text-[oklch(0.45_0.10_70)]" },
+  phone: { bg: "bg-[oklch(0.92_0.04_50)]", text: "text-[oklch(0.45_0.12_50)]" },
   home: { bg: "bg-[oklch(0.92_0.04_162)]", text: "text-[oklch(0.45_0.10_162)]" },
   edu: { bg: "bg-[oklch(0.92_0.03_180)]", text: "text-[oklch(0.45_0.10_180)]" },
   work: { bg: "bg-[oklch(0.92_0.03_140)]", text: "text-[oklch(0.45_0.10_140)]" },
@@ -167,7 +172,11 @@ function categoryNameToId(name: string | null | undefined): CategoryId {
   if (/(mercado|market|super|grocer)/.test(norm)) return "market";
   if (/(salud|health|farmac|clinic)/.test(norm)) return "health";
   if (/(entreten|fun|cine|streaming|ocio)/.test(norm)) return "fun";
-  if (/(servicio|utilit|luz|agua|gas|internet|telefon)/.test(norm))
+  // Telefonía must be checked before "servicio" / "utilit" so the category
+  // doesn't collapse into the lightning-bolt utilities bucket.
+  if (/(telefon|recarga|postpago|movistar|claro|entel|bitel)/.test(norm))
+    return "phone";
+  if (/(servicio|utilit|luz|agua|gas|internet)/.test(norm))
     return "utilities";
   if (/(hogar|home|alquiler|renta)/.test(norm)) return "home";
   if (/(educa|edu|study|school|curso)/.test(norm)) return "edu";

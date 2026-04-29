@@ -31,6 +31,7 @@ import {
   Plug,
   BookOpen,
   CircleEllipsis,
+  Smartphone,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -87,6 +88,10 @@ const ICON_ALIASES: Record<string, LucideIconLike> = {
   plug: Plug,
   "book-open": BookOpen,
   "circle-ellipsis": CircleEllipsis,
+  // Seeded by the Telefonía system category from migration 00015. Not in
+  // the picker grid above (we keep the grid at 16 for a clean 4×4 layout)
+  // but needs to render correctly when read back from the DB.
+  smartphone: Smartphone,
 };
 
 /**
