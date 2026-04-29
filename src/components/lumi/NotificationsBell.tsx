@@ -49,6 +49,10 @@ type Notif = {
   at: string;
   tone: "positive" | "warning" | "neutral";
   Icon: NotifIcon;
+  // Tap target — every notif lands somewhere; right now everything funnels
+  // into /movements but we keep it per-notif so future signals (e.g. "OCR
+  // failed") can deep-link elsewhere without restructuring.
+  href: string;
 };
 
 function readReadAt(): string | null {
@@ -123,6 +127,7 @@ export function NotificationsBell({ className }: { className?: string }) {
         at: last.occurredAt,
         tone: last.kind === "expense" ? "warning" : "positive",
         Icon: last.kind === "expense" ? TrendingDown : TrendingUp,
+        href: "/movements",
       });
     }
 
@@ -139,6 +144,7 @@ export function NotificationsBell({ className }: { className?: string }) {
         at: incomeWeek[0].occurredAt,
         tone: "positive",
         Icon: Sparkles,
+        href: "/movements",
       });
     }
 
@@ -161,6 +167,7 @@ export function NotificationsBell({ className }: { className?: string }) {
         at: top.occurredAt,
         tone: "warning",
         Icon: TrendingDown,
+        href: "/insights",
       });
     }
 
@@ -179,7 +186,18 @@ export function NotificationsBell({ className }: { className?: string }) {
     writeReadAt(stamp);
   }
 
+  // Mobile bug guard: when the dropdown is open and the user swipes the
+  // page (a touchmove that bubbles into Radix's outside-pointer detection),
+  // Radix fires close → the closing pointerup lands on the trigger → the
+  // trigger fires open again → another stray event closes it. Net effect:
+  // the menu visibly flickers closed-open-closed instead of just closing.
+  // We dampen reopens that arrive within 250ms of a close — those are the
+  // bounce, not a real tap.
+  const lastCloseAtRef = React.useRef(0);
+
   function handleOpenChange(next: boolean) {
+    if (next && Date.now() - lastCloseAtRef.current < 250) return;
+    if (!next) lastCloseAtRef.current = Date.now();
     setOpen(next);
     // Mark as read when the user opens the dropdown — they've now seen
     // them, that's the same contract as the bell badge in any inbox app.
@@ -248,7 +266,11 @@ export function NotificationsBell({ className }: { className?: string }) {
                     : "bg-primary/10 text-primary";
               return (
                 <li key={n.id}>
-                  <div className="flex items-start gap-3 px-3 py-3">
+                  <a
+                    href={n.href}
+                    onClick={() => setOpen(false)}
+                    className="flex items-start gap-3 px-3 py-3 transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none"
+                  >
                     <span
                       aria-hidden="true"
                       className={cn(
@@ -276,7 +298,12 @@ export function NotificationsBell({ className }: { className?: string }) {
                         {relativeLabel(n.at, new Date())}
                       </p>
                     </div>
-                  </div>
+                    <ChevronRight
+                      size={14}
+                      aria-hidden="true"
+                      className="mt-1 flex-shrink-0 text-muted-foreground/50"
+                    />
+                  </a>
                 </li>
               );
             })}

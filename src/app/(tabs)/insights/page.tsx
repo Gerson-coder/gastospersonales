@@ -241,6 +241,17 @@ function PeriodSelector({
 }
 
 // ─── Hero metric: gasto vs ingreso ────────────────────────────────────────
+/**
+ * Promoted from "spent + tiny saved caption" to a real comparativa:
+ *  - Hero is the *net* (saldo), tinted by sign so the most relevant number
+ *    of the month is the one in lights.
+ *  - A single proportion bar shows what % of income was spent vs kept,
+ *    capping at 100% with a red overflow indicator when the user spent
+ *    more than they earned.
+ *  - Two side-by-side stat tiles surface the raw spent + income figures
+ *    so the card actually reads as the comparison its title promises.
+ *  - Delta vs prev month moves to a chip in the corner — secondary info.
+ */
 function HeroMetric({
   spent,
   income,
@@ -257,52 +268,158 @@ function HeroMetric({
   prevMonthLabel: string;
 }) {
   const net = income - spent;
+  const heroPositive = net >= 0;
+  const ratio =
+    income > 0 ? Math.min(spent / income, 1) : spent > 0 ? 1 : 0;
+  const ratioPct = Math.round(ratio * 100);
+  const savedPct =
+    income > 0 ? Math.max(0, Math.round((net / income) * 100)) : 0;
+  const overspent = !heroPositive;
+
   const delta = prevSpent > 0 ? (spent - prevSpent) / prevSpent : 0;
-  const positive = delta < 0; // spending less = good
-  const DeltaIcon = delta === 0 ? Minus : positive ? ArrowDownRight : ArrowUpRight;
-  const deltaToneClass = positive
+  const deltaPositive = delta < 0; // spending less = good
+  const DeltaIcon =
+    delta === 0 ? Minus : deltaPositive ? ArrowDownRight : ArrowUpRight;
+  const deltaPalette =
+    prevSpent <= 0 || delta === 0
+      ? "bg-muted text-muted-foreground"
+      : deltaPositive
+        ? "bg-[oklch(0.94_0.05_162)] text-[oklch(0.40_0.14_162)] dark:bg-[oklch(0.30_0.06_162)] dark:text-[oklch(0.85_0.14_162)]"
+        : "bg-[oklch(0.94_0.04_30)] text-[oklch(0.45_0.14_30)] dark:bg-[oklch(0.30_0.05_30)] dark:text-[oklch(0.85_0.12_30)]";
+  const heroToneClass = heroPositive
     ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
-    : delta === 0
-      ? "text-muted-foreground"
-      : "text-destructive";
+    : "text-destructive";
+  const sign = heroPositive ? "+ " : "− ";
+  // Bar width must be at least a sliver when there's any spend — a 0% bar
+  // disappears entirely and the user can't tell the bar is even there.
+  const barWidthPct = spent > 0 ? Math.max(2, ratioPct) : 0;
 
   return (
-    <Card className="rounded-3xl border-border p-5 md:p-6">
-      <div className="min-w-0">
+    <Card className="relative overflow-hidden rounded-3xl border-border p-5 md:p-6">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+        style={{
+          background: heroPositive
+            ? "linear-gradient(90deg, transparent 0%, var(--color-primary) 50%, transparent 100%)"
+            : "linear-gradient(90deg, transparent 0%, var(--destructive) 50%, transparent 100%)",
+          opacity: 0.55,
+        }}
+      />
+
+      <div className="flex items-start justify-between gap-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           Gasto vs ingreso · {monthLabel}
         </div>
-        <div className="mt-1.5 flex min-w-0 items-baseline gap-3">
+        {prevSpent > 0 && (
           <span
             className={cn(
-              "max-w-full truncate font-semibold tabular-nums leading-none tracking-tight",
-              // Hero scale: shrinks predictably for long amounts (≥ 1M, etc).
-              getMoneyDisplaySizeClass(spent, currency, "hero"),
+              "inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums whitespace-nowrap",
+              deltaPalette,
+            )}
+          >
+            <DeltaIcon size={12} aria-hidden="true" strokeWidth={2.5} />
+            {delta === 0
+              ? "Igual"
+              : `${Math.abs(delta * 100).toFixed(0)}% vs ${prevMonthLabel}`}
+          </span>
+        )}
+      </div>
+
+      {/* Hero: net (saldo). Tinted so the sign is immediately legible. */}
+      <div className="mt-3 min-w-0">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+          {heroPositive ? "Ahorrado este mes" : "Gastaste de más"}
+        </div>
+        <div
+          className={cn(
+            "mt-1 flex min-w-0 items-baseline font-semibold leading-none tracking-tight tabular-nums",
+            getMoneyDisplaySizeClass(Math.abs(net), currency, "hero", 2),
+            heroToneClass,
+          )}
+          style={{ fontFeatureSettings: '"tnum","lnum"' }}
+        >
+          <span className="max-w-full truncate">
+            {sign}
+            {formatMoney(Math.abs(net), currency)}
+          </span>
+        </div>
+        {income > 0 && (
+          <div className="mt-1.5 text-[12px] text-muted-foreground">
+            {heroPositive
+              ? `${savedPct}% de tus ingresos`
+              : `Excede tu ingreso de ${formatMoney(income, currency)}`}
+          </div>
+        )}
+      </div>
+
+      {/* Proportion bar: what fraction of income went out. */}
+      {income > 0 && (
+        <div className="mt-4">
+          <div
+            className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted"
+            role="presentation"
+            aria-hidden="true"
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${barWidthPct}%`,
+                background: overspent
+                  ? "var(--destructive)"
+                  : "var(--color-primary)",
+                transition: "width 600ms cubic-bezier(0.32,0.72,0,1)",
+              }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-[10.5px] font-medium tabular-nums text-muted-foreground">
+            <span>{ratioPct}% gastado</span>
+            <span>Tope {formatMoneyCompact(income, currency)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Tiles: raw figures so the card actually compares two numbers. */}
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <ArrowDownRight
+              size={11}
+              aria-hidden="true"
+              strokeWidth={2.5}
+              className="text-destructive"
+            />
+            Gasto
+          </div>
+          <div
+            className={cn(
+              "mt-1 truncate font-semibold leading-none tabular-nums",
+              getMoneyDisplaySizeClass(spent, currency, "secondary"),
             )}
             style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
             {formatMoney(spent, currency)}
-          </span>
+          </div>
         </div>
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <span
+        <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            <ArrowUpRight
+              size={11}
+              aria-hidden="true"
+              strokeWidth={2.5}
+              className="text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
+            />
+            Ingreso
+          </div>
+          <div
             className={cn(
-              "inline-flex min-w-0 max-w-full items-center gap-1 truncate text-[12px] font-semibold",
-              deltaToneClass,
+              "mt-1 truncate font-semibold leading-none tabular-nums",
+              getMoneyDisplaySizeClass(income, currency, "secondary"),
             )}
+            style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
-            <DeltaIcon size={14} aria-hidden="true" className="flex-shrink-0" />
-            <span className="min-w-0 truncate">
-              {prevSpent <= 0
-                ? "sin datos previos"
-                : delta === 0
-                  ? "sin cambios"
-                  : `${Math.abs(delta * 100).toFixed(1)}% vs ${prevMonthLabel}`}
-            </span>
-          </span>
-          <span className="min-w-0 max-w-full truncate text-[12px] font-medium tabular-nums text-muted-foreground">
-            Ahorrado {formatMoney(net, currency)}
-          </span>
+            {formatMoney(income, currency)}
+          </div>
         </div>
       </div>
     </Card>
@@ -679,6 +796,174 @@ function MonthCompareCard({
           {microInsight}
         </p>
       )}
+    </Card>
+  );
+}
+
+// ─── Balance mensual card (diverging bars) ───────────────────────────────
+/**
+ * Complementary cross-month view to MonthCompareCard. That card shows raw
+ * spend vs income side-by-side; this one collapses each month to a single
+ * signed scalar — net saldo — and renders it as a horizontal bar diverging
+ * from a center axis. Green right = saved, red left = overspent.
+ *
+ * Different visual layer (rows, not vertical bars) and different question
+ * (am I net-positive month over month?) so the two cards complement
+ * instead of duplicate.
+ */
+function MonthSavingsCard({
+  allMonths,
+  currency,
+}: {
+  allMonths: MonthBucket[];
+  currency: Currency;
+}) {
+  const [range, setRange] = React.useState<CompareRange>("6m");
+
+  const visibleMonths = React.useMemo(() => {
+    const opt = COMPARE_RANGE_OPTIONS.find((o) => o.id === range);
+    const n = opt ? opt.months : 6;
+    return allMonths.slice(-Math.min(n, allMonths.length));
+  }, [allMonths, range]);
+
+  const items = React.useMemo(
+    () => visibleMonths.map((m) => ({ ...m, net: m.income - m.spent })),
+    [visibleMonths],
+  );
+
+  // Symmetric scale around the center axis: bars never escape their slot
+  // even when one month is dramatically deeper in the red than another is
+  // in the green.
+  const absMax = Math.max(1, ...items.map((m) => Math.abs(m.net)));
+  const totalNet = items.reduce((acc, m) => acc + m.net, 0);
+  const totalNetPositive = totalNet >= 0;
+  const positiveCount = items.filter((m) => m.net > 0).length;
+
+  const positiveTone =
+    "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]";
+
+  return (
+    <Card className="relative overflow-hidden rounded-2xl border-border p-5 md:p-6">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[2px]"
+        style={{
+          background: totalNetPositive
+            ? "linear-gradient(90deg, transparent 0%, var(--color-primary) 50%, transparent 100%)"
+            : "linear-gradient(90deg, transparent 0%, var(--destructive) 50%, transparent 100%)",
+          opacity: 0.45,
+        }}
+      />
+
+      <div className="flex items-start justify-between gap-3 pb-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Balance mensual
+          </div>
+          <div className="mt-2 flex min-w-0 items-baseline gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Acumulado
+            </span>
+            <span
+              className={cn(
+                "min-w-0 max-w-full truncate font-semibold leading-none tracking-tight tabular-nums",
+                getMoneyDisplaySizeClass(
+                  Math.abs(totalNet),
+                  currency,
+                  "secondary",
+                  2,
+                ),
+                totalNetPositive ? positiveTone : "text-destructive",
+              )}
+              style={{ fontFeatureSettings: '"tnum","lnum"' }}
+            >
+              {totalNetPositive ? "+ " : "− "}
+              {formatMoney(Math.abs(totalNet), currency)}
+            </span>
+          </div>
+          {items.length > 0 && (
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              {positiveCount} de {items.length}{" "}
+              {items.length === 1 ? "mes" : "meses"} en positivo
+            </div>
+          )}
+        </div>
+        <CompareRangeChips value={range} onChange={setRange} />
+      </div>
+
+      <ul className="mt-2 flex flex-col gap-2.5" aria-label="Saldo por mes">
+        {items.map((m) => {
+          const isPos = m.net >= 0;
+          // Half-slot scale: a bar at absMax fills 50% of the row (one full
+          // side of the axis). Min 1.5% so a tiny non-zero net is still
+          // visible; pure 0 collapses to nothing.
+          const widthPct =
+            Math.abs(m.net) === 0
+              ? 0
+              : Math.max(1.5, (Math.abs(m.net) / absMax) * 50);
+          const barColor = isPos
+            ? "var(--color-primary)"
+            : "var(--destructive)";
+          return (
+            <li
+              key={m.monthKey}
+              className="grid grid-cols-[36px_1fr_auto] items-center gap-3"
+              aria-label={`${m.label}: ${
+                isPos ? "ahorraste" : "gastaste de más"
+              } ${formatMoney(Math.abs(m.net), currency)}`}
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                {m.label.slice(0, 3)}
+              </span>
+              <div className="relative h-2.5 w-full rounded-full bg-muted/60">
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border"
+                />
+                <span
+                  aria-hidden="true"
+                  className="absolute top-0 h-full rounded-full"
+                  style={{
+                    width: `${widthPct}%`,
+                    left: isPos ? "50%" : `${50 - widthPct}%`,
+                    background: barColor,
+                    transition: "width 500ms cubic-bezier(0.32,0.72,0,1)",
+                  }}
+                />
+              </div>
+              <span
+                className={cn(
+                  "min-w-[78px] flex-shrink-0 text-right text-[12px] font-semibold tabular-nums",
+                  isPos ? positiveTone : "text-destructive",
+                )}
+                style={{ fontFeatureSettings: '"tnum","lnum"' }}
+              >
+                {isPos ? "+" : "−"}
+                {formatMoneyCompact(Math.abs(m.net), currency)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-sm"
+            style={{ background: "var(--color-primary)" }}
+          />
+          Ahorro
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 rounded-sm"
+            style={{ background: "var(--destructive)" }}
+          />
+          Sobregasto
+        </span>
+      </div>
     </Card>
   );
 }
@@ -1302,11 +1587,14 @@ export default function InsightsPage() {
 
             {/* Charts grid */}
             <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
-              {/* Cross-month comparison */}
+              {/* Cross-month comparison — gasto vs ingreso por mes */}
               <MonthCompareCard allMonths={monthTotals} currency={currency} />
 
+              {/* Cross-month balance — saldo neto por mes (complementario) */}
+              <MonthSavingsCard allMonths={monthTotals} currency={currency} />
+
               {/* Spending velocity */}
-              <Card className="rounded-2xl border-border p-5 md:p-6">
+              <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
                 <div className="flex items-baseline justify-between pb-3">
                   <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Velocidad de gasto
