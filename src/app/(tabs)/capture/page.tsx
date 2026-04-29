@@ -76,6 +76,7 @@ import {
   type TransactionDraft,
 } from "@/lib/data/transactions";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MerchantPicker } from "@/components/lumi/MerchantPicker";
@@ -1403,9 +1404,13 @@ function CapturePageInner() {
                       >
                         <span
                           aria-hidden="true"
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground"
+                          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground"
                         >
-                          <Icon size={16} />
+                          <AccountBrandIcon
+                            label={a.label}
+                            fallback={<Icon size={16} />}
+                            size={20}
+                          />
                         </span>
                         <span className="flex-1">
                           <span className="block text-[13px] font-semibold">{accountDisplayLabel(a)}</span>

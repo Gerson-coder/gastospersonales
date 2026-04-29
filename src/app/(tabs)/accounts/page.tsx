@@ -53,6 +53,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
 import {
   ACCOUNT_SUBTYPE_LABEL,
   ACCOUNT_SUBTYPE_OPTIONS,
@@ -288,11 +289,15 @@ export default function AccountsPage() {
                         <div
                           aria-hidden="true"
                           className={cn(
-                            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl",
+                            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl",
                             ACCOUNT_TINT[account.kind],
                           )}
                         >
-                          <KindIcon size={18} aria-hidden />
+                          <AccountBrandIcon
+                            label={account.label}
+                            fallback={<KindIcon size={18} aria-hidden />}
+                            size={22}
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-[14px] font-semibold">

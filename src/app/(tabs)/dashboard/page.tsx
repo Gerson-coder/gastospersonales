@@ -742,15 +742,33 @@ export default function DashboardPage() {
     });
   }, [accounts, window.rows]);
 
-  // Seed the account filter to the most-recently-used account once we have
-  // a list — matches the user's expectation after capturing a recharge
-  // ("the account I just used should be selected"). Subsequent re-renders
-  // are no-ops because selectedAccountId is no longer null.
+  // Account-filter selector — currency-aware. Two responsibilities folded
+  // into one effect:
+  //   1. First-paint default: pick the most-recently-used account in the
+  //      active currency once accounts load.
+  //   2. Currency switch retarget: when the active currency flips (e.g.
+  //      via the CurrencySwitch on capture's same-tab StorageEvent), the
+  //      previously-selected account may belong to the OTHER currency.
+  //      That mismatch is the "I added a USD movement but the dashboard
+  //      stays empty until I refresh" bug — `filteredRows` filters by
+  //      accountId, and a PEN-account filter eats the new USD row. We
+  //      retarget to the first account in the new currency (preferring
+  //      most-recent-used) so the saldo card and tx list reflect the
+  //      writes immediately.
+  // Falls back to `null` if the user has no account in the active
+  // currency — the chip strip and drawer empty-states handle that path.
   React.useEffect(() => {
-    if (selectedAccountId !== null) return;
-    if (orderedAccounts.length === 0) return;
-    setSelectedAccountId(orderedAccounts[0].id);
-  }, [orderedAccounts, selectedAccountId]);
+    if (accounts.length === 0) return;
+    if (selectedAccountId !== null) {
+      const current = accounts.find((a) => a.id === selectedAccountId);
+      if (current && current.currency === currency) return;
+    }
+    const next =
+      orderedAccounts.find((a) => a.currency === currency) ??
+      accounts.find((a) => a.currency === currency) ??
+      null;
+    setSelectedAccountId(next?.id ?? null);
+  }, [currency, accounts, orderedAccounts, selectedAccountId]);
 
   // ── Branch on the data source ──────────────────────────────────────────
   // Demo mode: feed the legacy in-file dataset. Real mode: derive everything
