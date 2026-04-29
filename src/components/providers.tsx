@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
-import { UpdatePrompt } from "@/components/lumi/UpdatePrompt";
+import { useServiceWorkerUpdate } from "@/hooks/use-service-worker-update";
 import { SessionProvider } from "@/lib/use-session";
 
 /**
@@ -44,6 +44,10 @@ function useSuppressVaulPointerError() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useSuppressVaulPointerError();
+  // Auto-reload the app when a new service worker takes over. With
+  // skipWaiting + clientsClaim in sw.ts this fires on every deploy, so
+  // users always end up on fresh code instead of the old stale shell.
+  useServiceWorkerUpdate();
   return (
     <ThemeProvider
       attribute="class"
@@ -53,7 +57,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <SessionProvider>
         {children}
-        <UpdatePrompt />
         <Toaster richColors position="top-center" />
       </SessionProvider>
     </ThemeProvider>

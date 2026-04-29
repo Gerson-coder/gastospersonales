@@ -13,22 +13,18 @@ declare const self: ServiceWorkerGlobalScope;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
-  // Do NOT auto skip-waiting. We wait for the user to opt in via the
-  // UpdatePrompt toast — the client posts { type: "SKIP_WAITING" } and
-  // the listener below activates the new worker. This gives users
-  // control: they decide when to reload to the new version.
-  skipWaiting: false,
+  // Auto skip-waiting + clientsClaim so a new deploy applies seamlessly:
+  // the new worker takes over immediately, fires controllerchange in the
+  // client, and the page reloads to the fresh shell. The previous manual
+  // opt-in (UpdatePrompt) caused a "stuck screen" window where the OLD
+  // worker served stale chunks while Next.js was already requesting NEW
+  // chunk hashes for navigation — RSC fetches missed cache, navigation
+  // hung, and the user had to force-quit the app to recover. Auto-update
+  // collapses that window to a sub-second reload.
+  skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: defaultCache,
 });
 
 serwist.addEventListeners();
-
-// Opt-in skip-waiting: the client (useServiceWorkerUpdate) posts this
-// message when the user clicks "Actualizar" in the UpdatePrompt.
-self.addEventListener("message", (event) => {
-  if ((event.data as { type?: string } | undefined)?.type === "SKIP_WAITING") {
-    void self.skipWaiting();
-  }
-});
