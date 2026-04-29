@@ -969,7 +969,7 @@ function TopMovementRow({
             alt=""
             aria-hidden="true"
             loading="lazy"
-            className="h-6 w-6 object-contain"
+            className="h-full w-full object-contain p-0.5"
           />
         </span>
       ) : (

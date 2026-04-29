@@ -365,7 +365,7 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
             alt=""
             aria-hidden="true"
             loading="lazy"
-            className="h-7 w-7 object-contain"
+            className="h-full w-full object-contain p-0.5"
           />
         </span>
       ) : (

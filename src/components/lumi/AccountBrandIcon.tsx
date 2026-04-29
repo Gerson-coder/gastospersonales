@@ -25,7 +25,13 @@ import { accountBrandSlug } from "@/lib/account-brand-slug";
 export type AccountBrandIconProps = {
   label: string;
   fallback: React.ReactNode;
-  /** Pixel size of the rendered logo. Mirrors Lucide's size prop. */
+  /**
+   * @deprecated Kept for backwards-compat at older callsites — ignored.
+   *   The icon fills its parent (`h-full w-full object-contain`) so the
+   *   chip controls the visual size. Wordmark logos (BCP, BBVA, Saga
+   *   Falabella) need that to render legibly; explicit pixel sizes
+   *   letterboxed them inside an oversized chip and they read tiny.
+   */
   size?: number;
   className?: string;
 };
@@ -33,7 +39,6 @@ export type AccountBrandIconProps = {
 export function AccountBrandIcon({
   label,
   fallback,
-  size = 14,
   className,
 }: AccountBrandIconProps) {
   const slug = accountBrandSlug(label);
@@ -51,15 +56,19 @@ export function AccountBrandIcon({
   return (
     // Plain <img> over Next/Image — these are tiny static SVGs in /public,
     // no responsive variants needed, and avoiding the loader keeps bundle
-    // and config simpler. Same approach as MerchantAvatar.
+    // and config simpler. Same approach as MerchantAvatar. Fills the
+    // parent chip so wordmark logos read at the size the user expects.
     // eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public
     <img
       src={`/logos/banks/${slug}.svg`}
       alt=""
       aria-hidden="true"
       loading="lazy"
-      style={{ height: size, width: size }}
-      className={className ? `object-contain ${className}` : "object-contain"}
+      className={
+        className
+          ? `h-full w-full object-contain p-0.5 ${className}`
+          : "h-full w-full object-contain p-0.5"
+      }
       onError={() => setFailed(true)}
     />
   );
