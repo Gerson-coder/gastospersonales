@@ -498,6 +498,29 @@ function CapturePageInner() {
     };
   }, [currency]);
 
+  // Currency-scoped account list — when the user is in USD, we hide PEN
+  // accounts (and vice versa) so it's impossible to record a USD movement
+  // against a soles account by accident. Drives both the picker drawer and
+  // the currently-selected chip on the keypad screen.
+  const availableAccounts = React.useMemo(
+    () => accounts.filter((a) => a.currency === currency),
+    [accounts, currency],
+  );
+
+  // Currency switch retargets the account: if the previously-selected one
+  // no longer matches the active currency, drop it and pick the first
+  // matching account (or null when the user has none in this currency).
+  // Edit-mode hydration sets accountId BEFORE this effect runs but the
+  // hydration also sets currency to match, so the find() succeeds and we
+  // leave accountId alone.
+  React.useEffect(() => {
+    if (accounts.length === 0) return;
+    const current = accounts.find((a) => a.id === accountId);
+    if (current && current.currency === currency) return;
+    const next = accounts.find((a) => a.currency === currency) ?? null;
+    setAccountId(next?.id ?? null);
+  }, [currency, accounts, accountId]);
+
   // Load real accounts when Supabase is configured. Separate effect from any
   // categories loader so two parallel agents don't fight over the same hook.
   React.useEffect(() => {
@@ -510,6 +533,8 @@ function CapturePageInner() {
         const mapped = list.map(fromDataAccount);
         setAccounts(mapped);
         // Default-select the first active account (post-fetch, never hardcoded).
+        // Currency-aware re-selection lives in a dedicated effect below so this
+        // mount-only loader stays focused.
         setAccountId((prev) => prev ?? mapped[0]?.id ?? null);
       } catch {
         // Soft-fail: keep accounts empty; the picker shows an empty state.
@@ -629,7 +654,9 @@ function CapturePageInner() {
   // The picker chip shows a skeleton in that window; downstream consumers
   // (saveAriaLabel, save handler) coalesce to safe defaults.
   const account: Account | null =
-    accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
+    availableAccounts.find((a) => a.id === accountId) ??
+    availableAccounts[0] ??
+    null;
 
   // MRU strip — kind-aware ordering.
   //
@@ -911,7 +938,7 @@ function CapturePageInner() {
                 "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
-                  ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
+                  ? "bg-red-500/15 text-red-700 shadow-[var(--shadow-xs)] dark:bg-red-500/25 dark:text-red-200"
                   : "text-muted-foreground",
               )}
             >
@@ -926,7 +953,7 @@ function CapturePageInner() {
                 "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
-                  ? "bg-card text-foreground shadow-[var(--shadow-xs)]"
+                  ? "bg-emerald-500/15 text-emerald-700 shadow-[var(--shadow-xs)] dark:bg-emerald-500/25 dark:text-emerald-200"
                   : "text-muted-foreground",
               )}
             >
@@ -1372,7 +1399,13 @@ function CapturePageInner() {
                     </div>
                   </li>
                 ))
-              : accounts.map((a) => {
+              : availableAccounts.length === 0
+                ? (
+                    <li className="py-6 text-center text-[13px] text-muted-foreground">
+                      No tienes cuentas en {CURRENCY_LABEL[currency]}. Crea una en Ajustes.
+                    </li>
+                  )
+                : availableAccounts.map((a) => {
                   const Icon = a.Icon;
                   const selected = accountId === a.id;
                   return (
