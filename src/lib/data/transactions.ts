@@ -336,6 +336,50 @@ export async function getTransactionById(
   return toView(data as unknown as TransactionRow);
 }
 
+/**
+ * Per-account net balance for the active currency. Computed across ALL
+ * non-archived transactions (saldo is an all-time concept, not windowed —
+ * matches the user's mental model of "how much is in this account").
+ *
+ * Returned as `Record<accountId, balance_minor>`. Accounts with no movements
+ * are absent from the map; treat absence as zero.
+ */
+export async function getAccountBalances(
+  currency: TransactionDraft["currency"],
+): Promise<Record<string, number>> {
+  const supabase = createSupabaseClient();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("account_id, kind, amount_minor")
+    .is("archived_at", null)
+    .eq("currency", currency);
+
+  if (error) {
+    throw new Error(error.message || "No pudimos calcular el saldo.");
+  }
+
+  const balances: Record<string, number> = {};
+  type Row = { account_id: string; kind: "income" | "expense"; amount_minor: number };
+  for (const row of (data ?? []) as Row[]) {
+    const sign = row.kind === "income" ? 1 : -1;
+    balances[row.account_id] = (balances[row.account_id] ?? 0) + sign * row.amount_minor;
+  }
+  return balances;
+}
+
+/**
+ * Cross-component cue that a transaction was just inserted / updated.
+ * Fires SYNCHRONOUSLY after the Supabase ACK so any mounted listener
+ * (e.g. /dashboard) refetches without waiting for the realtime broadcast
+ * (~500-1500ms). Realtime + visibility refetch still cover the case where
+ * the change came from another tab/device.
+ */
+export const TX_UPSERTED_EVENT = "tx:upserted";
+function emitTxUpserted(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(TX_UPSERTED_EVENT));
+}
+
 // ─── Writes ───────────────────────────────────────────────────────────────
 
 /**
@@ -368,6 +412,7 @@ export async function createTransaction(
     throw new Error(describeWriteError(error));
   }
 
+  emitTxUpserted();
   return toView(data as unknown as TransactionRow);
 }
 
@@ -414,6 +459,7 @@ export async function updateTransaction(
     throw new Error(describeWriteError(error));
   }
 
+  emitTxUpserted();
   return toView(data as unknown as TransactionRow);
 }
 

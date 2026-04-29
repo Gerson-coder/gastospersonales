@@ -71,11 +71,13 @@ import {
 } from "@/lib/data/categories";
 import {
   createTransaction,
+  getAccountBalances,
   getTransactionById,
   updateTransaction,
   MAX_TRANSACTION_AMOUNT,
   type TransactionDraft,
 } from "@/lib/data/transactions";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MerchantPicker } from "@/components/lumi/MerchantPicker";
@@ -467,6 +469,29 @@ function CapturePageInner() {
   const [accountId, setAccountId] = React.useState<AccountId | null>(
     SUPABASE_ENABLED ? null : MOCK_ACCOUNTS[0]?.id ?? null,
   );
+  // Per-account balances for the active currency (minor units, signed).
+  // Loaded once on mount and after every save so the "sin saldo" guard reflects
+  // the current state. Absent keys = zero balance. Demo mode skips this — no
+  // backend to query.
+  const [balances, setBalances] = React.useState<Record<string, number>>({});
+  // Modal shown when the user picks an empty account in expense flow OR tries
+  // to save an expense against one. Single boolean — message is short and fixed.
+  const [noBalanceOpen, setNoBalanceOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const map = await getAccountBalances(currency);
+        if (!cancelled) setBalances(map);
+      } catch {
+        // Soft-fail — guard simply won't trigger; save flow still validates.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currency]);
 
   // Load real accounts when Supabase is configured. Separate effect from any
   // categories loader so two parallel agents don't fight over the same hook.
@@ -725,6 +750,14 @@ function CapturePageInner() {
       toast.error("Completa monto, categoría y cuenta para guardar.");
       return;
     }
+    // Saldo guard — block expenses against an empty account. The account
+    // picker already nudges the user, but a careful user could pick a valid
+    // account, switch to expense kind, and reach Save without retriggering
+    // the picker — so we re-check here.
+    if (kind === "expense" && (balances[accountId] ?? 0) <= 0) {
+      setNoBalanceOpen(true);
+      return;
+    }
 
     const draft: TransactionDraft = {
       amount,
@@ -745,16 +778,13 @@ function CapturePageInner() {
     try {
       if (editId) {
         await updateTransaction(editId, draft);
-        toast.success("Movimiento actualizado.");
         router.push("/movements");
       } else {
         await createTransaction(draft);
-        toast.success("Guardado.");
         // `router.refresh()` invalidates the App Router cache so the
         // dashboard's server boundary re-runs. Combined with the
-        // visibility-change refetch in the dashboard hook, this collapses
-        // the user-perceived stale-numbers window from "wait for realtime
-        // ack" (~500-1500ms) to "instant".
+        // `tx:upserted` listener mounted in /dashboard, this collapses
+        // the user-perceived stale-numbers window to zero.
         router.refresh();
         router.push("/dashboard");
       }
@@ -777,6 +807,7 @@ function CapturePageInner() {
     categoryId,
     accountId,
     amount,
+    balances,
     currency,
     kind,
     merchantId,
@@ -1193,23 +1224,36 @@ function CapturePageInner() {
         </div>
       </div>
 
-      {/* Submitting overlay — when handleSave is in flight (Supabase ACK
-          pending), block interaction behind a translucent veil with a
-          centred Loader2. Replaces the spinner that used to live inside
-          the in-page Save button. */}
-      {submitting ? (
-        <div
-          role="status"
-          aria-live="polite"
-          aria-label="Guardando movimiento"
-          className="absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px]"
+      {/* Saving veil — fixed full-viewport overlay (matches accounts /
+          categories / settings UX). Replaces the inline absolute overlay +
+          the green "Guardado." sonner toast that used to fire on success. */}
+      <SavingOverlay open={submitting} />
+
+      {/* Saldo guard — fires when picking an empty account on the expense
+          flow, or when Save is hit against one. Short message, single
+          dismiss action. */}
+      <Drawer open={noBalanceOpen} onOpenChange={setNoBalanceOpen}>
+        <DrawerContent
+          aria-describedby="capture-no-balance-desc"
+          className="bg-background"
         >
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-[13px] font-semibold text-foreground shadow-[var(--shadow-float)]">
-            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
-            <span>Guardando…</span>
+          <DrawerHeader>
+            <DrawerTitle>Sin saldo</DrawerTitle>
+            <DrawerDescription id="capture-no-balance-desc">
+              Esta cuenta no tiene saldo para realizar esta operación.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-6">
+            <button
+              type="button"
+              onClick={() => setNoBalanceOpen(false)}
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Entendido
+            </button>
           </div>
-        </div>
-      ) : null}
+        </DrawerContent>
+      </Drawer>
 
       {/* Category drawer — full grid */}
       <Drawer open={categoryDrawerOpen} onOpenChange={setCategoryDrawerOpen}>
@@ -1318,6 +1362,11 @@ function CapturePageInner() {
                         onClick={() => {
                           setAccountId(a.id);
                           setAccountDrawerOpen(false);
+                          // Saldo guard — only on expense flow. Income RECHARGES
+                          // an empty account, so we must never block it.
+                          if (kind === "expense" && (balances[a.id] ?? 0) <= 0) {
+                            setNoBalanceOpen(true);
+                          }
                         }}
                         aria-pressed={selected}
                         className={cn(

@@ -708,13 +708,10 @@ function ReceiptPageInner() {
   }, [router]);
 
   const handleAccept = React.useCallback(() => {
-    toast.success("Guardado", {
-      description: `${formatMoney(Number(amount.replace(",", ".")) || 0, currency)} en ${merchant}`,
-    });
     window.setTimeout(() => {
       router.push("/dashboard");
     }, 800);
-  }, [amount, currency, merchant, router]);
+  }, [router]);
 
   const handleDiscard = React.useCallback(() => {
     if (dirty && !discardArmed) {

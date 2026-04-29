@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { removeAvatar, uploadAvatar } from "@/lib/data/avatar";
+import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import {
   Sheet,
   SheetContent,
@@ -118,7 +119,6 @@ export default function ProfilePage() {
       // immediately. session.refresh() then runs in the background to
       // bring the canonical profile row into sync without blocking UI.
       setAvatarUrl(result.publicUrl);
-      toast.success("Foto actualizada");
       void session.refresh();
     } catch (err) {
       const message =
@@ -136,7 +136,6 @@ export default function ProfilePage() {
       // Optimistic clear so the placeholder appears instantly across
       // mounts. session.refresh() is fire-and-forget background sync.
       setAvatarUrl(null);
-      toast.success("Foto eliminada");
       void session.refresh();
     } catch (err) {
       const message =
@@ -176,7 +175,6 @@ export default function ProfilePage() {
     setSubmitting(true);
     try {
       await setName(trimmed);
-      toast.success("Nombre actualizado");
     } catch {
       try {
         await setName(prevName);
@@ -498,6 +496,10 @@ export default function ProfilePage() {
           </form>
         </SheetContent>
       </Sheet>
+      {/* Replaces the green "Foto actualizada/eliminada" + "Nombre
+          actualizado" sonner toasts. While avatar upload or name save is
+          in flight we show the overlay; on success we just close the sheet. */}
+      <SavingOverlay open={avatarBusy || submitting} />
     </main>
   );
 }

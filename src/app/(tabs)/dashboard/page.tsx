@@ -77,7 +77,7 @@ import {
   listAccounts,
   type Account,
 } from "@/lib/data/accounts";
-import type { TransactionView } from "@/lib/data/transactions";
+import { TX_UPSERTED_EVENT, type TransactionView } from "@/lib/data/transactions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -719,10 +719,17 @@ export default function DashboardPage() {
     document.addEventListener("visibilitychange", onVisible);
     globalThis.addEventListener("focus", refetch);
     globalThis.addEventListener("pageshow", refetch);
+    // App Router caches client pages, so `/capture` → `/dashboard` doesn't
+    // remount this page. Realtime alone has 500-1500ms latency and
+    // `router.refresh()` only invalidates server data. Listening to a
+    // synchronous in-app event guarantees the saldo card + per-account card
+    // refresh the moment a write ACKs in the same tab.
+    globalThis.addEventListener(TX_UPSERTED_EVENT, refetch);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       globalThis.removeEventListener("focus", refetch);
       globalThis.removeEventListener("pageshow", refetch);
+      globalThis.removeEventListener(TX_UPSERTED_EVENT, refetch);
     };
   }, [window.refetch]);
 
