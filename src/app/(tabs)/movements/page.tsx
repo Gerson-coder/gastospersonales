@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatTxDate } from "@/lib/format-tx-date";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -311,23 +312,24 @@ function TransactionRow({
   const Icon = CATEGORY_ICONS[bucket];
   const tint = CATEGORY_TINT[bucket];
 
-  // Stable formatting: parse the ISO string directly to hh:mm to avoid
-  // TZ-driven hydration mismatches.
-  const time = t.occurredAt.slice(11, 16);
   const isIncome = t.kind === "income";
   const signed = isIncome ? t.amount : -t.amount;
   const sign = signed < 0 ? "– " : isIncome ? "+ " : "";
   const moneyText = `${sign}${formatMoney(Math.abs(signed), t.currency)}`;
 
-  // Degraded labels per spec edge cases.
-  const categoryDisplay = t.categoryName ?? "Sin categoría";
-  const titleText =
+  // Title language matches /dashboard rows:
+  //   - Income: account name leads (the deposit's "where", more useful
+  //     than the dim "Ahorro" category).
+  //   - Expense: merchant > category fallback.
+  // Subtitle is the friendly relative date so the user always sees WHEN.
+  const merchantOrCategory =
     t.merchantName ?? (t.categoryName ? t.categoryName : "Sin nombre");
-  // Subtitle = account name (parity with dashboard rows). Falls back to
-  // the category if a row somehow lacks an account label.
-  const subtitle = t.accountName ?? categoryDisplay;
+  const titleText = isIncome
+    ? (t.accountName ?? merchantOrCategory)
+    : merchantOrCategory;
+  const subtitle = formatTxDate(t.occurredAt);
 
-  const ariaLabel = `${titleText}, ${moneyText}, ${subtitle}, ${time}`;
+  const ariaLabel = `${titleText}, ${moneyText}, ${subtitle}`;
 
   const longPressHandlers = useLongPress(onLongPress);
 

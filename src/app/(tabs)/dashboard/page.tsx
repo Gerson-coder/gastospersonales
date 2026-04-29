@@ -54,6 +54,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CURRENCY_LABEL } from "@/lib/money";
+import { formatTxDate } from "@/lib/format-tx-date";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
@@ -340,9 +341,11 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
   const Icon = CATEGORY_ICONS[t.iconKey];
   const tint = CATEGORY_TINT[t.iconKey];
   const isIncome = t.kind === "income";
-  // Subtitle = account name (matches mobile parity). Falls back to the
-  // category label when an account label is somehow missing.
-  const subtitle = t.accountName ?? t.categoryLabel;
+  // Mobile parity — income leads with the account name, expense keeps
+  // the merchant/category as title. Subtitle is the friendly relative
+  // date (Hoy / Ayer / DD MMM) in muted text.
+  const title = isIncome ? (t.accountName ?? t.merchant) : t.merchant;
+  const subtitle = formatTxDate(t.occurredAt);
   return (
     <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
       <div
@@ -352,7 +355,7 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-semibold leading-snug">
-          {t.merchant}
+          {title}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
           {subtitle}
@@ -374,16 +377,20 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
 // monto sigue las mismas reglas de signo que TransactionRow.
 function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   const isIncome = t.kind === "income";
-  // The subtitle now carries the account name (instead of a date) so the
-  // user always sees WHERE money landed/left from. Falls back to the date
-  // for legacy rows that somehow lack an account label.
-  const subtitle = t.accountName ?? formatTxDate(t.occurredAt);
+  // Income: title = account name (the user's mental model is "I deposited
+  // 270 to BCP Ahorro" — the account is the meaningful label, not the
+  // category which is a dim "Ahorro"). Expense: keep merchant/category.
+  const title = isIncome ? (t.accountName ?? t.merchant) : t.merchant;
+  // Subtitle = friendly date ("Hoy 12:30" / "Ayer 09:15" / "20 Abr 11:10").
+  // Subtle muted color carries the timestamp without competing with the
+  // amount on the right column.
+  const subtitle = formatTxDate(t.occurredAt);
   return (
     <div className="grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5">
-      <MerchantAvatar name={t.merchant} size="lg" />
+      <MerchantAvatar name={title} size="lg" />
       <div className="min-w-0">
         <div className="truncate text-[14px] font-semibold leading-tight">
-          {t.merchant}
+          {title}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
           {subtitle}
@@ -448,24 +455,8 @@ function guessIconKey(name: string | null | undefined): CategoryId {
   return "other";
 }
 
-function formatTxDate(occurredAt: string): string {
-  const txDate = occurredAt.slice(0, 10);
-  const time   = occurredAt.slice(11, 16);
-  const now    = new Date();
-  const today  = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const yesterday = (() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  })();
-
-  if (txDate === today)     return `Hoy, ${time}`;
-  if (txDate === yesterday) return `Ayer, ${time}`;
-  // e.g. "19 Abr, 11:10"
-  const [, mm, dd] = txDate.split("-");
-  const MONTHS = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  return `${parseInt(dd)} ${MONTHS[parseInt(mm)-1]}, ${time}`;
-}
+// Moved to `@/lib/format-tx-date` so /movements rows share the exact
+// same formatting language as the dashboard's "Últimas transacciones".
 
 // ─── Empty-state card ──────────────────────────────────────────────────────
 // Rendered when the user has zero transactions in the active-currency 6-month
