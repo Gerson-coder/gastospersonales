@@ -493,6 +493,15 @@ function CapturePageInner() {
   const [noBalanceReason, setNoBalanceReason] = React.useState<
     "empty" | "insufficient"
   >("empty");
+  // Abono inline form inside the saldo modal. When the user hits "sin
+  // saldo" mid-capture, they can recharge the account in place instead of
+  // bouncing to a separate flow and losing the in-flight expense draft.
+  // Mode flag toggles between the 3-button decision view and the amount-
+  // input view; amount string mirrors the keypad-buffer shape so it
+  // round-trips through parseAmount cleanly.
+  const [abonoMode, setAbonoMode] = React.useState(false);
+  const [abonoAmount, setAbonoAmount] = React.useState("");
+  const [abonoSubmitting, setAbonoSubmitting] = React.useState(false);
   // When the user hits Save without a picked account, we open the account
   // drawer instead of saving. This flag rides through that round-trip so
   // the picker callback knows to fire handleSave automatically once the
@@ -985,6 +994,72 @@ function CapturePageInner() {
     ? "Ingrese un monto primero"
     : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${accountDisplayLabel(account)}` : ""}`;
 
+  // Inline-abono confirm. Records an income transaction against the same
+  // account the saldo modal was triggered for, refreshes the balances map
+  // so the saldo guard re-evaluates against the new state, and closes the
+  // modal so the user is back on the keypad with their original expense
+  // draft intact. category_id stays null — an "abono manual" is closer to
+  // a deposit/recharge than a real income source, so we don't force it
+  // into Trabajo or Ahorro by default. The user can re-categorise from
+  // /movements if they want.
+  const handleAbono = React.useCallback(async () => {
+    if (!accountId) return;
+    const n = parseAmount(abonoAmount);
+    if (n <= 0) {
+      toast.error("Ingresa un monto válido para abonar.");
+      return;
+    }
+    if (n > MAX_TRANSACTION_AMOUNT) {
+      toast.error("El monto excede el máximo permitido.");
+      return;
+    }
+    setAbonoSubmitting(true);
+    try {
+      await createTransaction({
+        amount: n,
+        currency,
+        kind: "income",
+        categoryId: null,
+        merchantId: null,
+        accountId,
+        note: "Abono manual",
+      });
+      // Refresh the balances map so the saldo guard now sees the new
+      // total and the picker rows reflect it. Best-effort — if it fails
+      // the next legitimate fetch will catch up.
+      try {
+        const map = await getAccountBalances(currency);
+        setBalances(map);
+      } catch {
+        // Soft-fail
+      }
+      toast.success(`Abono registrado: ${formatMoney(n, currency)}`);
+      setAbonoMode(false);
+      setAbonoAmount("");
+      setNoBalanceOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "No pudimos registrar el abono.",
+      );
+    } finally {
+      setAbonoSubmitting(false);
+    }
+  }, [accountId, abonoAmount, currency]);
+
+  // Reset abono state every time the saldo modal closes — opening it again
+  // for a different account/amount should always start at the 3-button
+  // decision view, not at a half-typed abono input.
+  function handleNoBalanceOpenChange(next: boolean) {
+    setNoBalanceOpen(next);
+    if (!next) {
+      setAbonoMode(false);
+      setAbonoAmount("");
+      setAbonoSubmitting(false);
+    }
+  }
+
   return (
     <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
       <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col">
@@ -1281,7 +1356,7 @@ function CapturePageInner() {
       {/* Saldo guard — fires when picking an empty account on the expense
           flow, or when Save is hit against one. Short message, single
           dismiss action. */}
-      <Drawer open={noBalanceOpen} onOpenChange={setNoBalanceOpen}>
+      <Drawer open={noBalanceOpen} onOpenChange={handleNoBalanceOpenChange}>
         <DrawerContent
           aria-describedby="capture-no-balance-desc"
           className="bg-background"
@@ -1296,32 +1371,147 @@ function CapturePageInner() {
               {noBalanceReason === "empty"
                 ? "Esta cuenta no tiene saldo para realizar esta operación."
                 : "El monto del gasto supera el saldo de esta cuenta."}
+              {accountId && balancesLoaded ? (
+                <span className="mt-1 block text-foreground">
+                  Saldo actual:{" "}
+                  <span className="font-semibold tabular-nums">
+                    {formatMoney(balances[accountId] ?? 0, currency)}
+                  </span>
+                </span>
+              ) : null}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="flex flex-col gap-2 px-4 pb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setNoBalanceOpen(false);
-                // Re-open the picker with pendingSave set so the user can
-                // choose a different account and the save fires
-                // automatically. Without this, the inline picker is gone
-                // so the user has no way to switch accounts mid-flow.
-                setPendingSave(true);
-                setAccountDrawerOpen(true);
-              }}
-              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Cambiar cuenta
-            </button>
-            <button
-              type="button"
-              onClick={() => setNoBalanceOpen(false)}
-              className="inline-flex h-9 w-full items-center justify-center rounded-xl text-[13px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Cerrar
-            </button>
-          </div>
+          {abonoMode ? (
+            <div className="flex flex-col gap-3 px-4 pb-6">
+              <label className="block">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                  ¿Cuánto quieres abonar?
+                </span>
+                <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5 focus-within:ring-2 focus-within:ring-ring">
+                  <span className="text-[14px] font-medium text-muted-foreground">
+                    {currency === "USD" ? "$" : "S/"}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoFocus
+                    value={abonoAmount}
+                    onChange={(e) => {
+                      // Accept digits + a single decimal separator. Strip
+                      // anything else so paste of "S/ 100,50" still works.
+                      const raw = e.target.value.replace(/[^0-9.,]/g, "");
+                      // Normalise comma → dot for parseFloat downstream.
+                      setAbonoAmount(raw.replace(",", "."));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleAbono();
+                      }
+                    }}
+                    placeholder="0.00"
+                    aria-label="Monto a abonar"
+                    className="flex-1 bg-transparent text-[16px] font-semibold tabular-nums outline-none placeholder:text-muted-foreground/50"
+                    style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                  />
+                </div>
+              </label>
+              {/* Quick-amount chips. Round numbers most users land on for a
+                  manual recharge — they tap-and-confirm in two clicks. */}
+              <div className="flex flex-wrap gap-2">
+                {(currency === "USD"
+                  ? ["20", "50", "100", "200"]
+                  : ["50", "100", "200", "500"]
+                ).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAbonoAmount(preset)}
+                    className="inline-flex h-8 items-center justify-center rounded-full border border-border bg-card px-3 text-[12px] font-semibold tabular-nums text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {currency === "USD" ? "$" : "S/"} {preset}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleAbono()}
+                disabled={abonoSubmitting || parseAmount(abonoAmount) <= 0}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-[14px] font-semibold text-background transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                {abonoSubmitting ? (
+                  <>
+                    <Loader2 size={14} aria-hidden="true" className="animate-spin" />
+                    Registrando…
+                  </>
+                ) : (
+                  <>
+                    Confirmar abono
+                    {parseAmount(abonoAmount) > 0
+                      ? ` · ${formatMoney(parseAmount(abonoAmount), currency)}`
+                      : ""}
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAbonoMode(false);
+                  setAbonoAmount("");
+                }}
+                disabled={abonoSubmitting}
+                className="inline-flex h-9 w-full items-center justify-center rounded-xl text-[13px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                Volver
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 px-4 pb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setNoBalanceOpen(false);
+                  // Re-open the picker with pendingSave set so the user
+                  // can choose a different account and the save fires
+                  // automatically. Without this, the inline picker is
+                  // gone so the user has no way to switch accounts
+                  // mid-flow.
+                  setPendingSave(true);
+                  setAccountDrawerOpen(true);
+                }}
+                className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-foreground text-[14px] font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Cambiar cuenta
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Pre-fill the abono input with the missing amount when
+                  // the modal fired in "insufficient" mode — that's the
+                  // exact gap the user needs to cover to make their
+                  // expense go through. "empty" mode leaves it blank.
+                  if (noBalanceReason === "insufficient" && accountId) {
+                    const current = balances[accountId] ?? 0;
+                    const gap = Math.max(0, amount - current);
+                    if (gap > 0) {
+                      setAbonoAmount(gap.toFixed(2));
+                    }
+                  }
+                  setAbonoMode(true);
+                }}
+                className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-foreground bg-background text-[14px] font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Abonar a esta cuenta
+              </button>
+              <button
+                type="button"
+                onClick={() => setNoBalanceOpen(false)}
+                className="inline-flex h-9 w-full items-center justify-center rounded-xl text-[13px] font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
         </DrawerContent>
       </Drawer>
 
