@@ -43,7 +43,6 @@ import {
   PieChart,
   BarChart2,
   X,
-  ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -341,9 +340,10 @@ type RecentRowItem = {
 function TransactionRow({ t }: { t: RecentRowItem }) {
   const Icon = CATEGORY_ICONS[t.iconKey];
   const tint = CATEGORY_TINT[t.iconKey];
-  // Stable formatting from the ISO string to avoid TZ-driven hydration mismatches.
-  const time = t.occurredAt.slice(11, 16);
   const isIncome = t.kind === "income";
+  // Subtitle = account name (matches mobile parity). Falls back to the
+  // category label when an account label is somehow missing.
+  const subtitle = t.accountName ?? t.categoryLabel;
   return (
     <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
       <div
@@ -356,7 +356,7 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
           {t.merchant}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          {t.categoryLabel} · {time}
+          {subtitle}
         </div>
       </div>
       <MoneyDisplay
@@ -375,41 +375,21 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
 // monto sigue las mismas reglas de signo que TransactionRow.
 function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   const isIncome = t.kind === "income";
-  const isGreen =
-    t.accountName?.toLowerCase() === "yape" ||
-    t.accountName?.toLowerCase() === "plin";
+  // The subtitle now carries the account name (instead of a date) so the
+  // user always sees WHERE money landed/left from. Falls back to the date
+  // for legacy rows that somehow lack an account label.
+  const subtitle = t.accountName ?? formatTxDate(t.occurredAt);
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_64px_88px] items-center gap-2 px-3 py-3.5">
+    <div className="grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5">
       <MerchantAvatar name={t.merchant} size="lg" />
-      {/* Col 2 — merchant + date stack. Truncates so the fixed columns to the
-          right stay anchored at consistent x positions across rows. */}
       <div className="min-w-0">
         <div className="truncate text-[14px] font-semibold leading-tight">
           {t.merchant}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-          {formatTxDate(t.occurredAt)}
+          {subtitle}
         </div>
       </div>
-      {/* Col 3 — account badge. Fixed-width slot keeps the pill at the same
-          x across every row regardless of label length (Yape vs BCP Soles). */}
-      <div className="flex justify-center">
-        {t.accountName ? (
-          <span
-            className={cn(
-              "max-w-full truncate rounded-full px-2 py-0.5 text-center text-[10px] font-medium leading-tight",
-              isGreen
-                ? "bg-[oklch(0.88_0.10_162)] text-[oklch(0.35_0.16_162)]"
-                : "border border-border bg-muted/40 text-muted-foreground",
-            )}
-            title={t.accountName}
-          >
-            {t.accountName}
-          </span>
-        ) : null}
-      </div>
-      {/* Col 4 — amount. Right-aligned + slightly smaller (text-sm = 13px)
-          so values up to S/ 99,999.99 fit without overflowing the slot. */}
       <div className="text-right">
         <MoneyDisplay
           amount={isIncome ? t.amount : -t.amount}
@@ -837,7 +817,11 @@ export default function DashboardPage() {
   // Sin presupuestos derivados — eso vivía antes y producía números
   // confusos (e.g. "te quedan S/ 6.67" cuando había S/ 200 de ingreso al
   // dividirlo entre 30 días). Saldo es la métrica honesta del estado.
-  const [period, setPeriod] = React.useState<Period>("today");
+  // Period is locked to "month" — the today/week pills were dropping users
+  // onto an empty Saldo (no movements today / this week) which felt broken.
+  // The hero now always reflects the current month total. setPeriod is kept
+  // for the DashboardHero prop signature but never invoked.
+  const [period, setPeriod] = React.useState<Period>("month");
 
   const heroNumbers = React.useMemo(() => {
     const now = new Date();
@@ -996,21 +980,12 @@ export default function DashboardPage() {
             <h1 className="text-[16px] font-semibold leading-tight tracking-tight">
               {greeting}
             </h1>
-            <button
-              type="button"
-              onClick={() => {
-                const order: Period[] = ["today", "week", "month"];
-                const idx = order.indexOf(period);
-                setPeriod(order[(idx + 1) % order.length]);
-              }}
-              aria-label={`Cambiar período. Actual: ${dateRangeLabel}`}
-              className="mt-1 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+            <span
+              className="mt-1 inline-block text-[12px] text-muted-foreground tabular-nums"
+              style={{ fontFeatureSettings: '"tnum","lnum"' }}
             >
-              <span className="tabular-nums" style={{ fontFeatureSettings: '"tnum","lnum"' }}>
-                {dateRangeLabel}
-              </span>
-              <ChevronDown size={14} aria-hidden="true" />
-            </button>
+              {dateRangeLabel}
+            </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <NotificationsBell />

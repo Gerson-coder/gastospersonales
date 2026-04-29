@@ -320,12 +320,14 @@ function TransactionRow({
   const moneyText = `${sign}${formatMoney(Math.abs(signed), t.currency)}`;
 
   // Degraded labels per spec edge cases.
-  const merchantDisplay = t.merchantName ?? "Comercio archivado";
   const categoryDisplay = t.categoryName ?? "Sin categoría";
   const titleText =
     t.merchantName ?? (t.categoryName ? t.categoryName : "Sin nombre");
+  // Subtitle = account name (parity with dashboard rows). Falls back to
+  // the category if a row somehow lacks an account label.
+  const subtitle = t.accountName ?? categoryDisplay;
 
-  const ariaLabel = `${titleText}, ${moneyText}, ${categoryDisplay}, ${time}`;
+  const ariaLabel = `${titleText}, ${moneyText}, ${subtitle}, ${time}`;
 
   const longPressHandlers = useLongPress(onLongPress);
 
@@ -351,7 +353,7 @@ function TransactionRow({
           {titleText}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {t.merchantName ? `${categoryDisplay} · ${time}` : `${merchantDisplay !== "Comercio archivado" ? merchantDisplay : categoryDisplay} · ${time}`}
+          {subtitle}
         </div>
       </div>
       <span
@@ -463,7 +465,11 @@ function MovementsContent() {
       setLoading(true);
       setError(null);
       try {
-        const result = await listTransactionsByCurrency({ currency, limit: 50 });
+        // 20 rows on the first paint instead of 50 — cuts the initial
+        // joined-payload size by 60% and the user only sees the top of
+        // the list anyway. `loadMore()` keeps 50 to make scrolling cheap
+        // once the page is interactive.
+        const result = await listTransactionsByCurrency({ currency, limit: 20 });
         if (cancelled) return;
         setRows(result.rows);
         setNextCursor(result.nextCursor);
