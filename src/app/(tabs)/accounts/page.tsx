@@ -556,13 +556,14 @@ function AccountFormSheet({
   }
 
   // Brand preset is "used" when the user already has an active account
-  // matching this preset's identity:
-  //   - Wallet brands (Yape / Plin): one row per brand is the cap, so any
-  //     active row of that kind locks the preset.
-  //   - Bank brands (BCP / Interbank / BBVA): the lock is per (label,
-  //     subtype) pair — multiple BCP rows are valid as long as they
-  //     differ in subtype. With no subtype slot left in the form, the
-  //     existing collision-by-name still applies.
+  // matching this preset's identity IN THE ACTIVE CURRENCY. The currency
+  // gate is what lets a user with a PEN Yape still tap the Yape badge
+  // after switching to USD: the same brand in a different currency is a
+  // legitimate new account, not a duplicate. Only when both PEN and USD
+  // versions of the same tuple exist does the badge get disabled in both
+  // currency views.
+  //   - Wallet brands (Yape / Plin): one row per (brand, currency) caps it.
+  //   - Bank brands (BCP / Interbank / BBVA): per (label, subtype, currency).
   // Edit mode never disables the preset that currently matches the row
   // we're editing — the user has to be able to keep the existing brand.
   function isPresetUsed(preset: BrandPreset): boolean {
@@ -572,16 +573,17 @@ function AccountFormSheet({
       if (matchesCurrent) return false;
     }
     if (preset.kind === "bank") {
-      // Bank brand uses (label, subtype). With subtype the user picks,
-      // disable only the exact (label, subtype) pair already taken.
       return existingAccounts.some(
         (a) =>
           a.kind === "bank" &&
           a.label === preset.label &&
-          a.subtype === subtype,
+          a.subtype === subtype &&
+          a.currency === currency,
       );
     }
-    return existingAccounts.some((a) => a.kind === preset.kind);
+    return existingAccounts.some(
+      (a) => a.kind === preset.kind && a.currency === currency,
+    );
   }
 
   // Auto-pick USD when the user picks "dolares" subtype (most users keep
