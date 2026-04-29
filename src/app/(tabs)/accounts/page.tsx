@@ -161,7 +161,39 @@ const BRAND_PRESETS: BrandPreset[] = [
 ];
 
 // ─── Page ──────────────────────────────────────────────────────────────────
+// Top-level export wraps the real page in Suspense so `useSearchParams()`
+// (used inside AccountsPageInner to read `?create=1`) doesn't bail static
+// rendering. Next 15+/16 requires `useSearchParams()` to live under a
+// Suspense ancestor during prerender — without it the build fails with
+// "missing-suspense-with-csr-bailout". Same pattern as /capture.
 export default function AccountsPage() {
+  return (
+    <React.Suspense fallback={<AccountsPageFallback />}>
+      <AccountsPageInner />
+    </React.Suspense>
+  );
+}
+
+// Minimal loading shell — matches the real page's outer chrome so the
+// swap-in feels stable. MUST NOT call useSearchParams or any other hook
+// that bails static render.
+function AccountsPageFallback() {
+  return (
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      className="relative min-h-dvh bg-background pb-32 text-foreground"
+    >
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-xl" />
+      </div>
+    </main>
+  );
+}
+
+function AccountsPageInner() {
   const [accounts, setAccounts] = React.useState<Account[]>(
     SUPABASE_ENABLED ? [] : MOCK_ACCOUNTS,
   );
