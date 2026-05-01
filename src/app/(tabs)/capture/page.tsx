@@ -45,12 +45,16 @@ import {
   CreditCard,
   Landmark,
   Loader2,
+  Pencil,
+  CalendarDays,
+  AlertTriangle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CURRENCY_LABEL } from "@/lib/money";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { formatLimaDate } from "@/lib/format-tx-date";
 import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import {
   Drawer,
@@ -195,6 +199,40 @@ const MOCK_ACCOUNTS: Account[] = [
 // alphabetically (see CapturePage). TODO: replace with real MRU based on
 // transaction history once that data layer lands.
 const MRU_CATEGORY_IDS: CategoryId[] = ["food", "transport", "fun"];
+
+// ─── Date helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Today as YYYY-MM-DD in America/Lima time. The default for the new
+ * tx-date chip on the capture screen so a Peruvian user always starts
+ * on "today" regardless of where Vercel serves the page from.
+ */
+function todayLimaDate(): string {
+  return formatLimaDate(new Date());
+}
+
+/**
+ * Friendly relative copy for the date chip. "Hoy" / "Ayer" / short date
+ * for older values. Same MONTHS abbreviations the rest of the app uses.
+ */
+function formatDateChipLabel(yyyyMmDd: string): string {
+  const today = todayLimaDate();
+  if (yyyyMmDd === today) return "Hoy";
+  // Yesterday in Lima time. Cheap implementation: subtract 1 day from
+  // today's wall clock; reformat. The TZ math is handled by formatLimaDate.
+  const t = new Date();
+  t.setDate(t.getDate() - 1);
+  if (yyyyMmDd === formatLimaDate(t)) return "Ayer";
+  // Older: "DD MMM" — short month label, lowercase to match the rest
+  // of the app's date copy.
+  const [, mm, dd] = yyyyMmDd.split("-");
+  const months = [
+    "ene", "feb", "mar", "abr", "may", "jun",
+    "jul", "ago", "sep", "oct", "nov", "dic",
+  ];
+  const idx = parseInt(mm, 10) - 1;
+  return `${parseInt(dd, 10)} ${months[idx] ?? "?"}`;
+}
 
 // ─── Money formatting ─────────────────────────────────────────────────────
 // TODO: replace with formatMoney from @/lib/money once Batch B lands.
@@ -613,11 +651,26 @@ function CapturePageInner() {
     };
   }, []);
   const [note, setNote] = React.useState("");
+  // The note input expands inline below the amount when the user taps
+  // the "Agregar nota" pill. Auto-expands when there's already content
+  // (edit-mode hydration) so the user sees the existing text.
+  const [noteOpen, setNoteOpen] = React.useState(false);
+
   // Merchant selection — optional. Always reset to null when the category
   // changes (merchants are scoped per-category) and after a successful save
   // so the next capture starts clean. `null` is a valid value at insert
   // time — the `transactions.merchant_id` column is nullable.
   const [merchantId, setMerchantId] = React.useState<string | null>(null);
+
+  // Tx date — drives the "Hoy ⌄" chip below the amount. Stored as
+  // "YYYY-MM-DD" in LIMA time so the user's wall clock matches the row
+  // they create. Default = today (Lima). The save path passes this into
+  // the draft's occurredAt only when the user explicitly changed it;
+  // otherwise the DB default `now()` wins so the timestamp is precise.
+  const [txDate, setTxDate] = React.useState<string>(() =>
+    todayLimaDate(),
+  );
+  const [dateDrawerOpen, setDateDrawerOpen] = React.useState(false);
 
   // Edit-mode hydration: when `?edit=<id>` is in the URL we fetch the row
   // and seed every form field from it. If the row is gone (archived from
@@ -649,6 +702,10 @@ function CapturePageInner() {
         setAccountId(tx.accountId);
         setMerchantId(tx.merchantId);
         setNote(tx.note ?? "");
+        // Edit-mode: open the note input so the existing text is visible
+        // without forcing the user to tap the pill first.
+        if (tx.note && tx.note.trim().length > 0) setNoteOpen(true);
+        setTxDate(tx.occurredAt.slice(0, 10));
         setEditOriginalOccurredAt(tx.occurredAt);
       } catch (err) {
         if (cancelled) return;
@@ -680,6 +737,33 @@ function CapturePageInner() {
   // if the user has no categories at all. Downstream code coalesces.
   const category: Category | null =
     categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+
+  // ── Selected account + projected balance ───────────────────────────────
+  // Drives the inline account chip + saldo warning. When the user has
+  // no account picked yet, the chip becomes a "Elige una cuenta" CTA.
+  const selectedAccount: Account | null =
+    accounts.find((a) => a.id === accountId) ?? null;
+  const currentBalance: number | null =
+    accountId && balancesLoaded ? (balances[accountId] ?? 0) : null;
+  const projectedBalance: number | null =
+    currentBalance === null
+      ? null
+      : kind === "expense"
+        ? currentBalance - amount
+        : currentBalance + amount;
+  // Saldo warning fires for expense flow, when an account is picked, the
+  // balance is loaded, and the user is about to overspend. Soft warning —
+  // we no longer block the save; the user decides.
+  const showSaldoWarning =
+    kind === "expense" &&
+    accountId !== null &&
+    balancesLoaded &&
+    amount > 0 &&
+    (currentBalance ?? 0) < amount;
+  const saldoOverage =
+    showSaldoWarning && currentBalance !== null
+      ? amount - currentBalance
+      : 0;
   // When the user toggles between expense and income, the merchant picker
   // and the category column must reconcile:
   //   - income has no merchant (you receive money, you don't pay anyone),
@@ -847,6 +931,8 @@ function CapturePageInner() {
       setSaved({ ts });
       setAmountBuffer("");
       setNote("");
+      setNoteOpen(false);
+      setTxDate(todayLimaDate());
       setMerchantId(null);
       const firstExpense = categories.find((c) => c.defaultKind === "expense");
       setCategoryId(firstExpense?.id ?? categories[0]?.id ?? null);
@@ -881,29 +967,25 @@ function CapturePageInner() {
       setAccountDrawerOpen(true);
       return;
     }
-    // Saldo guard — block expenses against an empty or insufficient account.
-    // The account picker already nudges the user, but they could pick a
-    // valid account, switch to expense kind, then bump the amount above the
-    // saldo — so we re-check on submit.
-    if (kind === "expense") {
-      const balance = balances[accountId] ?? 0;
-      if (balance <= 0) {
-        // Clear pendingSave when the modal opens — closing the modal
-        // (Cerrar / ESC / dismiss) must NEVER auto-retry a save the user
-        // didn't ask for. The original "Guardar" tap that set pendingSave
-        // has been answered by surfacing this modal.
-        setPendingSave(false);
-        setNoBalanceReason("empty");
-        setNoBalanceOpen(true);
-        return;
-      }
-      if (balance < amount) {
-        setPendingSave(false);
-        setNoBalanceReason("insufficient");
-        setNoBalanceOpen(true);
-        return;
-      }
-    }
+    // Saldo state is now SHOWN INLINE (warning chip above the CTA + the
+    // projected-balance text on the account chip) rather than blocked at
+    // submit. The user's plata, the user's call. The abono flow stays
+    // available via the "Abonar" CTA on the warning chip when the user
+    // wants to recharge instead of overspending. See SaldoWarningChip
+    // below the account chip in the JSX.
+
+    // Date logic for the new tx-date chip:
+    //   - Edit mode keeps the original timestamp untouched (so editing a
+    //     forgotten field doesn't bump the row to "now").
+    //   - Create mode + txDate === today: omit occurredAt → DB default
+    //     `now()` wins (full precision, matches wall clock).
+    //   - Create mode + txDate !== today: send a noon-Lima timestamp on
+    //     the chosen date. The user is back-filling a past expense; the
+    //     hour doesn't matter, the day does.
+    const customDate = !editId && txDate !== todayLimaDate();
+    const customOccurredAtIso = customDate
+      ? `${txDate}T17:00:00.000Z` // 17:00 UTC = 12:00 Lima (UTC-5)
+      : null;
 
     const draft: TransactionDraft = {
       amount,
@@ -913,11 +995,11 @@ function CapturePageInner() {
       merchantId,
       accountId,
       note: note.trim() ? note.trim() : null,
-      // In edit mode, preserve the original timestamp; in create mode let
-      // the DB default `occurred_at` to `now()` server-side.
       ...(editId && editOriginalOccurredAt
         ? { occurredAt: editOriginalOccurredAt }
-        : {}),
+        : customOccurredAtIso
+          ? { occurredAt: customOccurredAtIso }
+          : {}),
     };
 
     setSubmitting(true);
@@ -963,13 +1045,13 @@ function CapturePageInner() {
     categoryId,
     accountId,
     amount,
-    balances,
     currency,
     kind,
     merchantId,
     note,
     editId,
     editOriginalOccurredAt,
+    txDate,
     router,
     categories,
     setActiveAccountId,
@@ -1214,6 +1296,163 @@ function CapturePageInner() {
           </div>
         </section>
 
+        {/* ── Inline meta strip ─────────────────────────────────────────
+            Replaces the old "Cuenta" card + "Hoy 11:45 BBVA" info bar
+            with three compact controls right under the amount:
+              1. "Agregar nota" pill that expands inline to a textarea
+              2. Account chip with projected-balance chip beside it
+              3. Date chip ("Hoy ⌄") tappable to a date picker drawer
+              4. Saldo warning chip (only when overspending)
+            The Yape-style layout puts the account front-and-center
+            without competing with the amount. */}
+        <div className="mx-4 mt-3 flex flex-col gap-2 md:mx-8">
+          {/* Note pill / inline expander */}
+          {noteOpen ? (
+            <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-3">
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value.slice(0, 240))}
+                onBlur={() => {
+                  if (note.trim().length === 0) setNoteOpen(false);
+                }}
+                placeholder="Escribe una nota corta…"
+                rows={2}
+                autoFocus
+                maxLength={240}
+                aria-label="Nota"
+                className="w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-snug text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
+              />
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="tabular-nums">{note.length}/240</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNote("");
+                    setNoteOpen(false);
+                  }}
+                  className="font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Quitar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setNoteOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 self-center rounded-full border border-border bg-card px-3.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Pencil size={12} aria-hidden />
+              {note.length > 0 ? note : "Agregar nota"}
+            </button>
+          )}
+
+          {/* Account chip — inline, with projected balance hint. Tapping
+              opens the existing accountDrawer (full picker). */}
+          <button
+            type="button"
+            onClick={() => setAccountDrawerOpen(true)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5",
+              "transition-colors hover:bg-muted",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+            aria-label={
+              selectedAccount
+                ? `Cambiar cuenta. Actual: ${selectedAccount.label}`
+                : "Elige una cuenta"
+            }
+          >
+            <span
+              aria-hidden
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+            >
+              <Wallet size={15} />
+            </span>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Cuenta
+              </p>
+              <p className="truncate text-[13px] font-semibold text-foreground">
+                {selectedAccount ? selectedAccount.label : "Elige una cuenta"}
+              </p>
+            </div>
+            {projectedBalance !== null && amount > 0 ? (
+              <div className="flex shrink-0 flex-col items-end">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Te queda
+                </span>
+                <span
+                  className={cn(
+                    "text-[12px] font-bold tabular-nums",
+                    projectedBalance < 0
+                      ? "text-destructive"
+                      : "text-foreground",
+                  )}
+                >
+                  {formatMoney(Math.max(0, projectedBalance), currency)}
+                </span>
+              </div>
+            ) : null}
+            <ChevronRight
+              size={14}
+              className="shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          </button>
+
+          {/* Date chip — small, tappable. Opens a drawer with a date
+              input. Default is "Hoy"; user can backfill past txs. */}
+          <button
+            type="button"
+            onClick={() => setDateDrawerOpen(true)}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 self-center rounded-full border border-border bg-card px-3.5 py-1.5",
+              "text-[12px] font-medium text-muted-foreground",
+              "transition-colors hover:bg-muted",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <CalendarDays size={12} aria-hidden />
+            {formatDateChipLabel(txDate)}
+            <ChevronDown size={12} aria-hidden />
+          </button>
+
+          {/* Saldo warning — soft, inline. The "Abonar" CTA opens the
+              existing recharge modal so the user can top-up without
+              losing their typed amount. The save button still works
+              even with the warning visible. */}
+          {showSaldoWarning ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+            >
+              <AlertTriangle
+                size={16}
+                aria-hidden
+                className="mt-0.5 shrink-0"
+              />
+              <div className="min-w-0 flex-1 text-[12px] leading-snug">
+                Te excedes por{" "}
+                <span className="font-bold tabular-nums">
+                  {formatMoney(saldoOverage, currency)}
+                </span>
+                . Puedes guardar igual o abonar primero.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNoBalanceReason("insufficient");
+                  setNoBalanceOpen(true);
+                }}
+                className="shrink-0 rounded-full bg-amber-900 px-2.5 py-1 text-[11px] font-semibold text-amber-50 transition-opacity hover:opacity-90 dark:bg-amber-200 dark:text-amber-900"
+              >
+                Abonar
+              </button>
+            </div>
+          ) : null}
+        </div>
+
         {/* Saved banner — visually-hidden announcement + visible toast.
             Implemented as <output role="status" aria-live="polite"> per a11y
             spec; lives in the layout flow so it doesn't cover the FAB. */}
@@ -1414,6 +1653,55 @@ function CapturePageInner() {
           categories / settings UX). Replaces the inline absolute overlay +
           the green "Guardado." sonner toast that used to fire on success. */}
       <SavingOverlay open={submitting} />
+
+      {/* Date drawer — small picker for the inline tx-date chip. The
+          input ranges from 2 years ago to today. Past dates only — we
+          don't let users post-date a future tx (would mess with the
+          velocity / month-to-date calculations). */}
+      <Drawer open={dateDrawerOpen} onOpenChange={setDateDrawerOpen}>
+        <DrawerContent className="bg-background">
+          <DrawerHeader>
+            <DrawerTitle>Fecha del movimiento</DrawerTitle>
+            <DrawerDescription>
+              Si te olvidaste de registrarlo en su momento, elige el día
+              en que ocurrió.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="flex flex-col gap-3 px-4 pb-6">
+            <input
+              type="date"
+              value={txDate}
+              onChange={(e) => setTxDate(e.target.value || todayLimaDate())}
+              max={todayLimaDate()}
+              min={(() => {
+                const d = new Date();
+                d.setFullYear(d.getFullYear() - 2);
+                return formatLimaDate(d);
+              })()}
+              className="h-12 w-full rounded-xl border border-border bg-card px-3 text-[15px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Fecha del movimiento"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTxDate(todayLimaDate());
+                }}
+                className="h-10 flex-1 rounded-xl border border-border bg-card text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                Hoy
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateDrawerOpen(false)}
+                className="h-10 flex-1 rounded-xl bg-foreground text-[13px] font-semibold text-background transition-opacity hover:opacity-90"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Saldo guard — fires when picking an empty account on the expense
           flow, or when Save is hit against one. Short message, single
