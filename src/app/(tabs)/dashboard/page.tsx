@@ -1415,9 +1415,6 @@ export default function DashboardPage() {
                       subline={
                         todaySnapshot.last ? (
                           <ExpenseSubline
-                            category={
-                              todaySnapshot.last.categoryName?.trim() || null
-                            }
                             timestamp={formatTxDate(
                               todaySnapshot.last.occurredAt,
                             )}

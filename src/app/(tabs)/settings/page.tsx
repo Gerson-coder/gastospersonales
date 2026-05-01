@@ -326,10 +326,12 @@ export default function SettingsPage() {
           </div>
         </header>
 
-        {/* Categorías */}
-        <SettingsSection title="Categorías" headingId="settings-categories">
-          <CategoriesCard />
-        </SettingsSection>
+        {/* Categorías removed from /settings — there's a single canonical
+            entry under /more → Tu dinero → Categorías → /categories.
+            The previous duplicate here invited divergent UX (two ways to
+            create a category). The CategoriesCard component below is kept
+            for now as dead code so the change is one-shot and reversible;
+            a follow-up sweep can prune the unused functions + imports. */}
 
         {/* Preferencias */}
         <SettingsSection title="Preferencias" headingId="settings-preferences">

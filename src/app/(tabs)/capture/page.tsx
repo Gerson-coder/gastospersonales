@@ -62,6 +62,7 @@ import {
 import {
   accountDisplayLabel,
   listAccounts,
+  ACCOUNT_UPSERTED_EVENT,
   type Account as DataAccount,
 } from "@/lib/data/accounts";
 import {
@@ -567,29 +568,48 @@ function CapturePageInner() {
     setAccountId(null);
   }, [currency, accounts, accountId]);
 
-  // Load real accounts when Supabase is configured. Separate effect from any
-  // categories loader so two parallel agents don't fight over the same hook.
+  // Load real accounts when Supabase is configured. Refetched on the
+  // `account:upserted` event AND on visibility / focus / pageshow so a
+  // freshly-created account in /accounts shows up here without forcing
+  // the user to reload — same pattern as /dashboard's account list.
+  // Default-select is intentionally OFF: forcing the user to pick on
+  // every save (via the modal-on-check flow) prevents silent mistakes
+  // (people recording against the wrong account when alphabetical
+  // defaulting kicked in).
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     let cancelled = false;
-    void (async () => {
+    const reloadAccounts = async () => {
       try {
         const list = await listAccounts();
         if (cancelled) return;
         const mapped = list.map(fromDataAccount);
         setAccounts(mapped);
-        // Intentionally NO default-select here. Forcing the user to pick on
-        // every save (via the modal-on-check flow) was a deliberate UX
-        // decision: defaulting to the alphabetically-first account caused
-        // people to record movements against the wrong account.
       } catch {
         // Soft-fail: keep accounts empty; the picker shows an empty state.
       } finally {
         if (!cancelled) setAccountsLoading(false);
       }
-    })();
+    };
+    void reloadAccounts();
+
+    const handler = () => {
+      void reloadAccounts();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reloadAccounts();
+    };
+    globalThis.addEventListener(ACCOUNT_UPSERTED_EVENT, handler);
+    globalThis.addEventListener("focus", handler);
+    globalThis.addEventListener("pageshow", handler);
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
+      globalThis.removeEventListener(ACCOUNT_UPSERTED_EVENT, handler);
+      globalThis.removeEventListener("focus", handler);
+      globalThis.removeEventListener("pageshow", handler);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
   const [note, setNote] = React.useState("");

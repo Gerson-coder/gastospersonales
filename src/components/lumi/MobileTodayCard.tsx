@@ -218,24 +218,18 @@ export function MobileTodayCard({
 // for visual symmetry between the two cards' sublines.
 
 /**
- * Expense subline: latest expense category + relative timestamp, red.
- * Renders nothing when both pieces are missing.
+ * Expense subline: latest expense relative timestamp, red. Mirrors the
+ * income card's subline visually — same font, same size, just the
+ * destructive tone instead of primary.
  */
-export function ExpenseSubline({
-  category,
-  timestamp,
-}: {
-  category: string | null;
-  timestamp: string | null;
-}) {
-  if (!category && !timestamp) return null;
-  const text = [category, timestamp].filter(Boolean).join(" · ");
+export function ExpenseSubline({ timestamp }: { timestamp: string | null }) {
+  if (!timestamp) return null;
   return (
     <p
       className="text-[11px] font-medium text-destructive tabular-nums truncate"
       style={TNUM_STYLE}
     >
-      {text}
+      {timestamp}
     </p>
   );
 }
