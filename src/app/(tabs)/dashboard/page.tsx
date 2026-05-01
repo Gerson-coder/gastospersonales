@@ -60,6 +60,8 @@ import { formatTxDate } from "@/lib/format-tx-date";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
+import { AccountCardCarousel } from "@/components/lumi/AccountCardCarousel";
+import { useAccountStats } from "@/hooks/use-account-stats";
 import { StatTrendCard } from "@/components/lumi/StatTrendCard";
 import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/CategoryDonut";
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
@@ -827,6 +829,13 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // Currency-filtered accounts for the mobile card carousel. The new
+  // wallet-style header on mobile shows one swipeable card per account in
+  // the active currency. We filter by currency because each card's stats
+  // come from `window.rows` (already PEN-or-USD-only); mixing would render
+  // misleading numbers. Computed off `accounts` (insertion order) and then
+  // re-sorted by MRU below — same source list as the desktop chip strip.
+
   // Order accounts by "most recently used" — `window.rows` is DESC by
   // occurredAt, so the first time we see an `accountId` is also its latest
   // tx. Accounts with no tx in the visible window keep their server
@@ -848,6 +857,21 @@ export default function DashboardPage() {
       return ai - bi;
     });
   }, [accounts, window.rows]);
+
+  // ── Mobile carousel — accounts of the active currency ─────────────────
+  // We feed the carousel the MRU-sorted, currency-scoped list. The first
+  // card the user lands on is decided by `lumi-prefs:activeAccountId` (per
+  // AccountCardCarousel). Stats are computed once over the full window via
+  // useAccountStats and looked up per-card.
+  const carouselAccounts = React.useMemo(
+    () => orderedAccounts.filter((a) => a.currency === currency),
+    [orderedAccounts, currency],
+  );
+  const carouselAccountIds = React.useMemo(
+    () => carouselAccounts.map((a) => a.id),
+    [carouselAccounts],
+  );
+  const accountStats = useAccountStats(window.rows, carouselAccountIds);
 
   // Account-filter selector — currency-aware. Two responsibilities folded
   // into one effect:
@@ -1157,7 +1181,7 @@ export default function DashboardPage() {
                 own identity). */}
             {accounts.length > 1 && (
               <div
-                className="mx-4 mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:mt-6"
+                className="hidden mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:block md:mx-0 md:mt-6"
                 aria-label="Filtrar por cuenta"
               >
                 <div className="flex gap-2 w-max pr-1 md:pr-0">
@@ -1280,18 +1304,22 @@ export default function DashboardPage() {
                 <CurrencySwitch />
               </div>
             )}
-            {/* Mobile hero — hidden when the user has zero history in
-                the active currency. The empty card below is the single
-                CTA in that case (no zero-filled "Gastaste hoy/semana/mes"
-                cards competing for attention). */}
-            {!isEmpty && (
-              <div className="mx-4 mt-4 md:hidden">
-                <DashboardHero
-                  period={period}
-                  onPeriodChange={setPeriod}
-                  spent={heroNumbers.spent}
-                  saldo={heroNumbers.saldo}
+            {/* Mobile saldo header — wallet-style card carousel. Replaces
+                the legacy DashboardHero block on mobile. Each card is a
+                single account in the active currency; swiping left/right
+                snaps the carousel and re-scopes the entire dashboard
+                (insight banner, Gastos / Ingresos cards, recent tx) via
+                `selectedAccountId`. The chip strip above is hidden on
+                mobile because the carousel itself IS the picker.
+                Desktop keeps the chip-strip + DashboardHero stack below. */}
+            {!isEmpty && carouselAccounts.length > 0 && (
+              <div className="mt-4 md:hidden">
+                <AccountCardCarousel
+                  accounts={carouselAccounts}
+                  stats={accountStats}
                   currency={currency}
+                  loading={!accountsHydrated}
+                  onActiveAccountChange={setSelectedAccountId}
                 />
               </div>
             )}

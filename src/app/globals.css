@@ -485,3 +485,31 @@
     animation: none !important;
   }
 }
+
+/* ─── AccountCard sheen ─────────────────────────────────────────────
+   Diagonal highlight that crosses the card on mount + on snap-to. The
+   carousel re-triggers it via the data-attribute below to give swipe
+   feedback. The shine is a child element with a static base position;
+   we slide it across with a CSS animation, then reset to the start. */
+@keyframes lumi-account-card-shine {
+  0%   { transform: translateX(0%) skewX(-12deg); opacity: 0; }
+  10%  { opacity: 1; }
+  60%  { opacity: 1; }
+  100% { transform: translateX(700%) skewX(-12deg); opacity: 0; }
+}
+
+.lumi-account-card__shine {
+  animation: lumi-account-card-shine 1400ms ease-out 200ms 1;
+}
+
+/* Re-trigger on demand — parent toggles `data-shine="true"` to replay. */
+.lumi-account-card[data-shine="true"] .lumi-account-card__shine {
+  animation: lumi-account-card-shine 1100ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumi-account-card__shine {
+    animation: none;
+    opacity: 0;
+  }
+}
