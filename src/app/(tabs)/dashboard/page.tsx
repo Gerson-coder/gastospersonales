@@ -63,6 +63,7 @@ import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
 import { AccountCardCarousel } from "@/components/lumi/AccountCardCarousel";
 import { useAccountStats } from "@/hooks/use-account-stats";
 import { StatTrendCard } from "@/components/lumi/StatTrendCard";
+import { MobileStatBigCard } from "@/components/lumi/MobileStatBigCard";
 import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/CategoryDonut";
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
 import { ThemeToggle } from "@/components/lumi/ThemeToggle";
@@ -1071,6 +1072,60 @@ export default function DashboardPage() {
     return window.monthTotals.map((b) => b.income);
   }, [isDemo, window.monthTotals]);
 
+  // ── Mobile MobileStatBigCard data ─────────────────────────────────────
+  // The new redesign needs THREE projections that the legacy hook didn't
+  // expose: daily expense (already there as window.byDayCurrentMonth),
+  // daily income (added inline here), and the top income source for the
+  // footer chip (also inline). Folded in a single pass to keep the cost
+  // O(rows) regardless of how many of these the card consumes.
+  const mobileBigCardData = React.useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+    ).getDate();
+
+    // Daily series — expense already pre-computed by the window hook; we
+    // just project to a number[] keyed by day index. Income we fold here.
+    const dailyExpense: number[] = window.byDayCurrentMonth.map((b) => b.amount);
+    const dailyIncome: number[] = new Array(daysInMonth).fill(0);
+
+    // Top income source — group current-month income rows by merchant
+    // name, falling back to categoryName, finally to "Otros". The fallback
+    // chain is important because a "Sueldo" might come in untagged from
+    // a manual capture without a merchant attached.
+    const incomeGroups = new Map<string, number>();
+    let totalIncome = 0;
+    for (const r of window.filteredRows) {
+      if (r.kind !== "income") continue;
+      const d = new Date(r.occurredAt);
+      if (d < monthStart) continue;
+      const dayIdx = d.getDate() - 1;
+      if (dayIdx >= 0 && dayIdx < dailyIncome.length) {
+        dailyIncome[dayIdx] += r.amount;
+      }
+      totalIncome += r.amount;
+      const key = r.merchantName ?? r.categoryName ?? "Otros";
+      incomeGroups.set(key, (incomeGroups.get(key) ?? 0) + r.amount);
+    }
+
+    let topIncome: { name: string; pct: number } | null = null;
+    if (incomeGroups.size > 0 && totalIncome > 0) {
+      const sorted = [...incomeGroups.entries()].sort((a, b) => b[1] - a[1]);
+      const [name, amount] = sorted[0];
+      topIncome = { name, pct: Math.round((amount / totalIncome) * 100) };
+    }
+
+    return { dailyExpense, dailyIncome, monthStart, topIncome };
+  }, [window.byDayCurrentMonth, window.filteredRows]);
+
+  // Top expense category — already aggregated by the hook. The dashboard
+  // just picks the head of the list. May be undefined when the user has
+  // zero expenses this month, in which case the footer flips to "Sin gastos".
+  const topExpenseCategory = window.byCategoryCurrentMonth[0];
+
   // CategoryDonut items — top 5 del mes actual, palette del color ladder.
   const donutItems: CategoryDonutItem[] = React.useMemo(() => {
     const source = isDemo
@@ -1340,35 +1395,45 @@ export default function DashboardPage() {
                     últimas transacciones flat, donut de distribución,
                     AdvisorCard. */}
                 <div className="mx-4 mt-4 flex flex-col gap-4 md:hidden">
-                  {/* Insight chip — uses WEEKLY totals because its copy
-                      explicitly says "esta semana". Previously it was wired
-                      to the monthly `spent`/`income` which produced stale
-                      "vas por buen camino" banners after a large fresh
-                      expense (a 25k expense barely moves the monthly ratio
-                      if income is also monthly). See bugfix April 2026. */}
-                  <MobileInsightCard
-                    spent={heroNumbers.spentWeek}
-                    income={heroNumbers.incomeWeek}
-                    currency={currency}
-                  />
-
-                  {/* StatTrendCards */}
+                  {/* Stat big-cards — Gastos / Ingresos. New redesigned card
+                      with mini bar/line chart + footer chip. Replaces the
+                      legacy 2-col StatTrendCard sparkline. The MobileInsightCard
+                      moved BELOW the donut per the latest design pass — the
+                      new top of the column is the spending state itself. */}
                   <div className="grid grid-cols-2 gap-3">
-                    <StatTrendCard
+                    <MobileStatBigCard
                       kind="expense"
                       amount={spent}
                       delta={isDemo ? 0.12 : window.spentDeltaVsPrevMonth}
-                      comparedTo="el mes anterior"
-                      series={expenseSeries}
+                      comparedTo="mes anterior"
+                      daily={mobileBigCardData.dailyExpense}
+                      monthStart={mobileBigCardData.monthStart}
                       currency={currency}
+                      footer={{
+                        label: "Categoría principal",
+                        value: topExpenseCategory?.categoryName ?? "Sin gastos",
+                        percent: topExpenseCategory ? topExpenseCategory.value : null,
+                        Icon: ShoppingCart,
+                      }}
+                      footerHref="/insights"
                     />
-                    <StatTrendCard
+                    <MobileStatBigCard
                       kind="income"
                       amount={income}
                       delta={isDemo ? 0.08 : window.incomeDeltaVsPrevMonth}
-                      comparedTo="el mes anterior"
-                      series={incomeSeries}
+                      comparedTo="mes anterior"
+                      daily={mobileBigCardData.dailyIncome}
+                      monthStart={mobileBigCardData.monthStart}
                       currency={currency}
+                      footer={{
+                        label: "Fuente principal",
+                        value: mobileBigCardData.topIncome?.name ?? "Sin ingresos",
+                        percent: mobileBigCardData.topIncome
+                          ? mobileBigCardData.topIncome.pct
+                          : null,
+                        Icon: Briefcase,
+                      }}
+                      footerHref="/insights"
                     />
                   </div>
 
@@ -1411,6 +1476,18 @@ export default function DashboardPage() {
                     </div>
                     <CategoryDonut items={donutItems} currency={currency} variant="full" />
                   </div>
+
+                  {/* Vas por buen camino — moved here from above the stat
+                      cards. Sits AFTER the donut so it functions as the
+                      summary takeaway of everything the user just scrolled
+                      through, not as an early-state guess. Uses WEEKLY
+                      totals because its copy explicitly says "esta semana".
+                      Self-hides when there's no comparable signal. */}
+                  <MobileInsightCard
+                    spent={heroNumbers.spentWeek}
+                    income={heroNumbers.incomeWeek}
+                    currency={currency}
+                  />
 
                 </div>
 
