@@ -23,6 +23,32 @@ import type {
 export type AccountKind = AccountType; // alias for UI vocabulary
 export type { AccountSubtype, Currency };
 
+/**
+ * Hard ceiling on how many ACTIVE accounts a single user can have. Keeps
+ * the dashboard's account-card carousel readable (8+ slides means tiny
+ * pagination dots and lots of swiping) and the capture-flow account picker
+ * scannable. The limit is enforced at the writer (`createAccount`) so the
+ * /accounts UI surfaces a friendly toast when the user tries to add an
+ * 11th. Bump this if the user base outgrows the constraint.
+ */
+export const MAX_ACTIVE_ACCOUNTS = 10;
+
+// ─── Cross-tab event bus ────────────────────────────────────────────────
+//
+// Mirrors `TX_UPSERTED_EVENT` in transactions.ts. Any writer (create /
+// update / archive) fires this so listeners in OTHER routes — most
+// importantly /dashboard, which caches `accounts` on first mount — can
+// refetch without waiting on a realtime broadcast or a tab refocus.
+// Same-tab synchronous → the dashboard sees the new account on the very
+// next render after the user lands back on it.
+
+export const ACCOUNT_UPSERTED_EVENT = "account:upserted";
+
+function emitAccountUpserted(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(ACCOUNT_UPSERTED_EVENT));
+}
+
 /** Shape returned to the UI. Mirrors the mock that previously lived inline. */
 export type Account = {
   id: string;
@@ -133,6 +159,23 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
   const trimmed = input.label.trim();
   if (!trimmed) throw new Error("El nombre de la cuenta no puede estar vacío.");
 
+  // Hard cap — count the user's active accounts BEFORE the insert. Done
+  // client-side under RLS (no need to trust the count: RLS scopes the
+  // query to this user's rows). Race window of a few ms is acceptable —
+  // a malicious user could double-tap to land on 11; we'd archive on the
+  // next sweep. Centralised here so both the /accounts create sheet and
+  // the dashboard's CTA hit the same guard.
+  const { count, error: countErr } = await supabase
+    .from("accounts")
+    .select("id", { count: "exact", head: true })
+    .is("archived_at", null);
+  if (countErr) throw new Error(countErr.message);
+  if ((count ?? 0) >= MAX_ACTIVE_ACCOUNTS) {
+    throw new Error(
+      `Llegaste al máximo de ${MAX_ACTIVE_ACCOUNTS} cuentas activas. Archiva una para crear otra.`,
+    );
+  }
+
   const { data, error } = await supabase
     .from("accounts")
     .insert({
@@ -146,6 +189,7 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
     .single();
 
   if (error) throw friendlyAccountError(error);
+  emitAccountUpserted();
   return toAccount(data as DbAccountRow);
 }
 
@@ -179,6 +223,7 @@ export async function updateAccount(
     .single();
 
   if (error) throw friendlyAccountError(error);
+  emitAccountUpserted();
   return toAccount(data as DbAccountRow);
 }
 
@@ -227,6 +272,7 @@ export async function archiveAccount(id: string): Promise<void> {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  emitAccountUpserted();
 }
 
 /**
@@ -256,6 +302,7 @@ export async function archiveAllUserAccounts(): Promise<number> {
   if (error) {
     throw new Error(error.message || "No pudimos restablecer las cuentas.");
   }
+  emitAccountUpserted();
   return (data ?? []).length;
 }
 
@@ -284,5 +331,6 @@ export async function archiveUserAccountsByKind(
   if (error) {
     throw new Error(error.message || "No pudimos restablecer las cuentas.");
   }
+  emitAccountUpserted();
   return (data ?? []).length;
 }

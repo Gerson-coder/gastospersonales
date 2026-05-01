@@ -142,17 +142,17 @@ export function MobileTodayCard({
       )}
     >
       {/* HEADER */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0">
         <span
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
             bubbleClass,
           )}
           aria-hidden
         >
-          <HeaderIcon size={14} strokeWidth={2.4} />
+          <HeaderIcon size={11} strokeWidth={2.6} />
         </span>
-        <span className="truncate text-[14px] font-semibold text-foreground">
+        <span className="truncate text-[13px] font-semibold text-foreground">
           {title}
         </span>
       </div>

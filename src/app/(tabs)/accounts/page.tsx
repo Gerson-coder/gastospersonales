@@ -62,6 +62,7 @@ import {
   accountDisplayLabel,
   archiveAccount,
   createAccount,
+  MAX_ACTIVE_ACCOUNTS,
   listAccounts,
   updateAccount,
   type Account,
@@ -392,17 +393,25 @@ function AccountsPageInner() {
           ) : null}
         </section>
 
-        {/* Add account */}
+        {/* Add account — disabled when the user hits the 10-account ceiling.
+            The DB-level guard in createAccount is still the source of truth;
+            this just stops the unfriendly toast experience for users at cap. */}
         <div className="mt-6">
           <Button
             type="button"
             onClick={handleAddAccount}
             aria-label="Agregar cuenta"
+            disabled={accounts.length >= MAX_ACTIVE_ACCOUNTS}
             className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="ml-1">Agregar cuenta</span>
           </Button>
+          {accounts.length >= MAX_ACTIVE_ACCOUNTS && (
+            <p className="mt-2 text-[12px] text-muted-foreground md:max-w-xs">
+              Llegaste al máximo de {MAX_ACTIVE_ACCOUNTS} cuentas. Archiva una para crear otra.
+            </p>
+          )}
         </div>
       </div>
 

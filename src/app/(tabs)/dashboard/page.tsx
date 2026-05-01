@@ -85,6 +85,7 @@ import { useTransactionsRealtime } from "@/hooks/use-transactions-realtime";
 import {
   accountDisplayLabel,
   listAccounts,
+  ACCOUNT_UPSERTED_EVENT,
   type Account,
 } from "@/lib/data/accounts";
 import { TX_UPSERTED_EVENT, type TransactionView } from "@/lib/data/transactions";
@@ -810,7 +811,10 @@ export default function DashboardPage() {
     };
   }, [window.refetch]);
 
-  // Account list — feeds the account-filter chip strip. Fetched once on mount.
+  // Account list — feeds the carousel + the desktop chip strip. Refetched
+  // on mount AND on the `account:upserted` event so a new account created
+  // in /accounts shows up immediately when the user navigates back here
+  // without a full page reload. Mirrors the tx:upserted pattern above.
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) {
       // Demo mode short-circuits the empty-state hydration check —
@@ -819,18 +823,40 @@ export default function DashboardPage() {
       return;
     }
     let cancelled = false;
-    void (async () => {
+    const reloadAccounts = async () => {
       try {
         const list = await listAccounts();
         if (!cancelled) setAccounts(list);
       } catch {
-        // Non-fatal — chip strip simply won't render without accounts.
+        // Non-fatal — carousel simply won't render without accounts.
       } finally {
         if (!cancelled) setAccountsHydrated(true);
       }
-    })();
+    };
+    void reloadAccounts();
+
+    // Same-tab event bus + visibility / focus / bfcache restore so
+    // returning from /accounts → /dashboard always reflects the latest
+    // list. Without this listener the dashboard cached the first-mount
+    // snapshot forever and a freshly-created 9th/10th account never
+    // showed up in the carousel.
+    const handler = () => {
+      void reloadAccounts();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reloadAccounts();
+    };
+    globalThis.addEventListener(ACCOUNT_UPSERTED_EVENT, handler);
+    globalThis.addEventListener("focus", handler);
+    globalThis.addEventListener("pageshow", handler);
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
+      globalThis.removeEventListener(ACCOUNT_UPSERTED_EVENT, handler);
+      globalThis.removeEventListener("focus", handler);
+      globalThis.removeEventListener("pageshow", handler);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
