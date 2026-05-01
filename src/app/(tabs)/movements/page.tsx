@@ -352,19 +352,19 @@ function TransactionRow({
         <span
           aria-hidden="true"
           className={cn(
-            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
             accountChipBgClass(t.accountName),
           )}
         >
           <AccountBrandIcon
             label={t.accountName}
-            fallback={<Landmark size={18} />}
+            fallback={<Landmark size={16} />}
           />
         </span>
       ) : t.merchantLogoSlug ? (
         <span
           aria-hidden="true"
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
           <img
@@ -372,19 +372,19 @@ function TransactionRow({
             alt=""
             aria-hidden="true"
             loading="lazy"
-            className="h-full w-full object-contain p-0.5"
+            className="h-full w-full object-contain"
           />
         </span>
       ) : (
         <div
           aria-hidden="true"
           className={cn(
-            "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
             tint.bg,
             tint.text,
           )}
         >
-          <Icon size={20} />
+          <Icon size={18} />
         </div>
       )}
       <div className="min-w-0 flex-1">

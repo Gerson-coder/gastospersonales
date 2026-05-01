@@ -76,5 +76,5 @@ export function accountChipBgClass(label: string): string {
     // wordmark cutouts stay readable.
     return "bg-[oklch(0.92_0.03_140)] dark:bg-[oklch(0.30_0.06_140)]";
   }
-  return "bg-background ring-1 ring-border";
+  return "bg-background";
 }

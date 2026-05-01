@@ -53,7 +53,7 @@ export type MerchantAvatarProps = {
 const SIZE_CLASSES: Record<MerchantAvatarSize, string> = {
   sm: "h-6 w-6 text-[10px]",
   md: "h-8 w-8 text-[11px]",
-  lg: "h-10 w-10 text-[13px]",
+  lg: "h-9 w-9 text-[12px]",
 };
 
 /** Shared layout for both the SVG container and the initials chip. */

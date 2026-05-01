@@ -66,8 +66,8 @@ export function AccountBrandIcon({
       loading="lazy"
       className={
         className
-          ? `h-full w-full object-contain p-0.5 ${className}`
-          : "h-full w-full object-contain p-0.5"
+          ? `h-full w-full object-contain ${className}`
+          : "h-full w-full object-contain"
       }
       onError={() => setFailed(true)}
     />
