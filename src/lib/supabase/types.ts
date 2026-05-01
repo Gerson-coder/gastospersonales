@@ -44,6 +44,12 @@ export type Database = {
           timezone: string;
           display_name: string | null;
           avatar_url: string | null;
+          // Added by migration 00021_auth_pin_otp.sql for the new
+          // PIN+OTP register flow. Optional on all existing rows.
+          full_name: string | null;
+          birth_date: string | null;
+          phone: string | null;
+          email_verified_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -204,6 +210,80 @@ export type Database = {
           email: string;
         };
         Update: Partial<Database["public"]["Tables"]["allowed_emails"]["Row"]>;
+        Relationships: [];
+      };
+      // ─── Added by migration 00021_auth_pin_otp.sql ─────────────────
+      user_pins: {
+        Row: {
+          user_id: string;
+          pin_hash: string;
+          set_at: string;
+          failed_attempts: number;
+          locked_until: string | null;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["user_pins"]["Row"]> & {
+          user_id: string;
+          pin_hash: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["user_pins"]["Row"]>;
+        Relationships: [];
+      };
+      trusted_devices: {
+        Row: {
+          id: string;
+          user_id: string;
+          fingerprint_hash: string;
+          device_name: string;
+          trusted_at: string;
+          last_seen_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["trusted_devices"]["Row"]
+        > & {
+          user_id: string;
+          fingerprint_hash: string;
+          device_name: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["trusted_devices"]["Row"]>;
+        Relationships: [];
+      };
+      auth_otps: {
+        Row: {
+          id: string;
+          user_id: string;
+          code_hash: string;
+          purpose: "email_verification" | "new_device" | "pin_reset";
+          expires_at: string;
+          used_at: string | null;
+          attempts: number;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["auth_otps"]["Row"]> & {
+          user_id: string;
+          code_hash: string;
+          purpose: "email_verification" | "new_device" | "pin_reset";
+          expires_at: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["auth_otps"]["Row"]>;
+        Relationships: [];
+      };
+      auth_attempts: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          ip: string | null;
+          action: "pin" | "password" | "otp";
+          succeeded: boolean;
+          occurred_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["auth_attempts"]["Row"]
+        > & {
+          action: "pin" | "password" | "otp";
+          succeeded: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["auth_attempts"]["Row"]>;
         Relationships: [];
       };
     };

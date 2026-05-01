@@ -415,6 +415,92 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
   // Cooldown timer shared by signup-sent and forgot-sent.
   const [cooldown, setCooldown] = React.useState(0);
 
+  // ── Trusted-device PIN check ─────────────────────────────────────────
+  // On mount, if the user already has an active Supabase session AND a
+  // PIN configured AND this device is trusted, we flip to a Yape-style
+  // PIN-only screen. Otherwise we fall through to the existing email +
+  // password form. The `pinGate` state holds the resolution; null means
+  // "still checking" — we show a tiny spinner then.
+  type PinGate =
+    | { state: "checking" }
+    | { state: "pin-only" }
+    | { state: "password" };
+  const [pinGate, setPinGate] = React.useState<PinGate>({ state: "checking" });
+  const [pinValue, setPinValue] = React.useState("");
+  const [pinSubmitting, setPinSubmitting] = React.useState(false);
+  const [pinError, setPinError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const deviceSignals = {
+          screenResolution:
+            typeof window !== "undefined"
+              ? `${window.screen.width}x${window.screen.height}`
+              : null,
+          timezone:
+            typeof Intl !== "undefined"
+              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+              : null,
+        };
+        const res = await fetch("/api/auth/check-device", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ deviceSignals }),
+        });
+        if (!res.ok) {
+          // 401 = no session, fall through to password screen.
+          if (!cancelled) setPinGate({ state: "password" });
+          return;
+        }
+        const data = (await res.json()) as { hasPin: boolean; trusted: boolean };
+        if (cancelled) return;
+        setPinGate({
+          state: data.hasPin && data.trusted ? "pin-only" : "password",
+        });
+      } catch {
+        if (!cancelled) setPinGate({ state: "password" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handlePinSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pinSubmitting) return;
+    if (pinValue.length !== 6) {
+      setPinError("Ingresa los 6 dígitos del PIN.");
+      return;
+    }
+    setPinSubmitting(true);
+    setPinError(null);
+    try {
+      const res = await fetch("/api/auth/verify-pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pin: pinValue }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        attemptsRemaining?: number;
+      };
+      if (!res.ok) {
+        setPinError(data.error ?? "PIN incorrecto.");
+        setPinValue("");
+        setPinSubmitting(false);
+        return;
+      }
+      router.replace("/dashboard");
+      router.refresh();
+    } catch {
+      setPinError("No pudimos verificar el PIN.");
+      setPinSubmitting(false);
+    }
+  }
+
   const trimmedEmail = email.trim();
   const emailInvalid =
     trimmedEmail.length === 0 || !EMAIL_REGEX.test(trimmedEmail);
@@ -624,6 +710,97 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
     }
   }
 
+  // ─── Trusted-device PIN screen (Yape style) ─────────────────────────────
+  // While `check-device` resolves, show a calm spinner instead of flashing
+  // the email form. After resolution, render either the PIN screen or fall
+  // through to the existing email+password modes.
+  if (pinGate.state === "checking") {
+    return (
+      <div
+        className="flex min-h-[180px] items-center justify-center"
+        aria-busy
+      >
+        <Loader2
+          size={20}
+          className="animate-spin text-muted-foreground"
+          aria-label="Cargando"
+        />
+      </div>
+    );
+  }
+
+  if (pinGate.state === "pin-only") {
+    return (
+      <form
+        onSubmit={handlePinSubmit}
+        className="mt-6 flex flex-col gap-4"
+        noValidate
+      >
+        <div>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Hola de nuevo
+          </p>
+          <h2 className="mt-1 text-[20px] font-bold text-foreground">
+            Ingresa tu PIN
+          </h2>
+          <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
+            6 dígitos. Sigues conectado en este dispositivo.
+          </p>
+        </div>
+
+        <Input
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          autoFocus
+          value={pinValue}
+          onChange={(e) =>
+            setPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))
+          }
+          placeholder="••••••"
+          maxLength={6}
+          className="h-14 text-center text-[28px] font-bold tracking-[0.5em] tabular-nums"
+          aria-label="PIN de 6 dígitos"
+        />
+
+        {pinError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
+          >
+            {pinError}
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          disabled={pinSubmitting || pinValue.length !== 6}
+          className="h-11 w-full rounded-xl text-[14px] font-semibold"
+        >
+          {pinSubmitting ? (
+            <>
+              <Loader2 size={16} className="animate-spin" aria-hidden />
+              Verificando…
+            </>
+          ) : (
+            "Entrar"
+          )}
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPinGate({ state: "password" });
+            setPinError(null);
+          }}
+          className="text-center text-[13px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Ingresa con tu correo
+        </button>
+      </form>
+    );
+  }
+
   // ─── Sent-state cards (shared layout for signup-sent and forgot-sent) ───
   if (mode === "signup-sent" || mode === "forgot-sent") {
     const isSignupSent = mode === "signup-sent";
@@ -752,13 +929,12 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
 
           <p className="pt-2 text-center text-[13px] text-muted-foreground">
             ¿No tienes cuenta?{" "}
-            <button
-              type="button"
-              onClick={() => switchMode("signup")}
+            <a
+              href="/register"
               className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
             >
               Crear cuenta
-            </button>
+            </a>
           </p>
         </form>
       ) : null}
