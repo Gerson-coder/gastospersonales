@@ -1411,6 +1411,54 @@ function ErrorInsightsCard({
   );
 }
 
+/**
+ * HistoryNotice — soft banner that explains which reports unlock at which
+ * history milestone. Renders nothing once the user has 12+ months of data
+ * (the deepest tier we currently surface). Copy is calm and informative —
+ * no modal, no blocking state, just context next to the hero metric.
+ */
+function HistoryNotice({ months }: { months: number }) {
+  if (months >= 12) return null;
+
+  const isStarter = months < 3;
+  const remainingForYear = Math.max(0, 12 - months);
+
+  let title: string;
+  let body: string;
+  if (months === 0) {
+    title = "Tu reporte se construye solo";
+    body =
+      "Aún no registras movimientos. Cuando empieces a capturar gastos e ingresos, los reportes se rellenan al instante. Las tendencias trimestrales se desbloquean a los 3 meses y la comparativa anual a los 12.";
+  } else if (isStarter) {
+    title = "Estás empezando — sigue así";
+    body = `Llevas ${months} ${months === 1 ? "mes" : "meses"} registrando. Las tendencias trimestrales (cómo evoluciona tu gasto entre periodos) se desbloquean cuando tengas al menos 3 meses de historial. La comparativa anual completa, a los 12 meses.`;
+  } else {
+    title = "Tu historial sigue creciendo";
+    body = `Llevas ${months} meses registrando. La comparativa anual completa se desbloquea cuando tengas 12 meses (te falta${remainingForYear === 1 ? "" : "n"} ${remainingForYear} ${remainingForYear === 1 ? "mes" : "meses"}).`;
+  }
+
+  return (
+    <Card className="overflow-hidden rounded-2xl border-border p-4 md:p-5">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+        >
+          <Sparkles size={16} strokeWidth={2.4} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold leading-tight text-foreground">
+            {title}
+          </p>
+          <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground">
+            {body}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 const PERIOD_STORAGE_KEY = "lumi-pref-insights-period";
 const DEFAULT_PERIOD: Period = "month";
@@ -1445,7 +1493,10 @@ export default function InsightsPage() {
   // /insights stay in sync. Insights does NOT subscribe to realtime — D1
   // says only Dashboard does, to respect the 200-channel Supabase Pro cap.
   const { currency } = useActiveCurrency();
-  const win = useTransactionsWindow({ months: 6, currency });
+  // 12-month window (vs the dashboard's 6) so the year-over-year comparison
+  // and the "Necesitas un año de historial" banner have enough data to
+  // tell the difference between a 6-month and a 12-month user.
+  const win = useTransactionsWindow({ months: 12, currency });
 
   // Derive presentation-ready labels from the hook's monthTotals. The last
   // bucket is always the current month; the previous one (if it exists) is
@@ -1453,6 +1504,16 @@ export default function InsightsPage() {
   // client render line up.
   const monthTotals = win.monthTotals;
   const currentBucket = monthTotals[monthTotals.length - 1];
+
+  // History length — number of months in the visible 12-month window that
+  // actually have at least one tx. Drives the HistoryNotice banner: under
+  // 3 → "starter" copy; 3–11 → "year-comparison unlocks at 12" copy; 12+
+  // hides the banner. Pre-seeded zero buckets are excluded by the filter.
+  const monthsOfHistory = React.useMemo(
+    () =>
+      monthTotals.filter((m) => m.spent > 0 || m.income > 0).length,
+    [monthTotals],
+  );
   const prevBucket: MonthBucket | undefined =
     monthTotals.length >= 2 ? monthTotals[monthTotals.length - 2] : undefined;
 
@@ -1483,16 +1544,17 @@ export default function InsightsPage() {
     [win.byDayPrevMonth],
   );
   const currentDaysInMonth = win.byDayCurrentMonth.length;
-  // "día N de M" — count days WITH activity so far instead of using
-  // `new Date()` (which would force a hydration flag). Falls back to the
-  // total day count for a stable display.
+  // Last day (1-indexed) with any expense activity so far this month.
+  // `0` means the user has nothing recorded yet this month — the velocity
+  // card flips to a "Sin gastos este mes aún" copy in that case rather
+  // than rendering a misleading "día 31 de 31".
   const daysWithActivity = React.useMemo(() => {
     let last = 0;
     for (let i = 0; i < win.byDayCurrentMonth.length; i++) {
       if (win.byDayCurrentMonth[i].amount > 0) last = i + 1;
     }
-    return last || currentDaysInMonth;
-  }, [win.byDayCurrentMonth, currentDaysInMonth]);
+    return last;
+  }, [win.byDayCurrentMonth]);
 
   // Auto-generated observation cards — derived from real aggregations now.
   const insights = React.useMemo<InsightItem[]>(() => {
@@ -1629,6 +1691,11 @@ export default function InsightsPage() {
 
         {!showError && !showLoading && !showEmpty && currentBucket && (
           <>
+            {/* History-length notice — explains when quarterly / annual
+                comparisons unlock. Hides itself once the user has 12+
+                months of recorded activity. */}
+            <HistoryNotice months={monthsOfHistory} />
+
             {/* Hero metric */}
             <HeroMetric
               spent={currentBucket.spent}
@@ -1654,7 +1721,9 @@ export default function InsightsPage() {
                     Velocidad de gasto
                   </div>
                   <div className="text-[11px] font-medium text-muted-foreground">
-                    día {daysWithActivity} de {currentDaysInMonth}
+                    {daysWithActivity > 0
+                      ? `día ${daysWithActivity} de ${currentDaysInMonth}`
+                      : "Sin gastos este mes aún"}
                   </div>
                 </div>
                 <VelocityChart
