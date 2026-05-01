@@ -56,7 +56,6 @@ import { getMoneyDisplaySizeClass, CURRENCY_LABEL } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   useTransactionsWindow,
-  type CategoryBucket,
   type MonthBucket,
 } from "@/hooks/use-transactions-window";
 import type { TransactionView } from "@/lib/data/transactions";
@@ -83,6 +82,49 @@ type CategoryId =
   | "other";
 
 type Period = "month" | "q3" | "year";
+
+/**
+ * Period scope — the resolved date ranges + display labels for the user's
+ * current `period` choice. Built once per period change in a useMemo on
+ * the page so all scoped figures share the same boundaries.
+ */
+type PeriodScope = {
+  /** Inclusive start of the active period. */
+  startDate: Date;
+  /** Total days in the period (calendar-based for "month", approx for
+   * larger spans). Drives the projection denominator. */
+  daysInPeriod: number;
+  /** Days elapsed since `startDate` (1 on day 1). */
+  daysElapsed: number;
+  /** Headline copy — "este mes" / "los últimos 3 meses" / "este año". */
+  label: string;
+  /** Short pill copy used on the comparison chip. */
+  shortLabel: string;
+  /** Inclusive start of the comparable prior period; null when there's
+   * no fair comparison (e.g. "year" needs 24 months of history). */
+  prevStartDate: Date | null;
+  /** Exclusive end of the comparable prior period. */
+  prevEndDate: Date | null;
+  /** Copy for the comparison chip ("vs el mes anterior"). */
+  prevLabel: string | null;
+  /** Whether this period supports a pace projection (only "month"). */
+  supportsProjection: boolean;
+  /** Minimum months of recorded history this period needs before its
+   * snapshot is meaningful. Used by the EmptyForPeriod card. */
+  minMonths: number;
+};
+
+/**
+ * Per-row aggregation projected through a date range. Returned by
+ * `projectScopedFigures`; consumed by every snapshot widget on the
+ * insights page.
+ */
+type ScopedFigures = {
+  spent: number;
+  income: number;
+  expenseRows: TransactionView[];
+  categoryMap: Map<string, { id: string | null; name: string; amount: number }>;
+};
 
 // Local time-window for the "Comparativa mensual" card. Independent from the
 // page-level `Period` because users may want to scope the bar chart while
@@ -1459,6 +1501,255 @@ function HistoryNotice({ months }: { months: number }) {
   );
 }
 
+/**
+ * ProjectionCard — extrapolates the user's current spending pace to the
+ * end of the period. Senior-economist guardrails:
+ *   - Always labelled "estimado" so the user doesn't read it as fact.
+ *   - Only shown for the in-progress month (scope.supportsProjection).
+ *   - Hidden for the first 2 days of the month (pace too noisy).
+ *   - Income side intentionally omitted — payroll is lumpy and a
+ *     pro-rata projection of one paycheck is misleading.
+ */
+function ProjectionCard({
+  projection,
+  currency,
+  periodSpent,
+}: {
+  projection: {
+    dailyRate: number;
+    projectedTotal: number;
+    remaining: number;
+    daysLeft: number;
+  };
+  currency: Currency;
+  periodSpent: number;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-2xl border-border p-4 md:p-5">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[oklch(0.94_0.05_220)] text-[oklch(0.45_0.14_220)] dark:bg-[oklch(0.30_0.06_220)] dark:text-[oklch(0.85_0.12_220)]"
+        >
+          <TrendingUp size={16} strokeWidth={2.4} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-bold text-foreground">A este ritmo</p>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+              estimado
+            </span>
+          </div>
+          <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground">
+            Llevas {formatMoney(periodSpent, currency)} este mes a un ritmo de{" "}
+            <span className="font-semibold text-foreground tabular-nums">
+              {formatMoney(projection.dailyRate, currency)}
+            </span>{" "}
+            por día. Si mantienes el paso, cerrarás cerca de{" "}
+            <span className="font-bold text-foreground tabular-nums">
+              {formatMoney(projection.projectedTotal, currency)}
+            </span>{" "}
+            ({formatMoney(projection.remaining, currency)} en los próximos{" "}
+            {projection.daysLeft} {projection.daysLeft === 1 ? "día" : "días"}).
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * PeriodInsufficientHistory — soft notice when the active period needs
+ * more history than the user has. Prevents the "I selected Año but only
+ * see 2 months of bars" confusion. Sits between Hero and the charts so
+ * the user reads it before reaching the (thin) data.
+ */
+function PeriodInsufficientHistory({
+  period,
+  monthsOfHistory,
+  minMonths,
+}: {
+  period: Period;
+  monthsOfHistory: number;
+  minMonths: number;
+}) {
+  const periodLabel =
+    period === "q3" ? "los últimos 3 meses" : period === "year" ? "el año" : "este mes";
+  const remaining = Math.max(0, minMonths - monthsOfHistory);
+
+  return (
+    <Card className="overflow-hidden rounded-2xl border-amber-300/40 bg-amber-50/60 p-4 dark:border-amber-500/30 dark:bg-amber-500/5 md:p-5">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+        >
+          <Sparkles size={16} strokeWidth={2.4} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold leading-tight text-amber-900 dark:text-amber-200">
+            Aún no tienes suficiente historial para {periodLabel}
+          </p>
+          <p className="mt-1.5 text-[12px] leading-snug text-amber-900/80 dark:text-amber-200/85">
+            {monthsOfHistory === 0
+              ? `Necesitas registrar movimientos en al menos ${minMonths} ${minMonths === 1 ? "mes" : "meses"} para que este reporte sea representativo.`
+              : `Llevas ${monthsOfHistory} ${monthsOfHistory === 1 ? "mes" : "meses"} registrando — te falta${remaining === 1 ? "" : "n"} ${remaining} ${remaining === 1 ? "mes" : "meses"} para que este reporte cubra el periodo completo. Mientras tanto, los números reflejan solo lo registrado hasta hoy.`}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Period helpers ───────────────────────────────────────────────────────
+
+/**
+ * Resolve a `Period` choice into concrete date boundaries plus copy. The
+ * UI never builds these inline so every widget is guaranteed to see the
+ * same definition of "the active period".
+ *
+ * Semantics:
+ *   - "month": current calendar month (1st → today).
+ *     Comparable: same N days of the prev calendar month — month-to-date
+ *     vs same-day-of-month-anterior. Avoids the "you spent -83% vs prev
+ *     month" bias from comparing partial vs full.
+ *   - "q3":   trailing 3 calendar months including the current.
+ *     Comparable: the 3 calendar months before that.
+ *   - "year": trailing 12 calendar months including the current.
+ *     No comparable — would need 24 months of history. Hidden until
+ *     supported.
+ *
+ * Spanish month label uses the existing toLocaleDateString helper to
+ * stay consistent with the rest of the app.
+ */
+function derivePeriodScope(period: Period): PeriodScope {
+  const now = new Date();
+  const monthLabel = now
+    .toLocaleDateString("es-PE", { month: "long" })
+    .replace(/^./, (c) => c.toUpperCase());
+
+  if (period === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInPeriod = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysElapsed = now.getDate();
+    // Same-N-days of prev month — fair comparison for an in-progress period.
+    const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, daysElapsed + 1);
+    const prevMonthShort = prevStart
+      .toLocaleDateString("es-PE", { month: "short" })
+      .replace(/\.$/, "");
+    return {
+      startDate: start,
+      daysInPeriod,
+      daysElapsed,
+      label: "este mes",
+      shortLabel: monthLabel,
+      prevStartDate: prevStart,
+      prevEndDate: prevEnd,
+      // Used inside "X% vs ${prevLabel}" — keep it tight so the chip
+      // doesn't overflow on narrow phones.
+      prevLabel: prevMonthShort,
+      supportsProjection: true,
+      minMonths: 1,
+    };
+  }
+
+  if (period === "q3") {
+    const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const daysInPeriod = Math.round((periodEnd.getTime() - start.getTime()) / 86_400_000);
+    const daysElapsed = Math.round((now.getTime() - start.getTime()) / 86_400_000) + 1;
+    const prevStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const prevEnd = start;
+    return {
+      startDate: start,
+      daysInPeriod,
+      daysElapsed,
+      label: "los últimos 3 meses",
+      shortLabel: "Últimos 3 meses",
+      prevStartDate: prevStart,
+      prevEndDate: prevEnd,
+      prevLabel: "trim. previo",
+      supportsProjection: false,
+      minMonths: 3,
+    };
+  }
+
+  // year
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  return {
+    startDate: start,
+    daysInPeriod: 365,
+    daysElapsed: 365,
+    label: "este año",
+    shortLabel: "Año",
+    // Year-over-year would need 24 months of history; out of scope while
+    // the hook only fetches 12. The chip is hidden when prevStartDate
+    // is null.
+    prevStartDate: null,
+    prevEndDate: null,
+    prevLabel: null,
+    supportsProjection: false,
+    minMonths: 12,
+  };
+}
+
+/**
+ * Fold a row list (already currency-filtered by the hook) into a scoped
+ * snapshot for the given period — or its comparable prior window when
+ * `usePrev` is true. Single O(rows) pass; categories collected as we go.
+ *
+ * Why no caching across the prev/current pair? React.useMemo on each
+ * call site naturally caches by `win.rows` / `scope` identity. Folding
+ * twice is two passes over ~600 rows worst case — sub-millisecond.
+ */
+function projectScopedFigures(
+  rows: TransactionView[],
+  scope: PeriodScope,
+  usePrev: boolean,
+): ScopedFigures {
+  const start =
+    (usePrev ? scope.prevStartDate?.getTime() : scope.startDate.getTime()) ?? 0;
+  const end =
+    (usePrev ? scope.prevEndDate?.getTime() : Date.now()) ?? 0;
+
+  let spent = 0;
+  let income = 0;
+  const expenseRows: TransactionView[] = [];
+  const categoryMap = new Map<
+    string,
+    { id: string | null; name: string; amount: number }
+  >();
+
+  for (const r of rows) {
+    const t = new Date(r.occurredAt).getTime();
+    if (t < start || t >= end) continue;
+    if (r.kind === "expense") {
+      spent += r.amount;
+      expenseRows.push(r);
+      const key = r.categoryId ?? "__uncat__";
+      const existing = categoryMap.get(key);
+      if (existing) {
+        existing.amount += r.amount;
+      } else {
+        categoryMap.set(key, {
+          id: r.categoryId,
+          name: r.categoryName ?? "Sin categoría",
+          amount: r.amount,
+        });
+      }
+    } else if (r.kind === "income") {
+      income += r.amount;
+    }
+  }
+
+  // Sort expense rows DESC by amount so callers can take the top-N
+  // without re-sorting.
+  expenseRows.sort((a, b) => b.amount - a.amount);
+
+  return { spent, income, expenseRows, categoryMap };
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 const PERIOD_STORAGE_KEY = "lumi-pref-insights-period";
 const DEFAULT_PERIOD: Period = "month";
@@ -1514,25 +1805,129 @@ export default function InsightsPage() {
       monthTotals.filter((m) => m.spent > 0 || m.income > 0).length,
     [monthTotals],
   );
-  const prevBucket: MonthBucket | undefined =
-    monthTotals.length >= 2 ? monthTotals[monthTotals.length - 2] : undefined;
 
-  // Map hook category buckets → CategoryBarItem[] for the visual layer.
-  // Color is positional (top category gets chart-1) so the chart palette is
-  // stable regardless of which categories the user actually has.
+  // ── Period scope ────────────────────────────────────────────────────────
+  // Maps the user's `period` choice to a date range + comparable prior
+  // range. `Mes actual` uses month-to-date semantics (compare same N days
+  // of the previous month, not full prev month — full-vs-partial would
+  // bias the delta against the in-progress month). `Q3` uses last 3
+  // calendar months including current vs the 3 before. `Año` is rolling
+  // 12 months with no prior comparison (would need 24 months of data).
+  const scope = React.useMemo<PeriodScope>(() => {
+    return derivePeriodScope(period);
+  }, [period]);
+
+  // Insights starts loading; until win.rows hydrates, scoped figures are
+  // zero. Memoised separately so the HeroMetric et al. don't recompute
+  // on unrelated re-renders.
+  const scoped = React.useMemo(
+    () => projectScopedFigures(win.rows, scope, false),
+    [win.rows, scope],
+  );
+  const scopedPrev = React.useMemo(
+    () =>
+      scope.prevStartDate
+        ? projectScopedFigures(win.rows, scope, true)
+        : null,
+    [win.rows, scope],
+  );
+
+  // Period-scoped categories ranked by amount, with delta vs prev period.
+  // Source for the CategoryBars widget AND the BiggestMover detector.
   const categoryItems = React.useMemo<CategoryBarItem[]>(() => {
-    return win.byCategoryCurrentMonth.map((b: CategoryBucket, i) => {
-      const id = categoryNameToId(b.categoryName);
-      return {
-        id,
-        label: b.categoryName ?? CATEGORY_LABEL[id],
-        value: b.value,
-        amount: b.amount,
+    const list: CategoryBarItem[] = [];
+    let i = 0;
+    for (const [id, bucket] of scoped.categoryMap.entries()) {
+      const prev = scopedPrev?.categoryMap.get(id)?.amount ?? 0;
+      const delta =
+        prev > 0 ? (bucket.amount - prev) / prev : bucket.amount > 0 ? 1 : 0;
+      const catId = categoryNameToId(bucket.name);
+      list.push({
+        id: catId,
+        label: bucket.name ?? CATEGORY_LABEL[catId],
+        value: scoped.spent > 0 ? Math.round((bucket.amount / scoped.spent) * 100) : 0,
+        amount: bucket.amount,
         color: CATEGORY_CHART_COLORS[i % CATEGORY_CHART_COLORS.length],
-        delta: b.delta,
-      };
-    });
-  }, [win.byCategoryCurrentMonth]);
+        delta,
+      });
+      i += 1;
+    }
+    return list.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+  }, [scoped, scopedPrev]);
+
+  // ── Senior-economist additions ──────────────────────────────────────────
+
+  // 1. Projection — only valid for "month" mode where the period is
+  //    actively in progress. Uses pace = spent / daysElapsed extrapolated
+  //    to daysInPeriod. Hidden when fewer than 3 days elapsed (noisy)
+  //    or when there's nothing spent yet.
+  const projection = React.useMemo(() => {
+    if (!scope.supportsProjection) return null;
+    if (scoped.spent <= 0) return null;
+    if (scope.daysElapsed < 3) return null;
+    const dailyRate = scoped.spent / scope.daysElapsed;
+    const projectedTotal = dailyRate * scope.daysInPeriod;
+    const remaining = projectedTotal - scoped.spent;
+    return {
+      dailyRate,
+      projectedTotal,
+      remaining,
+      daysLeft: scope.daysInPeriod - scope.daysElapsed,
+    };
+  }, [scope, scoped]);
+
+  // 2. Biggest mover — the category whose absolute % delta vs prev period
+  //    is largest, ignoring micro-changes (<5%). Surfaces the single
+  //    "where did the change happen" story instead of asking the user
+  //    to scan the whole bar list.
+  const biggestMover = React.useMemo(() => {
+    if (!scopedPrev) return null;
+    let best:
+      | {
+          id: string;
+          name: string;
+          deltaPct: number;
+          direction: "up" | "down";
+          amountNow: number;
+          amountPrev: number;
+        }
+      | null = null;
+    for (const [id, current] of scoped.categoryMap.entries()) {
+      const prev = scopedPrev.categoryMap.get(id)?.amount ?? 0;
+      // Skip appearing-from-zero cases — they always show "+∞" and read
+      // as noise. Only meaningful comparisons go through.
+      if (prev <= 0) continue;
+      const deltaPct = (current.amount - prev) / prev;
+      if (Math.abs(deltaPct) < 0.05) continue;
+      if (!best || Math.abs(deltaPct) > Math.abs(best.deltaPct)) {
+        best = {
+          id,
+          name: current.name,
+          deltaPct,
+          direction: deltaPct > 0 ? "up" : "down",
+          amountNow: current.amount,
+          amountPrev: prev,
+        };
+      }
+    }
+    return best;
+  }, [scoped, scopedPrev]);
+
+  // 3. Savings rate — the single most-loaded number for personal finance
+  //    health. Negative when overspent. Clamped at -100% / +100% for the
+  //    headline (could be wilder for short windows but those are noise).
+  const savingsRate = React.useMemo(() => {
+    if (scoped.income <= 0) return null;
+    const rate = (scoped.income - scoped.spent) / scoped.income;
+    return Math.max(-1, Math.min(1, rate));
+  }, [scoped]);
+
+  // Period-scoped top movements — the 3 biggest single expenses in the
+  // active period. Replaces the hook's currentMonth-only list when the
+  // user picks 3M / year.
+  const scopedTopMovements = React.useMemo(() => {
+    return scoped.expenseRows.slice(0, 3);
+  }, [scoped]);
 
   // Velocity chart consumes plain number[] (incremental amounts per day).
   const monthDailyValues = React.useMemo(
@@ -1556,86 +1951,79 @@ export default function InsightsPage() {
     return last;
   }, [win.byDayCurrentMonth]);
 
-  // Auto-generated observation cards — derived from real aggregations now.
+  // Auto-generated observation cards — derived from PERIOD-SCOPED figures
+  // and the biggestMover signal so the copy stays accurate when the user
+  // flips between Month / Q3 / Year. Caps at 3 cards to keep the section
+  // scannable.
   const insights = React.useMemo<InsightItem[]>(() => {
-    if (!currentBucket) return [];
+    if (scoped.spent <= 0 && scoped.income <= 0) return [];
     const items: InsightItem[] = [];
-    const food = win.byCategoryCurrentMonth.find(
-      (c) => categoryNameToId(c.categoryName) === "food",
-    );
-    const transport = win.byCategoryCurrentMonth.find(
-      (c) => categoryNameToId(c.categoryName) === "transport",
-    );
-    const saved = currentBucket.income - currentBucket.spent;
-    const savedPct =
-      currentBucket.income > 0 ? (saved / currentBucket.income) * 100 : 0;
+    const periodSuffix = scope.label;
 
-    if (food && Math.abs(food.delta) > 0) {
-      const pct = Math.round(Math.abs(food.delta) * 100);
-      const up = food.delta > 0;
-      items.push({
-        id: "food",
-        title: up
-          ? `Gastaste ${pct}% más en ${food.categoryName ?? "Comida"} este mes`
-          : `Bajaste ${pct}% el gasto en ${food.categoryName ?? "Comida"}`,
-        body: up
-          ? "Subió el ticket promedio — buen momento para revisar suscripciones."
-          : "Sigue así.",
-        tone: up ? "negative" : "positive",
-        Icon: up ? TrendingUp : TrendingDown,
-      });
-    }
-    if (transport) {
-      const pct = Math.round(Math.abs(transport.delta) * 100);
-      const stable = pct < 5;
-      items.push({
-        id: "transport",
-        title: stable
-          ? "Transporte se mantuvo estable"
-          : transport.delta > 0
-            ? `Transporte subió ${pct}%`
-            : `Transporte bajó ${pct}%`,
-        body: stable
-          ? "Misma frecuencia de viajes que el mes anterior."
-          : "Revisa si hay un patrón nuevo.",
-        tone: stable ? "neutral" : transport.delta > 0 ? "negative" : "positive",
-        Icon: Car,
-      });
-    }
-    if (currentBucket.income > 0) {
+    // 1. Savings rate — the headline financial-health number.
+    if (savingsRate !== null) {
+      const ratePct = Math.round(savingsRate * 100);
+      const positive = savingsRate > 0;
       items.push({
         id: "savings",
-        title: `Llevas ${formatMoney(saved, currency)} ahorrados — ${savedPct.toFixed(0)}% de los ingresos`,
-        body:
-          saved > 0
-            ? "Mantienes un margen sano. Buen ritmo."
-            : "Estás gastando por encima de tus ingresos este mes.",
-        tone: saved > 0 ? "positive" : "negative",
+        title: positive
+          ? `Tasa de ahorro: ${ratePct}% — vas bien`
+          : `Estás gastando ${Math.abs(ratePct)}% más de lo que ingresas`,
+        body: positive
+          ? `De cada S/ 100 de ingreso ${periodSuffix}, te quedas con S/ ${ratePct}.`
+          : `Tus gastos superan tus ingresos ${periodSuffix}. Revisa las categorías más altas.`,
+        tone: positive ? "positive" : "negative",
         Icon: PiggyBank,
       });
     }
-    if (prevBucket && prevBucket.spent > 0) {
-      const less = currentBucket.spent < prevBucket.spent;
-      const pct = Math.round(
-        Math.abs((currentBucket.spent - prevBucket.spent) / prevBucket.spent) * 100,
-      );
+
+    // 2. Biggest mover — the category with the largest absolute % change
+    //    vs the comparable prior period.
+    if (biggestMover) {
+      const pct = Math.round(Math.abs(biggestMover.deltaPct) * 100);
       items.push({
-        id: "vs-prev",
-        title: less
-          ? `Este mes gastaste ${pct}% menos que en ${prevBucket.label}`
-          : `Este mes gastaste ${pct}% más que en ${prevBucket.label}`,
-        body: less
-          ? "Mantén el ritmo en las próximas semanas."
-          : "Revisa las categorías que más subieron.",
-        tone: less ? "positive" : "negative",
-        Icon: Sparkles,
+        id: "mover",
+        title:
+          biggestMover.direction === "up"
+            ? `${biggestMover.name} subió ${pct}%`
+            : `${biggestMover.name} bajó ${pct}%`,
+        body:
+          biggestMover.direction === "up"
+            ? `Pasó de ${formatMoney(biggestMover.amountPrev, currency)} a ${formatMoney(biggestMover.amountNow, currency)} — el cambio más grande del periodo.`
+            : `Pasó de ${formatMoney(biggestMover.amountPrev, currency)} a ${formatMoney(biggestMover.amountNow, currency)} — buen control.`,
+        tone: biggestMover.direction === "up" ? "negative" : "positive",
+        Icon: biggestMover.direction === "up" ? TrendingUp : TrendingDown,
       });
     }
-    return items.slice(0, 4);
-  }, [currentBucket, prevBucket, win.byCategoryCurrentMonth, currency]);
 
-  const monthLabel = currentBucket?.label ?? "—";
-  const prevMonthLabel = prevBucket?.label ?? "mes anterior";
+    // 3. Period-vs-period total spend comparison — only when there's a
+    //    valid prior window AND it had non-zero spend.
+    if (scopedPrev && scopedPrev.spent > 0) {
+      const delta = (scoped.spent - scopedPrev.spent) / scopedPrev.spent;
+      // For the in-progress month, this delta is fair (mes-a-fecha).
+      // For Q3, both windows are full 3-month spans.
+      const pct = Math.round(Math.abs(delta) * 100);
+      const less = delta < 0;
+      if (pct >= 1) {
+        items.push({
+          id: "vs-prev",
+          title: less
+            ? `Gastaste ${pct}% menos que ${scope.prevLabel ?? "el periodo anterior"}`
+            : `Gastaste ${pct}% más que ${scope.prevLabel ?? "el periodo anterior"}`,
+          body: less
+            ? "Mantén el ritmo en las próximas semanas."
+            : "Revisa las categorías que más subieron.",
+          tone: less ? "positive" : "negative",
+          Icon: Sparkles,
+        });
+      }
+    }
+
+    return items.slice(0, 3);
+  }, [scope, scoped, scopedPrev, savingsRate, biggestMover, currency]);
+
+  const monthLabel = scope.shortLabel;
+  const prevMonthLabel = scope.prevLabel ?? "mes anterior";
 
   // Branch state: error > loading > empty > ready. Empty is "no rows in this
   // currency" — distinct from loading (still fetching) so the user gets a
@@ -1696,63 +2084,94 @@ export default function InsightsPage() {
                 months of recorded activity. */}
             <HistoryNotice months={monthsOfHistory} />
 
-            {/* Hero metric */}
+            {/* Hero metric — period-scoped. Reads spent / income / prev
+                from the active period (Mes / Q3 / Año), not the hook's
+                current-month-only fields. */}
             <HeroMetric
-              spent={currentBucket.spent}
-              income={currentBucket.income}
-              prevSpent={prevBucket?.spent ?? 0}
+              spent={scoped.spent}
+              income={scoped.income}
+              prevSpent={scopedPrev?.spent ?? 0}
               currency={currency}
               monthLabel={monthLabel}
               prevMonthLabel={prevMonthLabel}
             />
 
+            {/* Insufficient-history empty state for the selected period.
+                Surfaces above all snapshot widgets so the user knows why
+                some sections might look thin. */}
+            {monthsOfHistory < scope.minMonths && (
+              <PeriodInsufficientHistory
+                period={period}
+                monthsOfHistory={monthsOfHistory}
+                minMonths={scope.minMonths}
+              />
+            )}
+
+            {/* Projection — only meaningful for the in-progress month.
+                Hidden for Q3 / Año (full periods don't project) and for
+                the first 2 days of the month (pace too noisy). */}
+            {projection && (
+              <ProjectionCard
+                projection={projection}
+                currency={currency}
+                periodSpent={scoped.spent}
+              />
+            )}
+
             {/* Charts grid */}
             <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
-              {/* Cross-month comparison — gasto vs ingreso por mes */}
+              {/* Cross-month comparison — gasto vs ingreso por mes.
+                  Independent of the page-level period selector — these
+                  cards always show the multi-month trend regardless of
+                  the active "snapshot" period. */}
               <MonthCompareCard allMonths={monthTotals} currency={currency} />
 
               {/* Cross-month balance — saldo neto por mes (complementario) */}
               <MonthSavingsCard allMonths={monthTotals} currency={currency} />
 
-              {/* Spending velocity */}
-              <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
-                <div className="flex items-baseline justify-between pb-3">
-                  <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                    Velocidad de gasto
+              {/* Spending velocity — only meaningful for the current
+                  in-progress month. Hidden for Q3 / Año where the daily
+                  pace concept doesn't translate. */}
+              {scope.supportsProjection && (
+                <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
+                  <div className="flex items-baseline justify-between pb-3">
+                    <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      Velocidad de gasto
+                    </div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {daysWithActivity > 0
+                        ? `día ${daysWithActivity} de ${currentDaysInMonth}`
+                        : "Sin gastos este mes aún"}
+                    </div>
                   </div>
-                  <div className="text-[11px] font-medium text-muted-foreground">
-                    {daysWithActivity > 0
-                      ? `día ${daysWithActivity} de ${currentDaysInMonth}`
-                      : "Sin gastos este mes aún"}
+                  <VelocityChart
+                    current={monthDailyValues}
+                    previous={prevMonthDailyValues}
+                    daysInMonth={currentDaysInMonth}
+                    currency={currency}
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        className="h-[2px] w-4 rounded-full"
+                        style={{ background: "var(--color-primary)" }}
+                      />
+                      Este mes
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        aria-hidden="true"
+                        className="h-[2px] w-4 rounded-full border-t-2 border-dashed"
+                        style={{ borderColor: "var(--color-muted-foreground)" }}
+                      />
+                      {prevMonthLabel}
+                    </span>
                   </div>
-                </div>
-                <VelocityChart
-                  current={monthDailyValues}
-                  previous={prevMonthDailyValues}
-                  daysInMonth={currentDaysInMonth}
-                  currency={currency}
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-[2px] w-4 rounded-full"
-                      style={{ background: "var(--color-primary)" }}
-                    />
-                    Este mes
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="h-[2px] w-4 rounded-full border-t-2 border-dashed"
-                      style={{ borderColor: "var(--color-muted-foreground)" }}
-                    />
-                    {prevMonthLabel}
-                  </span>
-                </div>
-              </Card>
+                </Card>
+              )}
 
-              {/* Category breakdown */}
+              {/* Category breakdown — period-scoped. */}
               <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
                 <div className="flex items-baseline justify-between pb-3">
                   <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
@@ -1764,12 +2183,12 @@ export default function InsightsPage() {
                 </div>
                 {categoryItems.length === 0 ? (
                   <p className="text-[13px] text-muted-foreground">
-                    Aún no hay categorías para este mes.
+                    Aún no hay categorías en {scope.label}.
                   </p>
                 ) : (
                   <CategoryBars
                     items={categoryItems}
-                    total={currentBucket.spent}
+                    total={scoped.spent}
                     currency={currency}
                   />
                 )}
@@ -1792,19 +2211,20 @@ export default function InsightsPage() {
                 </section>
               )}
 
-              {/* Top movements */}
-              {win.topMovementsCurrentMonth.length > 0 && (
+              {/* Top movements — period-scoped (top 3 expenses in the
+                  active period). */}
+              {scopedTopMovements.length > 0 && (
                 <Card className="rounded-2xl border-border p-0 md:col-span-2">
                   <div className="flex items-baseline justify-between px-4 pb-1.5 pt-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                       Top movimientos
                     </div>
                     <div className="text-[11px] font-medium text-muted-foreground">
-                      {win.topMovementsCurrentMonth.length} mayores
+                      {scopedTopMovements.length} mayores
                     </div>
                   </div>
                   <ol>
-                    {win.topMovementsCurrentMonth.map((t, i) => (
+                    {scopedTopMovements.map((t, i) => (
                       <li
                         key={t.id}
                         className={i ? "border-t border-border" : ""}
