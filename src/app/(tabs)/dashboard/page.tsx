@@ -45,6 +45,8 @@ import {
   ChevronRight,
   Landmark,
   Wallet,
+  Clock,
+  Target,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -687,6 +689,70 @@ function DesktopTipBar() {
 }
 
 // ─── Mobile insight chip ──────────────────────────────────────────────────
+/**
+ * DashboardShortcutCard — a tappable card pair used by the dashboard
+ * to surface side-features that previously lived only in /more (Tu
+ * dinero). Keeps the visual rhythm of the surrounding cards (rounded-
+ * 2xl, soft icon bubble) without inheriting any of MobileInsightCard's
+ * conditional / "self-hide" logic — these always render.
+ */
+function DashboardShortcutCard({
+  href,
+  label,
+  hint,
+  Icon,
+  tone,
+}: {
+  href: string;
+  label: string;
+  hint: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  // Soft tint family — keeps the two cards visually distinguishable
+  // without yelling. Mirrors the bubble palette used elsewhere in the
+  // dashboard (oklch low-chroma).
+  tone: "violet" | "amber" | "primary";
+}) {
+  const bubbleClass =
+    tone === "violet"
+      ? "bg-[oklch(0.94_0.05_290)] text-[oklch(0.45_0.16_290)] dark:bg-[oklch(0.30_0.06_290)] dark:text-[oklch(0.85_0.14_290)]"
+      : tone === "amber"
+        ? "bg-[oklch(0.94_0.05_70)] text-[oklch(0.45_0.14_70)] dark:bg-[oklch(0.30_0.06_70)] dark:text-[oklch(0.85_0.12_70)]"
+        : "bg-primary/10 text-primary";
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5",
+        "transition-colors hover:bg-muted",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+          bubbleClass,
+        )}
+      >
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-bold leading-tight text-foreground">
+          {label}
+        </p>
+        <p className="mt-0.5 truncate text-[11px] leading-tight text-muted-foreground">
+          {hint}
+        </p>
+      </div>
+      <ChevronRight
+        size={14}
+        className="shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+    </Link>
+  );
+}
+
 function MobileInsightCard({
   spent,
   income,
@@ -1488,6 +1554,29 @@ export default function DashboardPage() {
                     income={heroNumbers.incomeWeek}
                     currency={currency}
                   />
+
+                  {/* Presupuestos + Metas — quick access from the
+                      dashboard so the user doesn't have to dive into
+                      /more for them. Two side-by-side cards with an
+                      icon bubble + label + chevron. They route to the
+                      dedicated /budgets and /goals screens which have
+                      the full create/edit UI. */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <DashboardShortcutCard
+                      href="/budgets"
+                      label="Presupuestos"
+                      hint="Topes mensuales"
+                      Icon={Clock}
+                      tone="violet"
+                    />
+                    <DashboardShortcutCard
+                      href="/goals"
+                      label="Metas"
+                      hint="Tus ahorros"
+                      Icon={Target}
+                      tone="amber"
+                    />
+                  </div>
 
                 </div>
 

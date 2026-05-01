@@ -46,7 +46,6 @@ import {
   Landmark,
   Loader2,
   Pencil,
-  AlertTriangle,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -681,19 +680,9 @@ function CapturePageInner() {
       : kind === "expense"
         ? currentBalance - amount
         : currentBalance + amount;
-  // Saldo warning fires for expense flow, when an account is picked, the
-  // balance is loaded, and the user is about to overspend. Soft warning —
-  // we no longer block the save; the user decides.
-  const showSaldoWarning =
-    kind === "expense" &&
-    accountId !== null &&
-    balancesLoaded &&
-    amount > 0 &&
-    (currentBalance ?? 0) < amount;
-  const saldoOverage =
-    showSaldoWarning && currentBalance !== null
-      ? amount - currentBalance
-      : 0;
+  // Saldo overdraft is handled by a HARD BLOCK at Save time (the
+  // 'Saldo insuficiente' Drawer further down). No inline derivations
+  // needed at the page level for the previous soft-warning chip.
   // When the user toggles between expense and income, the merchant picker
   // and the category column must reconcile:
   //   - income has no merchant (you receive money, you don't pay anyone),
@@ -897,12 +886,27 @@ function CapturePageInner() {
       setAccountDrawerOpen(true);
       return;
     }
-    // Saldo state is now SHOWN INLINE (warning chip above the CTA + the
-    // projected-balance text on the account chip) rather than blocked at
-    // submit. The user's plata, the user's call. The abono flow stays
-    // available via the "Abonar" CTA on the warning chip when the user
-    // wants to recharge instead of overspending. See SaldoWarningChip
-    // below the account chip in the JSX.
+    // Saldo guard — hard block on overdraft. The user explicitly asked
+    // for the modal to fire on Save instead of an inline warning that
+    // could be ignored (the previous soft-warning approach silently
+    // saved over-balance txs and turned the dashboard's saldo red).
+    // Same modal as the original flow, with the abono path still wired
+    // through the same Drawer.
+    if (kind === "expense") {
+      const balance = balances[accountId] ?? 0;
+      if (balance <= 0) {
+        setPendingSave(false);
+        setNoBalanceReason("empty");
+        setNoBalanceOpen(true);
+        return;
+      }
+      if (balance < amount) {
+        setPendingSave(false);
+        setNoBalanceReason("insufficient");
+        setNoBalanceOpen(true);
+        return;
+      }
+    }
 
     // Date logic for the new tx-date chip:
     //   - Edit mode keeps the original timestamp untouched (so editing a
@@ -975,6 +979,7 @@ function CapturePageInner() {
     categoryId,
     accountId,
     amount,
+    balances,
     currency,
     kind,
     merchantId,
@@ -1313,20 +1318,18 @@ function CapturePageInner() {
                 {selectedAccount ? selectedAccount.label : "Elige una cuenta"}
               </p>
             </div>
-            {projectedBalance !== null && amount > 0 ? (
+            {/* "Te queda" hint — only when the projection is strictly
+                positive. Showing "S/ 0.00" or a clamped zero on overdraft
+                misled users into thinking they had nothing left when in
+                fact the typed amount overdrew the balance. The modal
+                that fires on Save handles the overdraft case explicitly. */}
+            {projectedBalance !== null && projectedBalance > 0 ? (
               <div className="flex shrink-0 flex-col items-end">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
                   Te queda
                 </span>
-                <span
-                  className={cn(
-                    "text-[12px] font-bold tabular-nums",
-                    projectedBalance < 0
-                      ? "text-destructive"
-                      : "text-foreground",
-                  )}
-                >
-                  {formatMoney(Math.max(0, projectedBalance), currency)}
+                <span className="mt-0.5 text-[12px] font-bold leading-none tabular-nums text-foreground">
+                  {formatMoney(projectedBalance, currency)}
                 </span>
               </div>
             ) : null}
@@ -1342,39 +1345,62 @@ function CapturePageInner() {
               wired so we can resurface it from /settings or via a
               long-press shortcut later without touching this surface. */}
 
-          {/* Saldo warning — soft, inline. The "Abonar" CTA opens the
-              existing recharge modal so the user can top-up without
-              losing their typed amount. The save button still works
-              even with the warning visible. */}
-          {showSaldoWarning ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-2xl border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+          {/* Inline saldo warning removed per user request. The hard
+              block on Save handles the overdraft case via the existing
+              "Saldo insuficiente" modal — same UX guarantee as before
+              the soft-warning experiment. */}
+
+          {/* Categoría card — moved INTO the meta strip so it shares
+              the same `gap-2` rhythm as Cuenta. Tighter visual stack
+              that lets more keypad rows breathe below. Hidden on
+              income (the income flow auto-selects the first income
+              category). */}
+          {kind === "expense" && (
+            <button
+              type="button"
+              onClick={() => setCategoryDrawerOpen(true)}
+              disabled={categoriesLoading || categories.length === 0}
+              aria-label={
+                category
+                  ? `Cambiar categoría. Actual: ${category.label}`
+                  : "Elige una categoría"
+              }
+              aria-haspopup="dialog"
+              aria-expanded={categoryDrawerOpen}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2",
+                "transition-colors hover:bg-muted",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "disabled:cursor-not-allowed disabled:opacity-60",
+              )}
             >
-              <AlertTriangle
-                size={16}
+              <span
                 aria-hidden
-                className="mt-0.5 shrink-0"
-              />
-              <div className="min-w-0 flex-1 text-[12px] leading-snug">
-                Te excedes por{" "}
-                <span className="font-bold tabular-nums">
-                  {formatMoney(saldoOverage, currency)}
-                </span>
-                . Puedes guardar igual o abonar primero.
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setNoBalanceReason("insufficient");
-                  setNoBalanceOpen(true);
-                }}
-                className="shrink-0 rounded-full bg-amber-900 px-2.5 py-1 text-[11px] font-semibold text-amber-50 transition-opacity hover:opacity-90 dark:bg-amber-200 dark:text-amber-900"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
               >
-                Abonar
-              </button>
-            </div>
-          ) : null}
+                {category?.Icon ? (
+                  <category.Icon size={15} aria-hidden />
+                ) : (
+                  <Circle size={15} aria-hidden />
+                )}
+              </span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
+                  Categoría
+                </p>
+                <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
+                  {categoriesLoading
+                    ? "Cargando…"
+                    : (category?.label ?? "Elige una categoría")}
+                </p>
+              </div>
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            </button>
+          )}
         </div>
 
         {/* Saved banner — visually-hidden announcement + visible toast.
@@ -1429,60 +1455,8 @@ function CapturePageInner() {
           </div>
         ) : null}
 
-        {/* Categoría card — same visual pattern as the Cuenta card in
-            the inline meta strip above: icon bubble + label + value +
-            chevron. Tapping opens the full-list drawer (the MRU chip
-            strip is gone per the redesign request).
-            Hidden on income; the income flow auto-selects the first
-            income category (Trabajo) and doesn't surface a picker. */}
-        {kind === "expense" && (
-          <div className="mx-4 mt-3 md:mx-8">
-            <button
-              type="button"
-              onClick={() => setCategoryDrawerOpen(true)}
-              disabled={categoriesLoading || categories.length === 0}
-              aria-label={
-                category
-                  ? `Cambiar categoría. Actual: ${category.label}`
-                  : "Elige una categoría"
-              }
-              aria-haspopup="dialog"
-              aria-expanded={categoryDrawerOpen}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2",
-                "transition-colors hover:bg-muted",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                "disabled:cursor-not-allowed disabled:opacity-60",
-              )}
-            >
-              <span
-                aria-hidden
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
-              >
-                {category?.Icon ? (
-                  <category.Icon size={15} aria-hidden />
-                ) : (
-                  <Circle size={15} aria-hidden />
-                )}
-              </span>
-              <div className="min-w-0 flex-1 text-left">
-                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
-                  Categoría
-                </p>
-                <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
-                  {categoriesLoading
-                    ? "Cargando…"
-                    : (category?.label ?? "Elige una categoría")}
-                </p>
-              </div>
-              <ChevronRight
-                size={14}
-                className="shrink-0 text-muted-foreground"
-                aria-hidden
-              />
-            </button>
-          </div>
-        )}
+        {/* Categoría card moved up into the meta strip above so it
+            shares the same gap-2 rhythm as the Cuenta card. */}
 
         {/* Merchant picker — "¿Dónde? (opcional)". Hidden on income because
             ingresos don't have a "merchant" (you don't pay to anyone — you
