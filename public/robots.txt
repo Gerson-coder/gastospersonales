@@ -1,0 +1,21 @@
+# Gastospersonales is a private financial app. The public surface is
+# limited to /login, /register, and /welcome — everything else requires
+# auth and would 401 to a crawler anyway, but we ask nicely first to
+# avoid wasting their budget AND keep search results clean.
+User-agent: *
+Disallow: /dashboard
+Disallow: /movements
+Disallow: /capture
+Disallow: /accounts
+Disallow: /categories
+Disallow: /budgets
+Disallow: /goals
+Disallow: /insights
+Disallow: /more
+Disallow: /profile
+Disallow: /settings
+Disallow: /advisor
+Disallow: /receipt
+Disallow: /share-target
+Disallow: /api/
+Disallow: /auth/

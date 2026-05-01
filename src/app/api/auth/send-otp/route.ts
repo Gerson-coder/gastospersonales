@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     expires_at: expiresAt,
   });
   if (insertErr) {
-    console.error("[send-otp] insert failed:", insertErr);
+    console.error("[send-otp] insert_failed", { code: insertErr.code });
     return NextResponse.json(
       { error: "No pudimos generar el código. Intenta de nuevo." },
       { status: 500 },

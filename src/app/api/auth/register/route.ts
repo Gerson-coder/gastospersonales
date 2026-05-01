@@ -64,14 +64,18 @@ export async function POST(request: Request) {
     user_metadata: { full_name: fullName },
   });
   if (createErr || !created.user) {
-    // 422 from Supabase usually means "user already exists". Surface a
-    // friendly message so the UI can suggest /login.
-    const msg =
-      createErr?.message?.toLowerCase().includes("already registered") ||
-      createErr?.message?.toLowerCase().includes("user already")
-        ? "Ya existe una cuenta con ese correo. Inicia sesión."
-        : createErr?.message ?? "No pudimos crear la cuenta.";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    // Email enumeration mitigation: never reveal whether the address is
+    // already registered. A generic message protects against mass-
+    // enumeration scrapes; the legitimate user can still recover via
+    // /login → "olvidé mi contraseña". The raw Supabase error message
+    // is logged server-side only.
+    if (createErr) {
+      console.error("[register] create_failed", { code: createErr.code });
+    }
+    return NextResponse.json(
+      { error: "No pudimos crear la cuenta. Verifica los datos e intenta de nuevo." },
+      { status: 400 },
+    );
   }
 
   const userId = created.user.id;
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
     })
     .eq("id", userId);
   if (profileErr) {
-    console.error("[register] profile update failed:", profileErr);
+    console.error("[register] profile_update_failed", { code: profileErr.code });
     // Best-effort — don't fail the whole flow over a profile update.
   }
 
@@ -102,7 +106,7 @@ export async function POST(request: Request) {
     password,
   });
   if (signInErr) {
-    console.error("[register] auto signin failed:", signInErr);
+    console.error("[register] auto_signin_failed", { code: signInErr.code });
     return NextResponse.json(
       { error: "Cuenta creada, pero no pudimos iniciar sesión. Intenta entrar manualmente." },
       { status: 500 },
@@ -130,7 +134,7 @@ export async function POST(request: Request) {
     expires_at: expiresAt,
   });
   if (otpInsertErr) {
-    console.error("[register] otp insert failed:", otpInsertErr);
+    console.error("[register] otp_insert_failed", { code: otpInsertErr.code });
     return NextResponse.json(
       { error: "Cuenta creada, pero no pudimos enviar el código. Intenta de nuevo desde el login." },
       { status: 500 },

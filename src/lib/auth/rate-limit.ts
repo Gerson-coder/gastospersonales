@@ -11,19 +11,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *   - Per user, per action: 5 failed attempts in 15 min → reject with
  *     a "locked, try later" error. Successful attempts reset the count
  *     implicitly because the lookup only counts failures.
- *   - Per IP (no user yet, e.g. typoed email on registration): 20
+ *   - Per IP (no user yet, e.g. typoed email on registration): 10
  *     failed attempts in 15 min → same lockout.
  *
  * This is the LAST line of defense. The primary defense is bcrypt cost
  * 10 making each guess take ~70ms, so brute-forcing a 6-digit PIN at
  * 14 attempts/sec is already a year-long endeavour. The lockout keeps
  * those attacks visible and short.
+ *
+ * IP trust assumption: the `ip` argument is read upstream from the
+ * `x-forwarded-for` / `x-real-ip` headers. On Vercel these are set by
+ * the edge proxy and cannot be spoofed by the client; on any other
+ * deployment YOU MUST front the app with a trusted proxy that strips
+ * incoming `x-forwarded-for` before appending the real client IP.
+ * Without that, an attacker can rotate the header and bypass the IP
+ * lockout entirely.
  */
 
 export type AttemptAction = "pin" | "password" | "otp";
 
 const FAIL_THRESHOLD_PER_USER = 5;
-const FAIL_THRESHOLD_PER_IP = 20;
+const FAIL_THRESHOLD_PER_IP = 10;
 const WINDOW_MS = 15 * 60 * 1000;
 
 /**

@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       { onConflict: "user_id" },
     );
   if (upsertErr) {
-    console.error("[set-pin] upsert failed:", upsertErr);
+    console.error("[set-pin] upsert_failed", { code: upsertErr.code });
     return NextResponse.json(
       { error: "No pudimos guardar el PIN." },
       { status: 500 },
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       { onConflict: "user_id,fingerprint_hash" },
     );
   if (deviceErr) {
-    console.error("[set-pin] trusted_devices upsert failed:", deviceErr);
+    console.error("[set-pin] trusted_devices_upsert_failed", { code: deviceErr.code });
     // Soft-fail — the PIN is set, the user can re-trust on next login.
   }
 
