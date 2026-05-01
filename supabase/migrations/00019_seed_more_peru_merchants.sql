@@ -2,31 +2,32 @@
 -- Second wave of system merchants (user_id IS NULL) covering Peru-heavy
 -- brands across the existing categories. Touches:
 --
---   Comida:           23 brands — fine dining (Central, Maido, Astrid y
---                     Gastón…), casual chains (7 Sopas, La Lucha, Las
---                     Canastas…), QSR (Subway, Domino's, Popeyes…),
---                     coffee + bakery (Juan Valdez, Altomayo, La Baguette).
---   Vestimenta:       15 brands — department stores (Ripley, Falabella,
---                     Oechsle, Paris, Estilos), local apparel (Topitop),
---                     sportswear (Adidas, Nike, Puma, Marathon Sports),
---                     fast fashion (Zara, H&M, Stradivarius, Pull&Bear,
---                     Bershka).
+--   Comida:           8  brands — casual chains (7 Sopas, La Lucha, Don
+--                     Tito) + QSR (Subway, Domino's, Popeyes, TGI Fridays,
+--                     Chili's).
+--   Vestimenta:       13 brands — department stores (Ripley, Falabella,
+--                     Oechsle), local apparel (Topitop), sportswear
+--                     (Adidas, Nike, Puma, Marathon Sports), fast fashion
+--                     (Zara, H&M, Stradivarius, Pull&Bear, Bershka).
 --   Mascotas:         8  brands — pet stores + grooming.
 --   Regalos:          8  brands — flowers, chocolates, books.
---   Salud:            12 brands — clínicas privadas + cadenas dentales,
---                     laboratorios, óptica.
+--   Salud:            4  brands — clínicas privadas + óptica (Clínica
+--                     Anglo Americana, Clínica Internacional, Oncosalud,
+--                     GMO).
 --   Servicios:        4  brands — gas + electricidad (Cálidda, Solgas,
 --                     Lima Gas, Enel).
---   Educación:        10 brands — universidades + idiomas + preparación.
---   Ocio:             12 brands — cines, ticketing, gimnasio, gaming
---                     stores (Steam, PSN, Xbox, Nintendo).
+--   Educación:        7  brands — universidades + idiomas (USIL, ULIMA,
+--                     USMP, URP, UNI, UCV, ICPNA).
+--   Ocio:             9  brands — cines (Cineplanet, Cinemark, Cinépolis),
+--                     ticketing (Joinnus, Teleticket), gimnasio (Smart
+--                     Fit), gaming stores (Steam, PlayStation Store, Xbox).
 --   Vivienda:         6  brands — mejoramiento del hogar + librería.
 --   Otros:            10 brands — supermercados (Plaza Vea, Tottus, Wong,
 --                     Vivanda, Makro) + cadenas de tecnología/electro
 --                     (Hiraoka, La Curacao, Tiendas EFE, Carsa) + Real
 --                     Plaza (mall, gasto genérico).
 --
--- Total: 108 system merchants. logo_slug pre-assigned for every row;
+-- Total: 77 system merchants. logo_slug pre-assigned for every row;
 -- MerchantAvatar falls back to deterministic initials when the SVG at
 -- /public/logos/merchants/{slug}.svg is missing.
 --
@@ -43,12 +44,7 @@ INSERT INTO public.merchants (user_id, category_id, name)
 SELECT NULL, c.id, m.name
 FROM public.categories c
 JOIN (VALUES
-  -- Comida (23)
- 
-  
-
-
-  
+  -- Comida (8)
   ('Comida',      '7 Sopas'),
   ('Comida',      'La Lucha'),
   ('Comida',      'Don Tito'),
@@ -57,11 +53,10 @@ JOIN (VALUES
   ('Comida',      'Popeyes'),
   ('Comida',      'TGI Fridays'),
   ('Comida',      'Chili''s'),
-  -- Vestimenta (15)
+  -- Vestimenta (13)
   ('Vestimenta',  'Ripley'),
   ('Vestimenta',  'Falabella'),
   ('Vestimenta',  'Oechsle'),
-
   ('Vestimenta',  'Topitop'),
   ('Vestimenta',  'Adidas'),
   ('Vestimenta',  'Nike'),
@@ -90,7 +85,7 @@ JOIN (VALUES
   ('Regalos',     'Crisol'),
   ('Regalos',     'Ibero Librerías'),
   ('Regalos',     'El Virrey'),
-  -- Salud (12)
+  -- Salud (4)
   ('Salud',       'Clínica Anglo Americana'),
   ('Salud',       'Clínica Internacional'),
   ('Salud',       'Oncosalud'),
@@ -100,7 +95,7 @@ JOIN (VALUES
   ('Servicios',   'Solgas'),
   ('Servicios',   'Lima Gas'),
   ('Servicios',   'Enel'),
-  -- Educación (10)
+  -- Educación (7)
   ('Educación',   'USIL'),
   ('Educación',   'ULIMA'),
   ('Educación',   'USMP'),
@@ -108,19 +103,16 @@ JOIN (VALUES
   ('Educación',   'UNI'),
   ('Educación',   'UCV'),
   ('Educación',   'ICPNA'),
-  -- Ocio (12)
+  -- Ocio (9)
   ('Ocio',        'Cineplanet'),
   ('Ocio',        'Cinemark'),
   ('Ocio',        'Cinépolis'),
-
   ('Ocio',        'Joinnus'),
   ('Ocio',        'Teleticket'),
-
   ('Ocio',        'Smart Fit'),
   ('Ocio',        'Steam'),
   ('Ocio',        'PlayStation Store'),
   ('Ocio',        'Xbox'),
-
   -- Vivienda (6)
   ('Vivienda',    'Sodimac'),
   ('Vivienda',    'Promart'),
@@ -149,28 +141,19 @@ ON CONFLICT DO NOTHING;
 --    flattened (dominos-pizza, chilis, hm, pull-and-bear).
 
 -- Comida
-
-UPDATE public.merchants SET logo_slug = 'la-mar'          WHERE user_id IS NULL AND name = 'La Mar'          AND logo_slug IS NULL;
-
 UPDATE public.merchants SET logo_slug = '7-sopas'         WHERE user_id IS NULL AND name = '7 Sopas'         AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'la-lucha'        WHERE user_id IS NULL AND name = 'La Lucha'        AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'don-tito'        WHERE user_id IS NULL AND name = 'Don Tito'        AND logo_slug IS NULL;
-
 UPDATE public.merchants SET logo_slug = 'subway'          WHERE user_id IS NULL AND name = 'Subway'          AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'dominos-pizza'   WHERE user_id IS NULL AND name = 'Domino''s Pizza' AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'popeyes'         WHERE user_id IS NULL AND name = 'Popeyes'         AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'tgi-fridays'     WHERE user_id IS NULL AND name = 'TGI Fridays'     AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'chilis'          WHERE user_id IS NULL AND name = 'Chili''s'        AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'juan-valdez'     WHERE user_id IS NULL AND name = 'Juan Valdez'     AND logo_slug IS NULL;
-
-UPDATE public.merchants SET logo_slug = 'la-baguette'     WHERE user_id IS NULL AND name = 'La Baguette'     AND logo_slug IS NULL;
 
 -- Vestimenta
 UPDATE public.merchants SET logo_slug = 'ripley'          WHERE user_id IS NULL AND name = 'Ripley'          AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'falabella'       WHERE user_id IS NULL AND name = 'Falabella'       AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'oechsle'         WHERE user_id IS NULL AND name = 'Oechsle'         AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'paris'           WHERE user_id IS NULL AND name = 'Paris'           AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'estilos'         WHERE user_id IS NULL AND name = 'Estilos'         AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'topitop'         WHERE user_id IS NULL AND name = 'Topitop'         AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'adidas'          WHERE user_id IS NULL AND name = 'Adidas'          AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'nike'            WHERE user_id IS NULL AND name = 'Nike'            AND logo_slug IS NULL;
@@ -205,15 +188,7 @@ UPDATE public.merchants SET logo_slug = 'el-virrey'       WHERE user_id IS NULL 
 -- Salud
 UPDATE public.merchants SET logo_slug = 'clinica-anglo-americana' WHERE user_id IS NULL AND name = 'Clínica Anglo Americana' AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'clinica-internacional'   WHERE user_id IS NULL AND name = 'Clínica Internacional'   AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'oncosalud'         WHERE user_id IS NULL AND name = 'Oncosalud'         AND logo_slug IS NULL;
-
-UPDATE public.merchants SET logo_slug = 'clinica-san-borja'       WHERE user_id IS NULL AND name = 'Clínica San Borja'       AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'clinica-limatambo'       WHERE user_id IS NULL AND name = 'Clínica Limatambo'       AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'clinica-centenario'      WHERE user_id IS NULL AND name = 'Clínica Centenario'      AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'multident'               WHERE user_id IS NULL AND name = 'Multident'               AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'roe'                     WHERE user_id IS NULL AND name = 'Roe'                     AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'suiza-lab'               WHERE user_id IS NULL AND name = 'Suiza Lab'               AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'anglolab'                WHERE user_id IS NULL AND name = 'Anglolab'                AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'oncosalud'               WHERE user_id IS NULL AND name = 'Oncosalud'               AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'gmo'                     WHERE user_id IS NULL AND name = 'GMO'                     AND logo_slug IS NULL;
 
 -- Servicios
@@ -223,30 +198,24 @@ UPDATE public.merchants SET logo_slug = 'lima-gas'        WHERE user_id IS NULL 
 UPDATE public.merchants SET logo_slug = 'enel'            WHERE user_id IS NULL AND name = 'Enel'            AND logo_slug IS NULL;
 
 -- Educación
-UPDATE public.merchants SET logo_slug = 'usil'             WHERE user_id IS NULL AND name = 'USIL'             AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'ulima'            WHERE user_id IS NULL AND name = 'ULIMA'            AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'usmp'             WHERE user_id IS NULL AND name = 'USMP'             AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'urp'              WHERE user_id IS NULL AND name = 'URP'              AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'uni'              WHERE user_id IS NULL AND name = 'UNI'              AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'upsjb'            WHERE user_id IS NULL AND name = 'UPSJB'            AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'ucv'              WHERE user_id IS NULL AND name = 'UCV'              AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'icpna'            WHERE user_id IS NULL AND name = 'ICPNA'            AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'alianza-francesa' WHERE user_id IS NULL AND name = 'Alianza Francesa' AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'pamer'            WHERE user_id IS NULL AND name = 'Pamer'            AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'usil'            WHERE user_id IS NULL AND name = 'USIL'            AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'ulima'           WHERE user_id IS NULL AND name = 'ULIMA'           AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'usmp'            WHERE user_id IS NULL AND name = 'USMP'            AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'urp'             WHERE user_id IS NULL AND name = 'URP'             AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'uni'             WHERE user_id IS NULL AND name = 'UNI'             AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'ucv'             WHERE user_id IS NULL AND name = 'UCV'             AND logo_slug IS NULL;
+UPDATE public.merchants SET logo_slug = 'icpna'           WHERE user_id IS NULL AND name = 'ICPNA'           AND logo_slug IS NULL;
 
 -- Ocio
 UPDATE public.merchants SET logo_slug = 'cineplanet'        WHERE user_id IS NULL AND name = 'Cineplanet'        AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'cinemark'          WHERE user_id IS NULL AND name = 'Cinemark'          AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'cinepolis'         WHERE user_id IS NULL AND name = 'Cinépolis'         AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'uvk'               WHERE user_id IS NULL AND name = 'UVK'               AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'joinnus'           WHERE user_id IS NULL AND name = 'Joinnus'           AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'teleticket'        WHERE user_id IS NULL AND name = 'Teleticket'        AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'ticketmaster'      WHERE user_id IS NULL AND name = 'Ticketmaster'      AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'smart-fit'         WHERE user_id IS NULL AND name = 'Smart Fit'         AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'steam'             WHERE user_id IS NULL AND name = 'Steam'             AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'playstation-store' WHERE user_id IS NULL AND name = 'PlayStation Store' AND logo_slug IS NULL;
 UPDATE public.merchants SET logo_slug = 'xbox'              WHERE user_id IS NULL AND name = 'Xbox'              AND logo_slug IS NULL;
-UPDATE public.merchants SET logo_slug = 'nintendo-eshop'    WHERE user_id IS NULL AND name = 'Nintendo eShop'    AND logo_slug IS NULL;
 
 -- Vivienda
 UPDATE public.merchants SET logo_slug = 'sodimac'         WHERE user_id IS NULL AND name = 'Sodimac'         AND logo_slug IS NULL;
