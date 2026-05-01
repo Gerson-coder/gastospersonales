@@ -47,6 +47,9 @@ import {
   Wallet,
   Clock,
   Target,
+  Plane,
+  Gift,
+  PiggyBank,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,7 +85,10 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
-import { useTransactionsWindow } from "@/hooks/use-transactions-window";
+import {
+  useTransactionsWindow,
+  type CategoryBucket,
+} from "@/hooks/use-transactions-window";
 import { useTransactionsRealtime } from "@/hooks/use-transactions-realtime";
 import {
   accountDisplayLabel,
@@ -688,68 +694,399 @@ function DesktopTipBar() {
   );
 }
 
-// ─── Mobile insight chip ──────────────────────────────────────────────────
-/**
- * DashboardShortcutCard — a tappable card pair used by the dashboard
- * to surface side-features that previously lived only in /more (Tu
- * dinero). Keeps the visual rhythm of the surrounding cards (rounded-
- * 2xl, soft icon bubble) without inheriting any of MobileInsightCard's
- * conditional / "self-hide" logic — these always render.
- */
-function DashboardShortcutCard({
-  href,
-  label,
-  hint,
-  Icon,
-  tone,
-}: {
-  href: string;
-  label: string;
-  hint: string;
-  Icon: React.ComponentType<{ size?: number; className?: string }>;
-  // Soft tint family — keeps the two cards visually distinguishable
-  // without yelling. Mirrors the bubble palette used elsewhere in the
-  // dashboard (oklch low-chroma).
-  tone: "violet" | "amber" | "primary";
-}) {
-  const bubbleClass =
-    tone === "violet"
-      ? "bg-[oklch(0.94_0.05_290)] text-[oklch(0.45_0.16_290)] dark:bg-[oklch(0.30_0.06_290)] dark:text-[oklch(0.85_0.14_290)]"
-      : tone === "amber"
-        ? "bg-[oklch(0.94_0.05_70)] text-[oklch(0.45_0.14_70)] dark:bg-[oklch(0.30_0.06_70)] dark:text-[oklch(0.85_0.12_70)]"
-        : "bg-primary/10 text-primary";
+// ─── Budgets / Goals dashboard sections ──────────────────────────────────
+//
+// Both features live in localStorage today (see /budgets and /goals for
+// the source-of-truth helpers). The dashboard mirrors a tiny slice of
+// each — top 3 items + a "Ver mis …" link — without re-implementing
+// the persistence layer. Read-only here; create/edit lives at /budgets
+// and /goals.
+
+type DashBudget = {
+  id: string;
+  categoryId: string;
+  limitMinor: number;
+  currency: Currency;
+};
+type DashGoal = {
+  id: string;
+  name: string;
+  targetMinor: number;
+  currentMinor: number;
+  currency: Currency;
+  icon: string;
+};
+
+const BUDGETS_STORAGE_KEY = "lumi-budgets";
+const GOALS_STORAGE_KEY = "lumi-goals";
+
+function safeReadStorage<T>(key: string, isShape: (v: unknown) => v is T): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isShape);
+  } catch {
+    return [];
+  }
+}
+
+function isDashBudget(v: unknown): v is DashBudget {
+  if (!v || typeof v !== "object") return false;
+  const x = v as Record<string, unknown>;
   return (
-    <Link
-      href={href}
-      className={cn(
-        "flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5",
-        "transition-colors hover:bg-muted",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-          bubbleClass,
-        )}
-      >
-        <Icon size={16} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-bold leading-tight text-foreground">
-          {label}
-        </p>
-        <p className="mt-0.5 truncate text-[11px] leading-tight text-muted-foreground">
-          {hint}
-        </p>
+    typeof x.id === "string" &&
+    typeof x.categoryId === "string" &&
+    typeof x.limitMinor === "number" &&
+    Number.isFinite(x.limitMinor) &&
+    (x.currency === "PEN" || x.currency === "USD")
+  );
+}
+
+function isDashGoal(v: unknown): v is DashGoal {
+  if (!v || typeof v !== "object") return false;
+  const x = v as Record<string, unknown>;
+  return (
+    typeof x.id === "string" &&
+    typeof x.name === "string" &&
+    typeof x.targetMinor === "number" &&
+    typeof x.currentMinor === "number" &&
+    (x.currency === "PEN" || x.currency === "USD") &&
+    typeof x.icon === "string"
+  );
+}
+
+/** Subscribe to localStorage changes (cross-tab) + visibility events so
+ * the dashboard sections refresh when the user creates a budget/goal
+ * elsewhere and comes back. */
+function useStorageList<T>(
+  key: string,
+  isShape: (v: unknown) => v is T,
+): T[] {
+  const [list, setList] = React.useState<T[]>(() =>
+    safeReadStorage(key, isShape),
+  );
+
+  React.useEffect(() => {
+    setList(safeReadStorage(key, isShape));
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key) return;
+      setList(safeReadStorage(key, isShape));
+    };
+    const onFocus = () => setList(safeReadStorage(key, isShape));
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        setList(safeReadStorage(key, isShape));
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key/isShape are stable per call site
+  }, []);
+
+  return list;
+}
+
+function DashboardBudgetsSection({
+  currency,
+  byCategoryCurrentMonth,
+}: {
+  currency: Currency;
+  byCategoryCurrentMonth: CategoryBucket[];
+}) {
+  const budgets = useStorageList(BUDGETS_STORAGE_KEY, isDashBudget);
+  const visible = budgets.filter((b) => b.currency === currency);
+
+  // Build categoryId -> { name, spent } from the hook's current-month
+  // aggregation. Buckets without spend this month don't show up here,
+  // so for those budgets we render "Sin gastos" + a "—" name.
+  const spentByCategoryId = React.useMemo(() => {
+    const m = new Map<string, { name: string; spent: number }>();
+    for (const b of byCategoryCurrentMonth) {
+      if (!b.categoryId) continue;
+      m.set(b.categoryId, { name: b.categoryName, spent: b.amount });
+    }
+    return m;
+  }, [byCategoryCurrentMonth]);
+
+  // Top 3 ranked by spend ratio (closer to limit first) so the most
+  // attention-worthy budgets surface to the dashboard.
+  const ranked = React.useMemo(() => {
+    return [...visible]
+      .map((b) => {
+        const limit = b.limitMinor / 100;
+        const meta = spentByCategoryId.get(b.categoryId);
+        const spent = meta?.spent ?? 0;
+        const name = meta?.name ?? null;
+        const ratio = limit > 0 ? spent / limit : 0;
+        return { ...b, limit, spent, name, ratio };
+      })
+      .sort((a, b) => b.ratio - a.ratio)
+      .slice(0, 3);
+  }, [visible, spentByCategoryId]);
+
+  return (
+    <section aria-labelledby="dash-budgets">
+      <div className="mb-3 flex items-center justify-between">
+        <h2
+          id="dash-budgets"
+          className="text-[15px] font-bold text-foreground"
+        >
+          Presupuestos
+        </h2>
       </div>
-      <ChevronRight
-        size={14}
-        className="shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-    </Link>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        {ranked.length === 0 ? (
+          <div className="px-4 py-5 text-center">
+            <span
+              aria-hidden
+              className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[oklch(0.94_0.05_290)] text-[oklch(0.45_0.16_290)] dark:bg-[oklch(0.30_0.06_290)] dark:text-[oklch(0.85_0.14_290)]"
+            >
+              <Clock size={18} aria-hidden />
+            </span>
+            <p className="text-[13px] font-semibold text-foreground">
+              Pon un tope mensual
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+              Define cuánto puedes gastar por categoría y mantén el control.
+            </p>
+          </div>
+        ) : (
+          <ul role="list" className="divide-y divide-border/60">
+            {ranked.map((b) => (
+              <BudgetRow key={b.id} budget={b} currency={currency} />
+            ))}
+          </ul>
+        )}
+        <Link
+          href="/budgets"
+          className={cn(
+            "flex items-center justify-between border-t border-border bg-muted/40 px-4 py-2.5",
+            "text-[13px] font-semibold text-primary transition-colors hover:bg-muted",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          )}
+        >
+          <span>Ver mis presupuestos</span>
+          <ChevronRight size={14} aria-hidden />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function BudgetRow({
+  budget,
+  currency,
+}: {
+  budget: {
+    id: string;
+    name: string | null;
+    spent: number;
+    limit: number;
+    ratio: number;
+  };
+  currency: Currency;
+}) {
+  // Tone: green < 80%, amber 80-99%, red 100%+. Same thresholds the
+  // user expects from any budget app — over-budget is the alarm state,
+  // 80% is the heads-up, below is healthy.
+  const pct = Math.min(100, Math.round(budget.ratio * 100));
+  const overBudget = budget.ratio >= 1;
+  const warning = !overBudget && budget.ratio >= 0.8;
+  const barClass = overBudget
+    ? "bg-destructive"
+    : warning
+      ? "bg-[oklch(0.75_0.16_70)]"
+      : "bg-primary";
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="truncate text-[13px] font-semibold text-foreground">
+          {budget.name ?? "Categoría"}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 text-[12px] font-bold tabular-nums",
+            overBudget ? "text-destructive" : "text-foreground",
+          )}
+        >
+          {formatMoney(budget.spent, currency)}{" "}
+          <span className="font-medium text-muted-foreground">
+            / {formatMoney(budget.limit, currency)}
+          </span>
+        </span>
+      </div>
+      <div
+        aria-hidden="true"
+        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className={cn("h-full rounded-full transition-all", barClass)}
+          style={{ width: `${Math.max(2, pct)}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+        <span className="tabular-nums">{pct}% usado</span>
+        {overBudget ? (
+          <span className="font-semibold text-destructive">Excedido</span>
+        ) : warning ? (
+          <span className="font-semibold text-[oklch(0.55_0.14_70)] dark:text-[oklch(0.80_0.14_70)]">
+            Cerca del tope
+          </span>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function DashboardGoalsSection({ currency }: { currency: Currency }) {
+  const goals = useStorageList(GOALS_STORAGE_KEY, isDashGoal);
+  const visible = goals.filter((g) => g.currency === currency);
+
+  // Top 3 by closest-to-target ratio so the meta the user is closest to
+  // hitting is the first one they see.
+  const ranked = React.useMemo(() => {
+    return [...visible]
+      .map((g) => {
+        const target = g.targetMinor / 100;
+        const current = g.currentMinor / 100;
+        const ratio = target > 0 ? current / target : 0;
+        return { ...g, target, current, ratio };
+      })
+      .sort((a, b) => b.ratio - a.ratio)
+      .slice(0, 3);
+  }, [visible]);
+
+  return (
+    <section aria-labelledby="dash-goals">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 id="dash-goals" className="text-[15px] font-bold text-foreground">
+          Metas
+        </h2>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        {ranked.length === 0 ? (
+          <div className="px-4 py-5 text-center">
+            <span
+              aria-hidden
+              className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[oklch(0.94_0.05_70)] text-[oklch(0.45_0.14_70)] dark:bg-[oklch(0.30_0.06_70)] dark:text-[oklch(0.85_0.12_70)]"
+            >
+              <Target size={18} aria-hidden />
+            </span>
+            <p className="text-[13px] font-semibold text-foreground">
+              Define una meta de ahorro
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+              Pon un objetivo (viaje, fondo de emergencia, lo que quieras) y
+              mira cómo avanzas mes a mes.
+            </p>
+          </div>
+        ) : (
+          <ul role="list" className="divide-y divide-border/60">
+            {ranked.map((g) => (
+              <GoalRow key={g.id} goal={g} currency={currency} />
+            ))}
+          </ul>
+        )}
+        <Link
+          href="/goals"
+          className={cn(
+            "flex items-center justify-between border-t border-border bg-muted/40 px-4 py-2.5",
+            "text-[13px] font-semibold text-primary transition-colors hover:bg-muted",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          )}
+        >
+          <span>Ver mis metas</span>
+          <ChevronRight size={14} aria-hidden />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+const GOAL_ICON_MAP: Record<
+  string,
+  React.ComponentType<{ size?: number; className?: string }>
+> = {
+  target: Target,
+  plane: Plane,
+  home: Home,
+  car: Car,
+  "graduation-cap": GraduationCap,
+  heart: Heart,
+  gift: Gift,
+  "piggy-bank": PiggyBank,
+  sparkles: Sparkles,
+};
+
+function GoalRow({
+  goal,
+  currency,
+}: {
+  goal: {
+    id: string;
+    name: string;
+    icon: string;
+    current: number;
+    target: number;
+    ratio: number;
+  };
+  currency: Currency;
+}) {
+  const pct = Math.min(100, Math.round(goal.ratio * 100));
+  const reached = goal.ratio >= 1;
+  const Icon = GOAL_ICON_MAP[goal.icon] ?? Target;
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.94_0.05_70)] text-[oklch(0.45_0.14_70)] dark:bg-[oklch(0.30_0.06_70)] dark:text-[oklch(0.85_0.12_70)]"
+        >
+          <Icon size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="truncate text-[13px] font-semibold text-foreground">
+              {goal.name}
+            </span>
+            <span className="shrink-0 text-[12px] font-bold tabular-nums text-foreground">
+              {formatMoney(goal.current, currency)}{" "}
+              <span className="font-medium text-muted-foreground">
+                / {formatMoney(goal.target, currency)}
+              </span>
+            </span>
+          </div>
+          <div
+            aria-hidden="true"
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                reached ? "bg-primary" : "bg-primary/80",
+              )}
+              style={{ width: `${Math.max(2, pct)}%` }}
+            />
+          </div>
+          <div className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+            {reached ? (
+              <span className="font-semibold text-primary">¡Meta lograda!</span>
+            ) : (
+              `${pct}% completado`
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -1555,28 +1892,19 @@ export default function DashboardPage() {
                     currency={currency}
                   />
 
-                  {/* Presupuestos + Metas — quick access from the
-                      dashboard so the user doesn't have to dive into
-                      /more for them. Two side-by-side cards with an
-                      icon bubble + label + chevron. They route to the
-                      dedicated /budgets and /goals screens which have
-                      the full create/edit UI. */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <DashboardShortcutCard
-                      href="/budgets"
-                      label="Presupuestos"
-                      hint="Topes mensuales"
-                      Icon={Clock}
-                      tone="violet"
-                    />
-                    <DashboardShortcutCard
-                      href="/goals"
-                      label="Metas"
-                      hint="Tus ahorros"
-                      Icon={Target}
-                      tone="amber"
-                    />
-                  </div>
+                  {/* Presupuestos & Metas dashboard sections — read
+                      from localStorage on mount + on focus + on tab
+                      visibility, so creating a budget on /budgets and
+                      coming back updates this view without a refresh.
+                      Each section renders its own graphical preview
+                      (top 3 items with progress bars) and a 'Ver mis
+                      …' link at the bottom that routes to the full
+                      management screen. */}
+                  <DashboardBudgetsSection
+                    currency={currency}
+                    byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                  />
+                  <DashboardGoalsSection currency={currency} />
 
                 </div>
 
