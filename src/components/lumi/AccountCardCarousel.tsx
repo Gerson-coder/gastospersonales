@@ -39,13 +39,8 @@ import {
   type AccountStats,
   getStatsFor,
 } from "@/hooks/use-account-stats";
+import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import { ACCOUNT_SUBTYPE_LABEL } from "@/lib/data/accounts";
-
-// Persisted under `lumi-prefs.activeAccountId` to share the same JSON object
-// the rest of the app (currency, theme) parks under. Same read-merge-write
-// pattern as `useActiveCurrency`.
-const STORAGE_KEY = "lumi-prefs";
-const PREF_FIELD = "activeAccountId";
 
 export type AccountCardCarouselProps = {
   accounts: Account[];
@@ -68,39 +63,6 @@ export type AccountCardCarouselProps = {
   onActiveAccountChange?: (accountId: string) => void;
 };
 
-// ─── localStorage helpers ─────────────────────────────────────────────────
-function readPrefs(): Record<string, unknown> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as Record<string, unknown>;
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function readActiveId(): string | null {
-  const value = readPrefs()[PREF_FIELD];
-  return typeof value === "string" ? value : null;
-}
-
-function writeActiveId(id: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const prefs = readPrefs();
-    if (prefs[PREF_FIELD] === id) return; // no-op write keeps storage cheap
-    const updated = { ...prefs, [PREF_FIELD]: id };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  } catch {
-    // Quota / private-mode — best-effort; in-memory state still drives the UI.
-  }
-}
-
 // ─── Component ────────────────────────────────────────────────────────────
 export function AccountCardCarousel({
   accounts,
@@ -110,14 +72,24 @@ export function AccountCardCarousel({
   className,
   onActiveAccountChange,
 }: AccountCardCarouselProps) {
-  // Determine the initial slide from localStorage, falling back to 0 when the
-  // persisted id is stale (account deleted) or absent.
+  // Active account id is owned by the lumi-prefs hook so external writers
+  // (e.g. /capture finishing a save) can drive the carousel's position
+  // declaratively. The hook reads from localStorage via useSyncExternalStore,
+  // so a write in /capture before `router.push("/dashboard")` already shows
+  // up here on the very next render.
+  const { activeAccountId, setActiveAccountId } = useActiveAccountId();
+
+  // Resolve the initial embla index from the persisted account id. Falls
+  // back to 0 when the saved id is stale (account deleted) or absent.
+  // Note: embla's `startIndex` is a boot-time prop; recomputing this value
+  // after mount is harmless dead work, but we keep `activeAccountId` in
+  // deps so eslint stays happy and a stale closure can never sneak in.
+  // External changes after mount drive the carousel via `scrollTo` below.
   const initialIndex = React.useMemo(() => {
-    const saved = readActiveId();
-    if (!saved) return 0;
-    const idx = accounts.findIndex((a) => a.id === saved);
+    if (!activeAccountId) return 0;
+    const idx = accounts.findIndex((a) => a.id === activeAccountId);
     return idx >= 0 ? idx : 0;
-  }, [accounts]);
+  }, [accounts, activeAccountId]);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
@@ -130,16 +102,17 @@ export function AccountCardCarousel({
   const [hideAmounts, setHideAmounts] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
-  // Keep activeIndex in sync with embla. Persist to localStorage on every
-  // settled snap so a refresh comes back to the same card. Emit the parent
-  // callback on the same edge so the dashboard's other widgets re-scope.
-  // The latest callback ref keeps the effect deps minimal — we don't want
-  // re-attaching the listener every time the parent passes a fresh closure.
+  // Latest callback ref — keeps the embla `select` effect's deps minimal so
+  // we don't re-attach the listener every time the parent passes a new
+  // closure for `onActiveAccountChange`.
   const onActiveAccountChangeRef = React.useRef(onActiveAccountChange);
   React.useEffect(() => {
     onActiveAccountChangeRef.current = onActiveAccountChange;
   }, [onActiveAccountChange]);
 
+  // Carousel → store. Whenever the user swipes (or scrollTo lands), persist
+  // the new active id and notify the dashboard so it re-scopes the other
+  // widgets. This is the WRITE side of the bidirectional sync.
   React.useEffect(() => {
     if (!emblaApi) return;
     const onSelect = () => {
@@ -147,17 +120,35 @@ export function AccountCardCarousel({
       setActiveIndex(idx);
       const acct = accounts[idx];
       if (acct) {
-        writeActiveId(acct.id);
+        setActiveAccountId(acct.id);
         onActiveAccountChangeRef.current?.(acct.id);
       }
     };
     emblaApi.on("select", onSelect);
-    onSelect(); // run once for initial mount
+    onSelect(); // run once for initial mount so consumers see the boot state
 
     return () => {
       emblaApi.off("select", onSelect);
     };
-  }, [emblaApi, accounts]);
+  }, [emblaApi, accounts, setActiveAccountId]);
+
+  // Store → carousel. Whenever activeAccountId changes via an EXTERNAL
+  // writer (e.g. /capture wrote it before redirecting; another tab updated
+  // it; storage event fired), align embla to that index. The equality
+  // check on `selectedScrollSnap` makes this a no-op when the change came
+  // from our own onSelect handler above — kills the loop risk.
+  React.useEffect(() => {
+    if (!emblaApi) return;
+    if (!activeAccountId) return;
+    const targetIdx = accounts.findIndex((a) => a.id === activeAccountId);
+    if (targetIdx < 0) return;
+    if (emblaApi.selectedScrollSnap() === targetIdx) return;
+    // `false` = animated scrollTo so the transition stays smooth even when
+    // the user lands on /dashboard from /capture. The user's eye follows
+    // the snap, which sells the connection: "I just spent on BBVA → here's
+    // the BBVA card sliding in."
+    emblaApi.scrollTo(targetIdx, false);
+  }, [emblaApi, accounts, activeAccountId]);
 
   // If the accounts array shrinks below the active index (last account
   // deleted), nudge embla to a valid slot.

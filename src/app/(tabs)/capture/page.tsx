@@ -51,6 +51,7 @@ import { cn } from "@/lib/utils";
 import { CURRENCY_LABEL } from "@/lib/money";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import {
   Drawer,
   DrawerContent,
@@ -416,6 +417,11 @@ function CapturePageInner() {
   // (persisted in `lumi-prefs`). Edit-mode hydration calls `setCurrency` to
   // align the global preference with the loaded transaction.
   const { currency, setCurrency } = useActiveCurrency();
+  // Seed the dashboard's account-card carousel with the account the user
+  // chose here, so when we redirect to /dashboard after save the carousel
+  // lands on that card. Same lumi-prefs JSON that useActiveCurrency uses;
+  // useSyncExternalStore on the read side picks up our write synchronously.
+  const { setActiveAccountId } = useActiveAccountId();
   const [kind, setKind] = React.useState<Kind>("expense");
   // Categories — same demo-vs-live split as accounts. In live mode we start
   // with an empty list + skeleton chips; in demo we seed from the inline mocks
@@ -824,6 +830,9 @@ function CapturePageInner() {
       setMerchantId(null);
       const firstExpense = categories.find((c) => c.defaultKind === "expense");
       setCategoryId(firstExpense?.id ?? categories[0]?.id ?? null);
+      // Seed the carousel even in demo mode so the same UX guarantees hold:
+      // tap an account → save → land on that card.
+      if (accountId) setActiveAccountId(accountId);
       window.setTimeout(() => {
         router.push("/dashboard");
       }, 1400);
@@ -895,9 +904,19 @@ function CapturePageInner() {
     try {
       if (editId) {
         await updateTransaction(editId, draft);
+        // Seed the active account so /movements (and any later /dashboard
+        // visit) reflects the most recently touched account. Both create
+        // and update flows write the same key for consistency.
+        setActiveAccountId(accountId);
         router.push("/movements");
       } else {
         await createTransaction(draft);
+        // Persist the just-used account id BEFORE the redirect. The
+        // dashboard's carousel reads via useSyncExternalStore so this
+        // write is visible on its very first render — no flash of the
+        // previous active card. Was the source of bug #X: "I capture from
+        // BBVA but the dashboard opens on Yape."
+        setActiveAccountId(accountId);
         // `router.refresh()` invalidates the App Router cache so the
         // dashboard's server boundary re-runs. Combined with the
         // `tx:upserted` listener mounted in /dashboard, this collapses
@@ -933,6 +952,7 @@ function CapturePageInner() {
     editOriginalOccurredAt,
     router,
     categories,
+    setActiveAccountId,
   ]);
 
   // Auto-save bridge — when the user hits Save without an account picked
