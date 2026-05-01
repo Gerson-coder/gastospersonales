@@ -46,7 +46,6 @@ import {
   Landmark,
   Loader2,
   Pencil,
-  CalendarDays,
   AlertTriangle,
 } from "lucide-react";
 
@@ -211,29 +210,6 @@ function todayLimaDate(): string {
   return formatLimaDate(new Date());
 }
 
-/**
- * Friendly relative copy for the date chip. "Hoy" / "Ayer" / short date
- * for older values. Same MONTHS abbreviations the rest of the app uses.
- */
-function formatDateChipLabel(yyyyMmDd: string): string {
-  const today = todayLimaDate();
-  if (yyyyMmDd === today) return "Hoy";
-  // Yesterday in Lima time. Cheap implementation: subtract 1 day from
-  // today's wall clock; reformat. The TZ math is handled by formatLimaDate.
-  const t = new Date();
-  t.setDate(t.getDate() - 1);
-  if (yyyyMmDd === formatLimaDate(t)) return "Ayer";
-  // Older: "DD MMM" — short month label, lowercase to match the rest
-  // of the app's date copy.
-  const [, mm, dd] = yyyyMmDd.split("-");
-  const months = [
-    "ene", "feb", "mar", "abr", "may", "jun",
-    "jul", "ago", "sep", "oct", "nov", "dic",
-  ];
-  const idx = parseInt(mm, 10) - 1;
-  return `${parseInt(dd, 10)} ${months[idx] ?? "?"}`;
-}
-
 // ─── Money formatting ─────────────────────────────────────────────────────
 // TODO: replace with formatMoney from @/lib/money once Batch B lands.
 function formatMoney(amount: number, currency: Currency = "PEN"): string {
@@ -349,50 +325,6 @@ function Keypad({ onPress }: { onPress: (key: KeypadKey) => void }) {
         <KeypadButton key={k} k={k} onPress={onPress} />
       ))}
     </div>
-  );
-}
-
-// ─── Category chip (inline, MRU strip) ────────────────────────────────────
-function CategoryChip({
-  category,
-  selected,
-  onClick,
-}: {
-  category: Category;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const Icon = category.Icon;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      aria-label={`Categoría ${category.label}${selected ? " (seleccionada)" : ""}`}
-      className={cn(
-        "inline-flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full border pl-1 pr-3 text-[13px] font-medium transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        // Selected state: high-contrast neutral pill (foreground bg / background text).
-        // Brand emerald is reserved for the Save CTA below — keep selection
-        // visually loud without painting it green.
-        selected
-          ? "border-foreground bg-foreground text-background font-semibold"
-          : "border-border bg-card text-foreground hover:bg-muted",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded-full",
-          selected
-            ? "bg-background/20 text-current"
-            : "bg-muted text-foreground",
-        )}
-      >
-        <Icon size={14} />
-      </span>
-      {category.label}
-    </button>
   );
 }
 
@@ -662,15 +594,13 @@ function CapturePageInner() {
   // time — the `transactions.merchant_id` column is nullable.
   const [merchantId, setMerchantId] = React.useState<string | null>(null);
 
-  // Tx date — drives the "Hoy ⌄" chip below the amount. Stored as
-  // "YYYY-MM-DD" in LIMA time so the user's wall clock matches the row
-  // they create. Default = today (Lima). The save path passes this into
-  // the draft's occurredAt only when the user explicitly changed it;
-  // otherwise the DB default `now()` wins so the timestamp is precise.
+  // Tx date — currently always "today" since the picker chip was
+  // removed per UX feedback. Kept as state (not a constant) so the
+  // existing save path still passes it through, and so we can
+  // resurface the date picker later without re-plumbing.
   const [txDate, setTxDate] = React.useState<string>(() =>
     todayLimaDate(),
   );
-  const [dateDrawerOpen, setDateDrawerOpen] = React.useState(false);
 
   // Edit-mode hydration: when `?edit=<id>` is in the URL we fetch the row
   // and seed every form field from it. If the row is gone (archived from
@@ -1401,22 +1331,10 @@ function CapturePageInner() {
             />
           </button>
 
-          {/* Date chip — small, tappable. Opens a drawer with a date
-              input. Default is "Hoy"; user can backfill past txs. */}
-          <button
-            type="button"
-            onClick={() => setDateDrawerOpen(true)}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 self-center rounded-full border border-border bg-card px-3.5 py-1.5",
-              "text-[12px] font-medium text-muted-foreground",
-              "transition-colors hover:bg-muted",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            )}
-          >
-            <CalendarDays size={12} aria-hidden />
-            {formatDateChipLabel(txDate)}
-            <ChevronDown size={12} aria-hidden />
-          </button>
+          {/* Date chip removed per user request — backfilling past
+              dates was a low-frequency need. The state + helpers stay
+              wired so we can resurface it from /settings or via a
+              long-press shortcut later without touching this surface. */}
 
           {/* Saldo warning — soft, inline. The "Abonar" CTA opens the
               existing recharge modal so the user can top-up without
@@ -1505,59 +1423,59 @@ function CapturePageInner() {
           </div>
         ) : null}
 
-        {/* MRU category chips — header row with "Ver más →" link replaces
-            the old in-strip "Ver más" chip. Three primary chips
-            (Comida / Transporte / Salud for expense) now have room to
-            breathe on a 360px viewport.
-
-            Hidden on income: the income flow (recibir dinero) does NOT
-            ask for category context — the reconcile effect above auto-
-            selects the first income category (Trabajo) so the save
-            payload still carries one. Letting the user pick "Comida"
-            on income would surface the restaurant merchant strip on
-            an unrelated flow, which is what we want to avoid. */}
+        {/* Categoría card — same visual pattern as the Cuenta card in
+            the inline meta strip above: icon bubble + label + value +
+            chevron. Tapping opens the full-list drawer (the MRU chip
+            strip is gone per the redesign request).
+            Hidden on income; the income flow auto-selects the first
+            income category (Trabajo) and doesn't surface a picker. */}
         {kind === "expense" && (
-          <section className="mt-4 px-4" aria-label="Categorías recientes">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                Categoría
-              </span>
-              <button
-                type="button"
-                onClick={() => setCategoryDrawerOpen(true)}
-                disabled={categoriesLoading || categories.length === 0}
-                aria-label="Ver todas las categorías"
-                aria-haspopup="dialog"
-                aria-expanded={categoryDrawerOpen}
-                className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Ver todos
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {categoriesLoading ? (
-                // Skeleton chips — match the real chip height (h-11) and the
-                // ~w-24 horizontal footprint of a 1-2 word label so the strip
-                // doesn't reflow when data lands.
-                [0, 1, 2].map((i) => (
-                  <Skeleton
-                    key={i}
-                    className="h-11 w-24 flex-shrink-0 rounded-full"
-                  />
-                ))
-              ) : (
-                mruCategories.map((c) => (
-                  <CategoryChip
-                    key={c.id}
-                    category={c}
-                    selected={categoryId === c.id}
-                    onClick={() => handlePickCategory(c.id)}
-                  />
-                ))
+          <div className="mx-4 mt-3 md:mx-8">
+            <button
+              type="button"
+              onClick={() => setCategoryDrawerOpen(true)}
+              disabled={categoriesLoading || categories.length === 0}
+              aria-label={
+                category
+                  ? `Cambiar categoría. Actual: ${category.label}`
+                  : "Elige una categoría"
+              }
+              aria-haspopup="dialog"
+              aria-expanded={categoryDrawerOpen}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5",
+                "transition-colors hover:bg-muted",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "disabled:cursor-not-allowed disabled:opacity-60",
               )}
-            </div>
-          </section>
+            >
+              <span
+                aria-hidden
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+              >
+                {category?.Icon ? (
+                  <category.Icon size={15} aria-hidden />
+                ) : (
+                  <Circle size={15} aria-hidden />
+                )}
+              </span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Categoría
+                </p>
+                <p className="truncate text-[13px] font-semibold text-foreground">
+                  {categoriesLoading
+                    ? "Cargando…"
+                    : (category?.label ?? "Elige una categoría")}
+                </p>
+              </div>
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            </button>
+          </div>
         )}
 
         {/* Merchant picker — "¿Dónde? (opcional)". Hidden on income because
@@ -1654,54 +1572,8 @@ function CapturePageInner() {
           the green "Guardado." sonner toast that used to fire on success. */}
       <SavingOverlay open={submitting} />
 
-      {/* Date drawer — small picker for the inline tx-date chip. The
-          input ranges from 2 years ago to today. Past dates only — we
-          don't let users post-date a future tx (would mess with the
-          velocity / month-to-date calculations). */}
-      <Drawer open={dateDrawerOpen} onOpenChange={setDateDrawerOpen}>
-        <DrawerContent className="bg-background">
-          <DrawerHeader>
-            <DrawerTitle>Fecha del movimiento</DrawerTitle>
-            <DrawerDescription>
-              Si te olvidaste de registrarlo en su momento, elige el día
-              en que ocurrió.
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="flex flex-col gap-3 px-4 pb-6">
-            <input
-              type="date"
-              value={txDate}
-              onChange={(e) => setTxDate(e.target.value || todayLimaDate())}
-              max={todayLimaDate()}
-              min={(() => {
-                const d = new Date();
-                d.setFullYear(d.getFullYear() - 2);
-                return formatLimaDate(d);
-              })()}
-              className="h-12 w-full rounded-xl border border-border bg-card px-3 text-[15px] tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Fecha del movimiento"
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setTxDate(todayLimaDate());
-                }}
-                className="h-10 flex-1 rounded-xl border border-border bg-card text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
-              >
-                Hoy
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateDrawerOpen(false)}
-                className="h-10 flex-1 rounded-xl bg-foreground text-[13px] font-semibold text-background transition-opacity hover:opacity-90"
-              >
-                Listo
-              </button>
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
+      {/* Date drawer removed alongside the date chip. txDate state stays
+          (always = today) so the save path keeps working. */}
 
       {/* Saldo guard — fires when picking an empty account on the expense
           flow, or when Save is hit against one. Short message, single
