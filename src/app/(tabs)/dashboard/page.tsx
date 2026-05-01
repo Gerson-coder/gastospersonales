@@ -1077,23 +1077,22 @@ export default function DashboardPage() {
   }, [isDemo, window.monthTotals]);
 
   // ── Mobile MobileTodayCard data ───────────────────────────────────────
-  // Today expense snapshot: total spent today, count of today's expense
-  // rows, and the LATEST expense (used as the preview chip). filteredRows
-  // is DESC by occurredAt so the head of the today-filter is the latest.
+  // Today expense snapshot: total spent today + count. The latest expense
+  // row is intentionally NOT surfaced here — its info already lives in
+  // the "Últimos movimientos" list further down the column, and dropping
+  // the in-card preview matches the user's "es mucha información" feedback.
   const todaySnapshot = React.useMemo(() => {
     const now = new Date();
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     let total = 0;
     let count = 0;
-    let last: TransactionView | null = null;
     for (const r of window.filteredRows) {
       if (r.kind !== "expense") continue;
       if (r.occurredAt.slice(0, 10) !== todayKey) continue;
       total += r.amount;
       count += 1;
-      if (last === null) last = r; // DESC order = first match is the latest
     }
-    return { total, count, last };
+    return { total, count };
   }, [window.filteredRows]);
 
   // Last income snapshot: the single most recent income row in the window,
@@ -1397,25 +1396,6 @@ export default function DashboardPage() {
                           />
                         ) : null
                       }
-                      preview={
-                        todaySnapshot.last
-                          ? {
-                              Icon: CATEGORY_ICONS[
-                                guessIconKey(todaySnapshot.last.categoryName)
-                              ],
-                              primary:
-                                todaySnapshot.last.merchantName?.trim() ||
-                                todaySnapshot.last.categoryName ||
-                                "Sin descripción",
-                              secondary: formatTxDate(
-                                todaySnapshot.last.occurredAt,
-                              ),
-                              amount: todaySnapshot.last.amount,
-                              currency: todaySnapshot.last.currency,
-                            }
-                          : null
-                      }
-                      emptyHint="Aún no registras gastos hoy."
                       footerText="Ver todos"
                       footerHref="/movements"
                     />
@@ -1431,24 +1411,6 @@ export default function DashboardPage() {
                           />
                         ) : null
                       }
-                      preview={
-                        lastIncomeRow
-                          ? {
-                              Icon: CATEGORY_ICONS[
-                                guessIconKey(lastIncomeRow.categoryName)
-                              ],
-                              primary:
-                                lastIncomeRow.merchantName?.trim() ||
-                                lastIncomeRow.categoryName ||
-                                "Ingreso",
-                              secondary:
-                                lastIncomeRow.accountName ?? "—",
-                              amount: lastIncomeRow.amount,
-                              currency: lastIncomeRow.currency,
-                            }
-                          : null
-                      }
-                      emptyHint="Aún no registras ingresos."
                       footerText="Ver historial"
                       footerHref="/movements"
                     />
