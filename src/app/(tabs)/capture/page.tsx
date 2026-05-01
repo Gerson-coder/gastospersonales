@@ -1206,8 +1206,20 @@ function CapturePageInner() {
         </header>
 
         {/* Amount display — eyebrow ("Cuánto gastaste / entró") removed; the
-            kind toggle in the header now plays the title role. */}
-        <section className="px-6 pt-6 text-center md:px-8 md:pt-6" aria-live="polite">
+            kind toggle in the header now plays the title role. The compact
+            currency chip floats absolutely to the left of the amount so the
+            digits stay visually centred regardless of which currency is
+            active (S/ vs $ have different glyph widths — using a flex row
+            would shift the amount sideways on every toggle). */}
+        <section
+          className="relative px-6 pt-6 text-center md:px-8 md:pt-6"
+          aria-live="polite"
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 md:pl-8">
+            <span className="pointer-events-auto">
+              <CurrencySwitch variant="compact" />
+            </span>
+          </div>
           <div
             className={cn(
               "font-semibold tabular-nums leading-none tracking-tight",
@@ -1217,12 +1229,6 @@ function CapturePageInner() {
             style={{ fontFeatureSettings: '"tnum","lnum"' }}
           >
             {display}
-          </div>
-          {/* CurrencySwitch — moved from the header into the slot just below
-              the amount. Unified with `useActiveCurrency` so the page reflects
-              (and persists) the global PEN/USD preference. */}
-          <div className="mt-3 flex justify-center">
-            <CurrencySwitch />
           </div>
         </section>
 
