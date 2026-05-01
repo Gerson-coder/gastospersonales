@@ -1,25 +1,25 @@
 /**
  * AccountCard — wallet-style premium card for a single account.
  *
- * Pure presentation. Receives all data via props; reads its colors from CSS
- * custom properties (`--card-bg-from`, `--card-bg-to`, `--card-accent`) set by
- * the parent so the bank-theme decision lives in one place
- * (`account-card-theme.ts`).
+ * Layout intentionally mirrors a physical bank card so the user reads it as
+ * "this is the BBVA card", not "this is a UI tile for BBVA":
+ *
+ *   ┌────────────────────────────────┐
+ *   │ BBVA            DÉBITO 👁 ))   │  ← top: wordmark + meta strip
+ *   │                                │
+ *   │ ▢ chip                          │  ← mid: decorative EMV chip
+ *   │                                │
+ *   │ Saldo disponible               │  ← bottom: saldo only (no gastado)
+ *   │ S/ 504.00                      │
+ *   └────────────────────────────────┘
+ *
+ * Pure presentation. Reads colors from CSS custom properties
+ * (`--card-bg-from`, `--card-bg-to`, `--card-accent`) set by the parent so
+ * the bank-theme decision lives in one place (`account-card-theme.ts`).
  *
  * Two variants:
- *   - `full`  — used in the carousel. Aspect ratio 1.586:1 (ID-1 credit
- *               card). Shows full numbers, sheen, watermark, eye toggle.
- *   - `mini`  — used in the switcher drawer. Same layout but reduced font
- *               sizes and no sheen animation, so a 4-up grid scans cleanly.
- *
- * Accessibility:
- *   - Container is a `<button type="button">` only when `onClick` is passed
- *     so the user can tap a mini card to switch to it. Otherwise it renders
- *     as a `<div>` (the carousel slide is the actionable element, not the
- *     card itself).
- *   - The amount toggle has `aria-pressed` so screen readers announce the
- *     hide/show state.
- *   - Numbers use `tabular-nums` so the eye-toggle swap doesn't reflow.
+ *   - `full`  — used in the carousel. Aspect 1.586:1 (ID-1 credit card).
+ *   - `mini`  — used in the switcher drawer (smaller padding + typography).
  */
 
 "use client";
@@ -33,15 +33,12 @@ export type AccountCardVariant = "full" | "mini";
 
 export type AccountCardProps = {
   bankSlug: string | null;
-  /** Wordmark drawn at top-left, e.g. "BBVA", "EFECTIVO". */
+  /** Wordmark drawn at top-left, e.g. "BBVA", "MI COLCHÓN". */
   bankLabel: string;
-  /** Optional subtype chip drawn at bottom-right ("Sueldo", "Ahorro"...). */
+  /** Optional subtype rendered top-right ("Sueldo", "Ahorro", "Débito"...). */
   subtypeLabel?: string | null;
   currency: "PEN" | "USD";
   saldoActual: number;
-  gastadoMes: number;
-  /** Signed fraction. `null` when there's no prior-month data. */
-  deltaPctVsPrevMonth: number | null;
   /**
    * When true, all monetary values render as "••••••". Controlled by the
    * carousel so the toggle persists across cards.
@@ -69,12 +66,6 @@ export type AccountCardProps = {
 /**
  * Format a positive amount. Switches to compact notation (S/ 1.23M) once the
  * integer portion has 7+ digits, otherwise full digits with 2 decimals.
- *
- * The 7-digit threshold is calibrated so that any amount that fits cleanly
- * inside the 360px-viewport hero font tier renders verbatim, and only the
- * truly-large values (> 1M) get abbreviated. Below the threshold we still
- * tier-down the font (see `getAmountSizeClass`) so 6-digit amounts don't
- * overflow.
  */
 function formatAdaptiveCurrency(
   amount: number,
@@ -104,12 +95,10 @@ function formatAdaptiveCurrency(
 }
 
 /**
- * Pick the saldo font size based on the formatted text length AND variant.
- * Tiers exist because at 360px viewport even a properly-formatted 6-digit
- * amount ("S/ 999,999.99" = 13 chars) overflows the hero's left column.
- *
- * The bumps are aggressive on purpose — text legibility matters more than
- * raw size on a card that's already drawing the eye with color and gradient.
+ * Saldo font tiers based on text length AND variant. Calibrated so that a
+ * worst-case "S/ 999,999.99" (13 chars) still fits inside the 360px-viewport
+ * full card without wrapping. Above the compact threshold we'd never get
+ * here so the upper tier is the real limit.
  */
 function getSaldoSizeClass(textLength: number, variant: AccountCardVariant): string {
   if (variant === "mini") {
@@ -117,24 +106,94 @@ function getSaldoSizeClass(textLength: number, variant: AccountCardVariant): str
     if (textLength <= 13) return "text-sm";
     return "text-xs";
   }
-  // full
-  if (textLength <= 10) return "text-[40px] leading-[1.05]";
-  if (textLength <= 13) return "text-[34px] leading-[1.05]";
-  if (textLength <= 16) return "text-[28px] leading-[1.05]";
+  if (textLength <= 10) return "text-[44px] leading-[1.05]";
+  if (textLength <= 13) return "text-[36px] leading-[1.05]";
+  if (textLength <= 16) return "text-[30px] leading-[1.05]";
   return "text-[24px] leading-[1.1]";
 }
 
-function getGastoSizeClass(textLength: number, variant: AccountCardVariant): string {
-  if (variant === "mini") return "text-[10px]";
-  if (textLength <= 10) return "text-[18px]";
-  if (textLength <= 14) return "text-[16px]";
-  return "text-[14px]";
+/**
+ * Bank-label font tiers — aggressive scale-down so user-typed account names
+ * (typically up to ~15 chars per the user spec) still read at premium-card
+ * weight without truncating. The tracking-tight on shorter labels lets a
+ * 4-char "BBVA" feel beefy without overshooting the card width; longer
+ * names drop tracking and grow only as last resort.
+ */
+function getBankLabelClass(length: number, variant: AccountCardVariant): string {
+  if (variant === "mini") {
+    if (length <= 6) return "text-[15px] tracking-tight";
+    if (length <= 12) return "text-[12px] tracking-tight";
+    return "text-[10px]";
+  }
+  // full
+  if (length <= 6) return "text-[32px] leading-none tracking-tight";
+  if (length <= 10) return "text-[24px] leading-none tracking-tight";
+  if (length <= 15) return "text-[20px] leading-none tracking-tight";
+  return "text-[16px] leading-tight";
 }
 
-// ─── Contactless icon ─────────────────────────────────────────────────────
-// Lucide doesn't ship a credit-card-grade contactless symbol, so we render
-// the canonical 4-arc EMVCo wave inline. Aria-hidden because the bank label
-// already conveys the card identity.
+// ─── Decorative SVGs ──────────────────────────────────────────────────────
+
+/**
+ * EMV chip — purely decorative, mimics the gold contact pad on a real card.
+ * Uses a unique gradient id per render so multiple cards on the same page
+ * don't collapse to the same gradient instance (would happen if id was a
+ * literal string and React.memo deduped renders).
+ */
+function ChipIcon({ className }: { className?: string }) {
+  // Inline gradient id — generated from useId so every instance is unique.
+  const gradId = React.useId();
+  const gradHref = `chip-grad-${gradId.replace(/:/g, "")}`;
+  return (
+    <svg
+      viewBox="0 0 38 30"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={gradHref} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f0d68a" />
+          <stop offset="50%" stopColor="#c89c3a" />
+          <stop offset="100%" stopColor="#8c6a23" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="0.5"
+        y="0.5"
+        width="37"
+        height="29"
+        rx="4"
+        fill={`url(#${gradHref})`}
+        stroke="rgba(0,0,0,0.18)"
+        strokeWidth="0.5"
+      />
+      {/* Inner contact pattern. Strokes are slightly translucent so the
+          gradient still reads through. */}
+      <path
+        d="M0.5 8 H37.5 M0.5 15 H37.5 M0.5 22 H37.5 M13 0.5 V29.5 M25 0.5 V29.5"
+        stroke="rgba(0,0,0,0.32)"
+        strokeWidth="0.6"
+      />
+      <rect
+        x="11"
+        y="7"
+        width="16"
+        height="16"
+        rx="0.5"
+        stroke="rgba(0,0,0,0.32)"
+        strokeWidth="0.5"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Contactless wave — canonical 4-arc EMVCo glyph. Lucide's `Wifi` is close
+ * but reads as "wifi" not "tap-to-pay"; the inline version sits flush with
+ * the card meta strip without rotation hacks.
+ */
 function ContactlessIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -161,8 +220,6 @@ export function AccountCard({
   subtypeLabel,
   currency,
   saldoActual,
-  gastadoMes,
-  deltaPctVsPrevMonth,
   hideAmounts = false,
   onToggleHide,
   variant = "full",
@@ -173,28 +230,13 @@ export function AccountCard({
 }: AccountCardProps) {
   const isNegative = saldoActual < 0;
   const saldo = formatAdaptiveCurrency(saldoActual, currency);
-  const gasto = formatAdaptiveCurrency(gastadoMes, currency);
 
-  // Pre-pend the explicit minus sign so tabular-nums alignment stays clean
-  // when the formatter returns a positive-formatted abs value.
   const saldoText = hideAmounts ? "••••••" : `${isNegative ? "− " : ""}${saldo.text}`;
-  const gastoText = hideAmounts ? "••••••" : gasto.text;
-
   const saldoSize = getSaldoSizeClass(saldoText.length, variant);
-  const gastoSize = getGastoSizeClass(gastoText.length, variant);
+  const bankLabelClass = getBankLabelClass(bankLabel.length, variant);
 
-  // Delta pill — only shown when we have a usable prior-month figure. Down is
-  // green (less spending = good), up is amber (don't go red — spending more
-  // isn't a "failure", just a heads-up).
-  const showDelta = deltaPctVsPrevMonth !== null && variant === "full";
-  const deltaPct = deltaPctVsPrevMonth ?? 0;
-  const deltaIsDown = deltaPct < 0;
-  const deltaText = `${deltaIsDown ? "↓" : "↑"} ${Math.round(Math.abs(deltaPct) * 100)}% ${
-    deltaIsDown ? "menos" : "más"
-  } que el mes anterior`;
-
-  // Container wrapper — when mini + onClick we render as a button so the
-  // keyboard / screen reader gets the affordance for free.
+  // Container = button when mini+onClick; div otherwise. Mini's onClick lets
+  // the user tap a tile in the switcher drawer to swap the active card.
   const Container = (onClick ? "button" : "div") as
     | "button"
     | "div";
@@ -207,47 +249,39 @@ export function AccountCard({
       data-shine={dataShine}
       className={cn(
         "lumi-account-card group relative flex flex-col overflow-hidden text-left",
-        "rounded-2xl shadow-[0_10px_30px_-12px_rgba(0,0,0,0.55)]",
+        "rounded-2xl shadow-[0_14px_40px_-14px_rgba(0,0,0,0.55)]",
         "ring-1 ring-white/10",
-        // Aspect ratio 1.586:1 (ID-1) — anchored on width so the card flexes
-        // cleanly inside the carousel slide.
-        variant === "full" ? "aspect-[1.586]" : "aspect-[1.586]",
-        // Padding scales with variant — mini gets less so the grid tile
-        // breathes at small sizes.
+        // Aspect ratio 1.586:1 (ID-1 credit card standard).
+        "aspect-[1.586]",
+        // Padding scales with variant.
         variant === "full" ? "p-5" : "p-3",
-        // CSS-vars-driven gradient. Default fallback to a neutral graphite
-        // so the card never renders white if a parent forgets to set vars.
+        // CSS-vars-driven gradient; default fallback to graphite.
         "bg-[linear-gradient(135deg,var(--card-bg-from,oklch(0.32_0.02_250))_0%,var(--card-bg-to,oklch(0.18_0.02_250))_100%)]",
         "text-white",
-        // Sheen + watermark only animate on the full variant — the mini
-        // tiles are static thumbnails.
         variant === "full" && "lumi-account-card--full",
         "transition-transform duration-300 ease-out",
         onClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
         className,
       )}
     >
-      {/* Specular sheen — radial highlight at top-right. Pseudo-element so the
-          gradient and the highlight compose without an extra wrapper div.
-          mix-blend-mode: overlay keeps the highlight responsive to the
-          underlying gradient hue (no hard white wash). */}
+      {/* Specular sheen — radial highlight at top-right via mix-blend-overlay
+          so it picks up the gradient hue rather than baking a hard white. */}
       <span
         aria-hidden="true"
         className={cn(
           "pointer-events-none absolute inset-0 rounded-[inherit]",
-          "bg-[radial-gradient(120%_60%_at_85%_-10%,rgba(255,255,255,0.35)_0%,rgba(255,255,255,0)_55%)]",
+          "bg-[radial-gradient(120%_60%_at_85%_-10%,rgba(255,255,255,0.30)_0%,rgba(255,255,255,0)_55%)]",
           "mix-blend-overlay",
         )}
       />
 
       {/* Watermark logo — bottom-right, low opacity. Only renders when the
-          account has a registered brand. Uses a brightness filter so dark
-          mono SVGs (which are the majority in /public/logos/banks) read on
-          the dark gradient. */}
+          account has a registered brand. brightness(0) invert(1) tints the
+          mono SVGs so they read on the dark gradient. */}
       {bankSlug && variant === "full" && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -right-6 -bottom-8 h-44 w-44 opacity-[0.10]"
+          className="pointer-events-none absolute -right-8 -bottom-10 h-52 w-52 opacity-[0.10]"
           style={{ filter: "brightness(0) invert(1)" }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
@@ -259,32 +293,45 @@ export function AccountCard({
         </span>
       )}
 
-      {/* Animated shine — a thin diagonal highlight that crosses the card
-          on initial mount. Skipped under prefers-reduced-motion via the
-          global CSS rule we add in globals.css. */}
+      {/* Animated diagonal shine — on mount + on snap (carousel toggles
+          data-shine to replay). Disabled under prefers-reduced-motion via
+          the global rule in globals.css. */}
       {variant === "full" && (
         <span
           aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden",
-          )}
+          className="pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden"
         >
           <span className="lumi-account-card__shine absolute -inset-y-4 -left-[40%] w-[40%] -skew-x-12 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.18)_50%,transparent_100%)]" />
         </span>
       )}
 
-      {/* TOP ROW — bank wordmark + contactless + eye toggle */}
+      {/* TOP ROW — wordmark left, meta strip right (subtype + eye + NFC) */}
       <div className="relative flex items-start justify-between gap-3">
         <span
           className={cn(
-            "min-w-0 truncate font-bold uppercase tracking-tight text-white",
+            "min-w-0 truncate font-bold uppercase text-white",
             "drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]",
-            variant === "full" ? "text-[28px] leading-none" : "text-[15px] leading-none",
+            bankLabelClass,
           )}
         >
           {bankLabel}
         </span>
-        <div className="flex flex-shrink-0 items-center gap-2 text-white/85">
+        <div
+          className={cn(
+            "flex flex-shrink-0 items-center text-white/85",
+            variant === "full" ? "gap-2.5" : "gap-1",
+          )}
+        >
+          {subtypeLabel && (
+            <span
+              className={cn(
+                "font-semibold uppercase tracking-wider text-white/85",
+                variant === "full" ? "text-[11px]" : "text-[8px]",
+              )}
+            >
+              {subtypeLabel}
+            </span>
+          )}
           {variant === "full" && onToggleHide && (
             <button
               type="button"
@@ -300,17 +347,27 @@ export function AccountCard({
             </button>
           )}
           <ContactlessIcon
-            className={variant === "full" ? "h-6 w-6" : "h-3.5 w-3.5"}
+            className={variant === "full" ? "h-5 w-5" : "h-3.5 w-3.5"}
           />
         </div>
       </div>
 
-      {/* MID — saldo */}
-      <div className={cn("relative", variant === "full" ? "mt-5" : "mt-2")}>
+      {/* MID — decorative chip */}
+      {variant === "full" ? (
+        <ChipIcon className="relative mt-4 h-9 w-12" />
+      ) : (
+        <ChipIcon className="relative mt-1.5 h-4 w-5" />
+      )}
+
+      {/* SPACER — pushes the saldo block to the bottom */}
+      <div aria-hidden="true" className="flex-1" />
+
+      {/* BOTTOM — saldo only (gastado section removed per design feedback) */}
+      <div className="relative">
         <p
           className={cn(
             "font-medium text-white/75",
-            variant === "full" ? "text-[12px]" : "text-[9px]",
+            variant === "full" ? "text-[12px]" : "text-[8px]",
           )}
         >
           Saldo disponible
@@ -325,66 +382,6 @@ export function AccountCard({
         >
           {saldoText}
         </p>
-      </div>
-
-      {/* DIVIDER */}
-      <div
-        aria-hidden="true"
-        className={cn(
-          "relative h-px w-full bg-white/15",
-          variant === "full" ? "mt-4" : "mt-2",
-        )}
-      />
-
-      {/* BOTTOM — gasto del mes + delta pill + subtype */}
-      <div
-        className={cn(
-          "relative flex items-end justify-between gap-2",
-          variant === "full" ? "mt-3" : "mt-2",
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          <p
-            className={cn(
-              "font-medium text-white/75",
-              variant === "full" ? "text-[11px]" : "text-[9px]",
-            )}
-          >
-            Gastado este mes
-          </p>
-          <p
-            className={cn(
-              "mt-0.5 font-semibold tabular-nums tracking-tight text-white",
-              gastoSize,
-            )}
-            style={{ fontFeatureSettings: '"tnum","lnum"' }}
-          >
-            {gastoText}
-          </p>
-          {showDelta && (
-            <span
-              className={cn(
-                "mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1",
-                "text-[11px] font-medium",
-                "bg-white/15 text-white backdrop-blur-sm",
-                "ring-1 ring-white/10",
-              )}
-            >
-              {deltaText}
-            </span>
-          )}
-        </div>
-        {subtypeLabel && variant === "full" && (
-          <span
-            className={cn(
-              "flex-shrink-0 rounded-md bg-white/15 px-2 py-1",
-              "text-[10px] font-semibold uppercase tracking-wider text-white/90",
-              "backdrop-blur-sm ring-1 ring-white/10",
-            )}
-          >
-            {subtypeLabel}
-          </span>
-        )}
       </div>
     </Container>
   );

@@ -513,3 +513,23 @@
     opacity: 0;
   }
 }
+
+/* Subtle scale-pulse when a card snaps into focus. The spring easing makes
+   the active card feel like it "settled" instead of teleported. Inactive
+   cards stay at scale 1 so they don't bounce when they enter the viewport
+   on swipe. */
+@keyframes lumi-account-card-pulse {
+  0%   { transform: scale(0.96); }
+  55%  { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+
+.lumi-account-card--snap {
+  animation: lumi-account-card-pulse 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumi-account-card--snap {
+    animation: none;
+  }
+}

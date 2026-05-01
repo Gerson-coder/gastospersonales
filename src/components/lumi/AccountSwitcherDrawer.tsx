@@ -101,8 +101,6 @@ export function AccountSwitcherDrawer({
                   subtypeLabel={subtypeLabel}
                   currency={currency}
                   saldoActual={s.saldoActual}
-                  gastadoMes={s.gastadoMes}
-                  deltaPctVsPrevMonth={s.deltaPctVsPrevMonth}
                   hideAmounts={hideAmounts}
                   variant="mini"
                   onClick={() => onSelectAccount(idx)}

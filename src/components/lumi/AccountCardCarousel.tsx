@@ -210,10 +210,15 @@ export function AccountCardCarousel({
             const subtypeLabel = account.subtype
               ? ACCOUNT_SUBTYPE_LABEL[account.subtype]
               : null;
+            const isActive = idx === activeIndex;
             return (
               <div
                 key={account.id}
-                className="min-w-0 flex-[0_0_88%] pl-4 pr-2 first:pl-4 last:pr-4"
+                // Full-width slides — no peek of adjacent cards. The user
+                // explicitly asked for clean single-card focus, with the
+                // pagination dots + Cambiar cuenta CTA carrying the "there
+                // are more cards" affordance instead of an edge peek.
+                className="min-w-0 flex-[0_0_100%] px-4"
                 role="group"
                 aria-roledescription="slide"
                 aria-label={`Cuenta ${account.label}, ${idx + 1} de ${accounts.length}`}
@@ -224,17 +229,19 @@ export function AccountCardCarousel({
                   subtypeLabel={subtypeLabel}
                   currency={currency}
                   saldoActual={s.saldoActual}
-                  gastadoMes={s.gastadoMes}
-                  deltaPctVsPrevMonth={s.deltaPctVsPrevMonth}
                   hideAmounts={hideAmounts}
                   onToggleHide={() => setHideAmounts((h) => !h)}
                   variant="full"
-                  className="w-full"
-                  // Pass the per-account theme as inline style — the card
-                  // reads --card-bg-from / --card-bg-to / --card-accent.
+                  // Subtle scale-pulse on the active card — kicks in on snap
+                  // via the `lumi-account-card--snap` modifier toggled by
+                  // `data-active`. Inactive cards stay at scale 1 so when
+                  // they enter the viewport they don't bounce.
+                  className={cn(
+                    "w-full",
+                    isActive && "lumi-account-card--snap",
+                  )}
                   style={getAccountCardStyle(account)}
-                  // Replay the shine on each snap so swipes feel alive.
-                  data-shine={idx === activeIndex ? "true" : undefined}
+                  data-shine={isActive ? "true" : undefined}
                 />
               </div>
             );
