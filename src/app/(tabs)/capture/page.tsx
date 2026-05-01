@@ -1289,7 +1289,7 @@ function CapturePageInner() {
             type="button"
             onClick={() => setAccountDrawerOpen(true)}
             className={cn(
-              "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5",
+              "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2",
               "transition-colors hover:bg-muted",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
@@ -1306,10 +1306,10 @@ function CapturePageInner() {
               <Wallet size={15} />
             </span>
             <div className="min-w-0 flex-1 text-left">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
                 Cuenta
               </p>
-              <p className="truncate text-[13px] font-semibold text-foreground">
+              <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
                 {selectedAccount ? selectedAccount.label : "Elige una cuenta"}
               </p>
             </div>
@@ -1449,7 +1449,7 @@ function CapturePageInner() {
               aria-haspopup="dialog"
               aria-expanded={categoryDrawerOpen}
               className={cn(
-                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5",
+                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2",
                 "transition-colors hover:bg-muted",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-60",
@@ -1466,10 +1466,10 @@ function CapturePageInner() {
                 )}
               </span>
               <div className="min-w-0 flex-1 text-left">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
                   Categoría
                 </p>
-                <p className="truncate text-[13px] font-semibold text-foreground">
+                <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
                   {categoriesLoading
                     ? "Cargando…"
                     : (category?.label ?? "Elige una categoría")}
