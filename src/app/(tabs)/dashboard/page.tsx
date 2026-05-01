@@ -56,7 +56,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CURRENCY_LABEL } from "@/lib/money";
-import { formatTxDate } from "@/lib/format-tx-date";
+import { formatTxDate, formatLimaDate } from "@/lib/format-tx-date";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
@@ -65,8 +65,8 @@ import { useAccountStats } from "@/hooks/use-account-stats";
 import { StatTrendCard } from "@/components/lumi/StatTrendCard";
 import {
   MobileTodayCard,
-  CountBadge,
-  TimestampLine,
+  ExpenseSubline,
+  IncomeSubline,
 } from "@/components/lumi/MobileTodayCard";
 import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/CategoryDonut";
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
@@ -1103,22 +1103,24 @@ export default function DashboardPage() {
   }, [isDemo, window.monthTotals]);
 
   // ── Mobile MobileTodayCard data ───────────────────────────────────────
-  // Today expense snapshot: total spent today + count. The latest expense
-  // row is intentionally NOT surfaced here — its info already lives in
-  // the "Últimos movimientos" list further down the column, and dropping
-  // the in-card preview matches the user's "es mucha información" feedback.
+  // Today expense snapshot: total spent today + the latest expense row,
+  // both bucketed by the LIMA day boundary (not the browser's). We need
+  // `last` so the card subline can render its category + relative time
+  // — matches the income card's "Hoy, 09:20" format but in red.
   const todaySnapshot = React.useMemo(() => {
-    const now = new Date();
-    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const todayKey = formatLimaDate(new Date());
     let total = 0;
     let count = 0;
+    let last: TransactionView | null = null;
     for (const r of window.filteredRows) {
       if (r.kind !== "expense") continue;
-      if (r.occurredAt.slice(0, 10) !== todayKey) continue;
+      if (formatLimaDate(r.occurredAt) !== todayKey) continue;
       total += r.amount;
       count += 1;
+      // filteredRows is DESC by occurredAt so the first match is the latest.
+      if (last === null) last = r;
     }
-    return { total, count };
+    return { total, count, last };
   }, [window.filteredRows]);
 
   // Last income snapshot: the single most recent income row in the window,
@@ -1411,19 +1413,17 @@ export default function DashboardPage() {
                       amount={todaySnapshot.total}
                       currency={currency}
                       subline={
-                        todaySnapshot.count > 0 ? (
-                          <CountBadge
-                            count={todaySnapshot.count}
-                            label={
-                              todaySnapshot.count === 1
-                                ? "movimiento"
-                                : "movimientos"
+                        todaySnapshot.last ? (
+                          <ExpenseSubline
+                            category={
+                              todaySnapshot.last.categoryName?.trim() || null
                             }
+                            timestamp={formatTxDate(
+                              todaySnapshot.last.occurredAt,
+                            )}
                           />
                         ) : null
                       }
-                      footerText="Ver todos"
-                      footerHref="/movements"
                     />
                     <MobileTodayCard
                       kind="income"
@@ -1432,13 +1432,11 @@ export default function DashboardPage() {
                       currency={lastIncomeRow?.currency ?? currency}
                       subline={
                         lastIncomeRow ? (
-                          <TimestampLine
+                          <IncomeSubline
                             text={formatTxDate(lastIncomeRow.occurredAt)}
                           />
                         ) : null
                       }
-                      footerText="Ver historial"
-                      footerHref="/movements"
                     />
                   </div>
 

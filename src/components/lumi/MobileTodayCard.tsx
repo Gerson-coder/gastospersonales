@@ -27,7 +27,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, ChevronRight, TrendingUp } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -56,18 +56,17 @@ export type MobileTodayCardProps = {
   amount: number;
   currency: "PEN" | "USD";
   /**
-   * Subline rendered between amount and preview. For expense we pass a
-   * count badge ("5 movimientos"); for income a relative timestamp
-   * ("Hoy, 9:20 AM"). Free-form ReactNode so each kind keeps its style.
+   * Subline rendered after the amount. Free-form so each kind picks its
+   * own style: expense passes the latest tx's category + timestamp in
+   * red via `<ExpenseSubline />`; income passes the most-recent income
+   * timestamp in green via `<IncomeSubline />`. Pass `null` when there
+   * is nothing to render (e.g. no tx in the period yet).
    */
   subline?: React.ReactNode;
   /** Optional preview row — null when there's no related tx yet. */
   preview?: MobileTodayCardPreview | null;
   /** Empty-state copy when `preview` is null. */
   emptyHint?: string;
-  /** Footer link text + href ("Ver todos" / "Ver historial"). */
-  footerText: string;
-  footerHref: string;
   className?: string;
 };
 
@@ -107,8 +106,6 @@ export function MobileTodayCard({
   subline,
   preview,
   emptyHint,
-  footerText,
-  footerHref,
   className,
 }: MobileTodayCardProps) {
   const isExpense = kind === "expense";
@@ -212,54 +209,51 @@ export function MobileTodayCard({
         )
       )}
 
-      {/* FOOTER LINK — the chevron-right hints at "tap to see more". */}
-      <a
-        href={footerHref}
-        className={cn(
-          "mt-1 flex items-center justify-between border-t border-border pt-3",
-          "text-[13px] font-semibold text-foreground",
-          "transition-colors hover:text-primary",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
-        )}
-      >
-        <span>{footerText}</span>
-        <ChevronRight size={14} className="text-muted-foreground" aria-hidden />
-      </a>
     </div>
   );
 }
 
 // ─── Subline helpers ──────────────────────────────────────────────────────
+// Both helpers render at the SAME font size on purpose — the user asked
+// for visual symmetry between the two cards' sublines.
 
 /**
- * Pre-baked count-badge subline used by the expense card. Exported so the
- * dashboard can build its `subline` prop with the same visual treatment
- * the design specifies (red soft pill + arrow icon).
+ * Expense subline: latest expense category + relative timestamp, red.
+ * Renders nothing when both pieces are missing.
  */
-export function CountBadge({
-  count,
-  label,
+export function ExpenseSubline({
+  category,
+  timestamp,
 }: {
-  count: number;
-  label: string;
+  category: string | null;
+  timestamp: string | null;
 }) {
+  if (!category && !timestamp) return null;
+  const text = [category, timestamp].filter(Boolean).join(" · ");
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[oklch(0.96_0.04_30)] px-2.5 py-1 text-[11px] font-semibold text-destructive">
-      <TrendingUp size={11} strokeWidth={2.6} aria-hidden />
-      <span className="tabular-nums" style={TNUM_STYLE}>
-        {count} {label}
-      </span>
-    </span>
-  );
-}
-
-/** Plain timestamp subline used by the income card. */
-export function TimestampLine({ text }: { text: string }) {
-  return (
-    <p className="text-[11px] font-medium text-primary tabular-nums" style={TNUM_STYLE}>
+    <p
+      className="text-[11px] font-medium text-destructive tabular-nums truncate"
+      style={TNUM_STYLE}
+    >
       {text}
     </p>
   );
 }
+
+/** Plain timestamp subline used by the income card (green). */
+export function IncomeSubline({ text }: { text: string }) {
+  return (
+    <p
+      className="text-[11px] font-medium text-primary tabular-nums truncate"
+      style={TNUM_STYLE}
+    >
+      {text}
+    </p>
+  );
+}
+
+// Legacy alias — kept so other callers don't break in flight. Prefer
+// `IncomeSubline` going forward.
+export { IncomeSubline as TimestampLine };
 
 export default MobileTodayCard;

@@ -37,6 +37,7 @@ import {
   Scissors,
   Shirt,
   ScrollText,
+  Store,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -106,6 +107,10 @@ const ICON_ALIASES: Record<string, LucideIconLike> = {
   scissors: Scissors,
   shirt: Shirt,
   "scroll-text": ScrollText,
+  // Seeded by migration 00020 — "Día a día" generic bodega/street-vendor
+  // category. Not in the picker grid (would force a 5th row); only the
+  // DB read path needs it.
+  store: Store,
 };
 
 /**
