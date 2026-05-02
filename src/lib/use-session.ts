@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/supabase/types";
@@ -23,6 +23,52 @@ const SUPABASE_ENABLED =
   process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
   typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
+
+/**
+ * Recover from a stale/ghost session: signOut, drop local stores, kill the
+ * service worker + cache (PWA reinstall doesn't clear browser storage on
+ * iOS/Android — uninstalling just removes the home-screen icon), and hard
+ * redirect to /onboarding/intro. Used in two places below: when getUser()
+ * validation fails, and when profile auto-create fails (FK violation =
+ * auth user is gone).
+ */
+async function recoverFromStaleSession(
+  supabase: SupabaseClient<Database>,
+): Promise<void> {
+  await supabase.auth.signOut().catch(() => {
+    // user already deleted — Supabase rejects, cookie still gets cleared
+  });
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem("lumi-prefs");
+      window.localStorage.removeItem("lumi-budgets");
+      window.localStorage.removeItem("lumi-goals");
+      window.localStorage.removeItem("lumi-user-name");
+      window.localStorage.removeItem("lumi_seen_intro");
+    } catch {
+      // storage disabled
+    }
+  }
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    } catch {
+      // SW APIs disabled
+    }
+  }
+  if (typeof window !== "undefined" && "caches" in window) {
+    try {
+      const keys = await window.caches.keys();
+      await Promise.all(keys.map((k) => window.caches.delete(k)));
+    } catch {
+      // Cache APIs disabled
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.location.replace("/onboarding/intro");
+  }
+}
 
 const DEFAULT_SESSION: Session = {
   user: null,
@@ -99,7 +145,16 @@ export function SessionProvider({
           .select("*")
           .eq("id", userId)
           .maybeSingle();
-        setProfile(refetched ?? null);
+        if (refetched) {
+          setProfile(refetched);
+          return;
+        }
+        // Insert failed AND nothing exists for this user. The only way both
+        // can happen is an FK violation against auth.users — i.e. the auth
+        // row is gone (deleted account, but the JWT is still cached locally
+        // because PWA reinstall on iOS/Android doesn't wipe storage). This
+        // session is a ghost. Recover and hard-reload out.
+        await recoverFromStaleSession(supabase);
         return;
       }
       setProfile(null);
@@ -127,36 +182,23 @@ export function SessionProvider({
       // If we have a cached session, validate it server-side. `getSession()`
       // reads from localStorage and trusts the JWT blindly; after the user
       // has been deleted (e.g. via /api/account/delete in another tab, or a
-      // service-worker cache returning stale auth state), the JWT is still
-      // there but points to nothing. `getUser()` makes a network call that
-      // will return null + error in that case. When it does, wipe local
-      // state and hard-reload the user to /onboarding/intro so they don't
-      // end up rendering a "ghost dashboard" with no profile data.
+      // PWA reinstall that retained storage), the JWT is still there but
+      // points to nothing. `getUser()` makes a network call that will
+      // return null + error in that case. When it does, recover. If the
+      // network call itself errors (offline / flaky), we fall through to
+      // the optimistic path — fetchProfile will catch the ghost case via
+      // FK violation on auto-create.
       if (cachedUser) {
         try {
           const { data: userData, error: userErr } =
             await supabase.auth.getUser();
           if (cancelled) return;
           if (userErr || !userData.user) {
-            await supabase.auth.signOut().catch(() => {});
-            if (typeof window !== "undefined") {
-              try {
-                window.localStorage.removeItem("lumi-prefs");
-                window.localStorage.removeItem("lumi-budgets");
-                window.localStorage.removeItem("lumi-goals");
-                window.localStorage.removeItem("lumi-user-name");
-                window.localStorage.removeItem("lumi_seen_intro");
-              } catch {
-                // storage disabled — nothing to clean
-              }
-              window.location.replace("/onboarding/intro");
-            }
+            await recoverFromStaleSession(supabase);
             return;
           }
         } catch {
-          // Network error during validation — defer to the optimistic
-          // path. The middleware will still bounce on the next server
-          // fetch if the session is truly stale.
+          // Network error — fetchProfile is the second line of defense.
         }
       }
 
