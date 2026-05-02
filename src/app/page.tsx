@@ -6,10 +6,12 @@
  *   - Authenticated session + `profiles.display_name === null` → /welcome
  *     (user verified email but never finished onboarding).
  *   - Authenticated session otherwise → /dashboard.
- *   - No session → /login.
+ *   - No session + first-time visitor (no `lumi_seen_intro` flag) →
+ *     /onboarding/welcome (splash → intro → register).
+ *   - No session + returning visitor → /login.
  *
- * The auth-guard middleware (`middleware.ts`) catches deep links to
- * protected pages independently; this page only handles the "/" entry.
+ * The `lumi_seen_intro` flag is UX only — it gates the onboarding splash,
+ * not access to protected routes (the middleware handles auth server-side).
  */
 
 "use client";
@@ -18,6 +20,18 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+
+const SEEN_INTRO_KEY = "lumi_seen_intro";
+
+function hasSeenIntro(): boolean {
+  try {
+    return window.localStorage.getItem(SEEN_INTRO_KEY) === "1";
+  } catch {
+    // localStorage disabled — treat as first-time so the user gets the
+    // welcome experience (better than dumping them on /login cold).
+    return false;
+  }
+}
 
 export default function Home() {
   const router = useRouter();
@@ -32,7 +46,8 @@ export default function Home() {
         if (cancelled) return;
 
         if (!data.session) {
-          router.replace("/login");
+          const target = hasSeenIntro() ? "/login" : "/onboarding/welcome";
+          router.replace(target);
           return;
         }
 
@@ -53,8 +68,10 @@ export default function Home() {
         if (!cancelled) router.replace(target);
       } catch {
         // Supabase client failed (misconfig / blocked storage). Send to
-        // /login so the user can re-auth instead of getting stuck on /.
-        if (!cancelled) router.replace("/login");
+        // the onboarding flow if first-time, /login if returning.
+        if (!cancelled) {
+          router.replace(hasSeenIntro() ? "/login" : "/onboarding/welcome");
+        }
       }
     }
 
