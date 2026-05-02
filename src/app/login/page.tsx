@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { createClient } from "@/lib/supabase/client";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
@@ -420,6 +421,7 @@ function PasswordAuthForm({
   // from /register (verified-duplicate branch) lands with the input filled.
   const [email, setEmail] = React.useState(initialEmail);
   const [prefillNoticeShown, setPrefillNoticeShown] = React.useState(false);
+  const [prefillDrawerOpen, setPrefillDrawerOpen] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
@@ -567,10 +569,12 @@ function PasswordAuthForm({
 
   // Notify the user once when we land here with a prefilled email — they
   // were redirected from /register because their account already exists.
+  // Drawer-style modal (vs. the previous Sonner toast) so the message is
+  // unmissable; the user has to acknowledge before they reach the form.
   React.useEffect(() => {
     if (initialEmail && !prefillNoticeShown) {
       setPrefillNoticeShown(true);
-      toast.info("Ya tienes cuenta con este correo. Inicia sesión.");
+      setPrefillDrawerOpen(true);
     }
   }, [initialEmail, prefillNoticeShown]);
 
@@ -1203,6 +1207,19 @@ function PasswordAuthForm({
         </a>
         .
       </p>
+
+      <ActionResultDrawer
+        open={prefillDrawerOpen}
+        onOpenChange={setPrefillDrawerOpen}
+        tone="info"
+        title="Ya tienes cuenta"
+        description={
+          initialEmail
+            ? `Encontramos una cuenta con ${initialEmail}. Inicia sesión para continuar.`
+            : "Encontramos una cuenta con este correo. Inicia sesión para continuar."
+        }
+        closeLabel="Entendido"
+      />
     </>
   );
 }

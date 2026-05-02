@@ -19,15 +19,32 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  ActionResultDrawer,
+  type ActionResultTone,
+} from "@/components/lumi/ActionResultDrawer";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type SignupResult = {
+  open: boolean;
+  tone: ActionResultTone;
+  title: string;
+  description: string;
+};
+
+const INITIAL_RESULT: SignupResult = {
+  open: false,
+  tone: "success",
+  title: "",
+  description: "",
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -35,6 +52,7 @@ export default function RegisterPage() {
   const [email, setEmail] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<SignupResult>(INITIAL_RESULT);
 
   function validate(): string | null {
     if (!EMAIL_REGEX.test(email.trim())) return "Correo inválido.";
@@ -79,20 +97,43 @@ export default function RegisterPage() {
       }
 
       if (data.devMode) {
-        toast.info("Modo dev: revisa la consola del servidor para el código.");
+        setResult({
+          open: true,
+          tone: "info",
+          title: "Modo desarrollo",
+          description:
+            "Revisa la consola del servidor para obtener el código de 6 dígitos.",
+        });
       } else if (data.delivered) {
-        toast.success("Te enviamos un código a tu correo.");
+        setResult({
+          open: true,
+          tone: "success",
+          title: "Te enviamos un código",
+          description: `Revisa tu bandeja en ${normalized} y vuelve aquí con el código de 6 dígitos.`,
+        });
       } else {
-        toast.warning(
-          "Cuenta creada. Si no llega el código, vuelve a /login y pídelo otra vez.",
-        );
+        setResult({
+          open: true,
+          tone: "warning",
+          title: "Cuenta creada",
+          description:
+            "El código no se pudo enviar en este intento. En la siguiente pantalla puedes pedirlo de nuevo.",
+        });
       }
-
-      router.push("/auth/verify-email");
     } catch (err) {
       console.error("[register] submit:", err);
       setErrorMsg("No pudimos crear la cuenta. Revisa tu conexión.");
       setSubmitting(false);
+    }
+  }
+
+  function handleResultOpenChange(open: boolean) {
+    setResult((prev) => ({ ...prev, open }));
+    // Cerrar el drawer = continuar al siguiente paso. Esto reemplaza el
+    // router.push inmediato que hacíamos junto al toast: ahora el usuario
+    // tiene que reconocer el resultado antes de pasar a verify-email.
+    if (!open) {
+      router.push("/auth/verify-email");
     }
   }
 
@@ -173,6 +214,15 @@ export default function RegisterPage() {
           </form>
         </section>
       </div>
+
+      <ActionResultDrawer
+        open={result.open}
+        onOpenChange={handleResultOpenChange}
+        tone={result.tone}
+        title={result.title}
+        description={result.description}
+        closeLabel="Continuar"
+      />
     </main>
   );
 }
