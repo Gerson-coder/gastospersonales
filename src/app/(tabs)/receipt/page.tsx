@@ -27,6 +27,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
   Camera,
   Check,
   ChevronRight,
@@ -81,7 +83,17 @@ type Status = "idle" | "preview" | "loading" | "failed" | "review";
 
 // Per-field confidence — moved from a single global score to one per editable
 // row so the UI can highlight exactly which value the user should sanity-check.
-type FieldKey = "merchant" | "amount" | "occurred_at" | "suggested_category";
+//
+// `kind` (gasto/ingreso) was added when we made the toggle editable: the OCR
+// can't distinguish "I sent this Yape" from "someone shared this Yape with
+// me", so the score for kind tracks the underlying extractor confidence —
+// medium scores trigger the amber "review" ring on the toggle.
+type FieldKey =
+  | "merchant"
+  | "amount"
+  | "occurred_at"
+  | "suggested_category"
+  | "kind";
 type ConfidenceMap = Record<FieldKey, number>;
 
 type LoadingPhase = 0 | 1 | 2;
@@ -115,6 +127,7 @@ const INITIAL_CONFIDENCE: ConfidenceMap = {
   amount: 0,
   occurred_at: 0,
   suggested_category: 0,
+  kind: 0,
 };
 
 /**
@@ -879,11 +892,15 @@ function ReceiptPageInner() {
           if (suggestion) setAccountId(suggestion);
           // We don't infer category from OCR — keep current default but
           // signal low confidence so the user sees the "review this" cue.
+          // Kind confidence is intentionally a notch lower than the
+          // global score because the OCR can't tell whose phone the
+          // screenshot came from (sent vs shared-by-someone-else).
           setConfidences({
             merchant: d.confidence,
             amount: d.confidence,
             occurred_at: d.confidence,
             suggested_category: 0.3,
+            kind: Math.min(d.confidence, 0.75),
           });
           setDirty(false);
           setStatus("review");
@@ -912,6 +929,7 @@ function ReceiptPageInner() {
             amount: c,
             occurred_at: c,
             suggested_category: 0.2,
+            kind: Math.min(c, 0.5),
           });
           setDirty(false);
           toast.warning("Revisa los datos. No estoy del todo seguro.");
@@ -1342,6 +1360,49 @@ function ReceiptPageInner() {
               <p className="mt-1.5 text-[11px] text-muted-foreground">
                 Equivalente: {formatMoney(parsedAmount, currency)}
               </p>
+            </FieldRow>
+
+            {/* Tipo (gasto/ingreso) — editable. The OCR pre-selects based
+                on the receipt phrasing ("Yapeaste" → gasto, "Yape recibido"
+                → ingreso) but the score is capped because it can't tell
+                whose phone the screenshot came from (e.g. someone might
+                share a "Yapeaste" by WhatsApp as proof they paid you,
+                which is income from the recipient's perspective). */}
+            <FieldRow label="Tipo" score={confidences.kind}>
+              <RadioGroup
+                value={transactionKind}
+                onValueChange={(v) => {
+                  setTransactionKind(v as TransactionKind);
+                  markDirty();
+                }}
+                className="flex gap-2"
+              >
+                {(
+                  [
+                    { value: "expense", label: "Gasto", Icon: ArrowDownLeft },
+                    { value: "income", label: "Ingreso", Icon: ArrowUpRight },
+                  ] as const
+                ).map(({ value, label, Icon }) => (
+                  <label
+                    key={value}
+                    className={cn(
+                      "flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border text-[13px] font-semibold transition-colors",
+                      "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring",
+                      transactionKind === value
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-card text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    <RadioGroupItem
+                      value={value}
+                      className="sr-only"
+                      aria-label={label}
+                    />
+                    <Icon size={14} aria-hidden />
+                    {label}
+                  </label>
+                ))}
+              </RadioGroup>
             </FieldRow>
 
             {/* Fecha */}
