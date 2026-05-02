@@ -122,9 +122,46 @@ export function SessionProvider({
     void (async () => {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
-      const nextUser = data.session?.user ?? null;
-      setUser(nextUser);
-      await fetchProfile(nextUser?.id ?? null);
+      const cachedUser = data.session?.user ?? null;
+
+      // If we have a cached session, validate it server-side. `getSession()`
+      // reads from localStorage and trusts the JWT blindly; after the user
+      // has been deleted (e.g. via /api/account/delete in another tab, or a
+      // service-worker cache returning stale auth state), the JWT is still
+      // there but points to nothing. `getUser()` makes a network call that
+      // will return null + error in that case. When it does, wipe local
+      // state and hard-reload the user to /onboarding/intro so they don't
+      // end up rendering a "ghost dashboard" with no profile data.
+      if (cachedUser) {
+        try {
+          const { data: userData, error: userErr } =
+            await supabase.auth.getUser();
+          if (cancelled) return;
+          if (userErr || !userData.user) {
+            await supabase.auth.signOut().catch(() => {});
+            if (typeof window !== "undefined") {
+              try {
+                window.localStorage.removeItem("lumi-prefs");
+                window.localStorage.removeItem("lumi-budgets");
+                window.localStorage.removeItem("lumi-goals");
+                window.localStorage.removeItem("lumi-user-name");
+                window.localStorage.removeItem("lumi_seen_intro");
+              } catch {
+                // storage disabled — nothing to clean
+              }
+              window.location.replace("/onboarding/intro");
+            }
+            return;
+          }
+        } catch {
+          // Network error during validation — defer to the optimistic
+          // path. The middleware will still bounce on the next server
+          // fetch if the session is truly stale.
+        }
+      }
+
+      setUser(cachedUser);
+      await fetchProfile(cachedUser?.id ?? null);
       if (!cancelled) setHydrated(true);
     })();
 

@@ -1200,6 +1200,27 @@ function DangerZoneCard() {
         // Storage disabled — nothing to clean.
       }
 
+      // PWA-specific cleanup: unregister service workers and drop caches
+      // so the post-reload navigation can't be served stale dashboard
+      // HTML by serwist's NetworkFirst-falling-back-to-cache strategy on
+      // a flaky mobile network. Best effort — don't block the redirect.
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        } catch {
+          // SW APIs disabled — nothing to clean.
+        }
+      }
+      if (typeof window !== "undefined" && "caches" in window) {
+        try {
+          const keys = await window.caches.keys();
+          await Promise.all(keys.map((k) => window.caches.delete(k)));
+        } catch {
+          // Cache APIs disabled — nothing to clean.
+        }
+      }
+
       // Hard reload, not router.replace. Soft navigation keeps the
       // SessionProvider's cached `user` alive until onAuthStateChange
       // catches up — during that window, downstream pages render with a
