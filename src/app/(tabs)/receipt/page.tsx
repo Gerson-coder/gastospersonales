@@ -114,10 +114,11 @@ const INITIAL_FORM: {
   amount: "0.00",
   currency: "PEN",
   occurred_at: () => new Date().toISOString().slice(0, 10),
-  // "shopping" reads as a generic catch-all; the user will almost always
-  // pick something specific in the drawer. The OCR pipeline does NOT
-  // infer category, so we keep this confidence low to nudge a review.
-  category_icon: "shopping",
+  // Empty string = no category selected. The OCR pipeline does NOT
+  // infer category — guessing why someone Yapeed (rent? friend payback?
+  // food? gift?) is impossible from the screenshot alone. We force the
+  // user to pick manually instead of pre-selecting something wrong.
+  category_icon: "",
 };
 
 const INITIAL_CONFIDENCE: ConfidenceMap = {
@@ -573,8 +574,12 @@ function FieldRow({
   score: number;
   children: React.ReactNode;
 }) {
+  // score === 0 means "OCR did not analyze this field" (e.g. category,
+  // which is always manual). Hide the ring + dot in that case so the
+  // row reads as a plain editable field, not as "OCR is unsure".
+  const hasScore = score > 0;
   const tone = toneFromScore(score);
-  const ringClass = CONFIDENCE_COLORS[tone].ring;
+  const ringClass = hasScore ? CONFIDENCE_COLORS[tone].ring : "";
   return (
     <div
       className={cn(
@@ -587,7 +592,7 @@ function FieldRow({
         <Label htmlFor={htmlFor} className="text-[12px] font-semibold text-foreground">
           {label}
         </Label>
-        <ConfidenceDot score={score} />
+        {hasScore ? <ConfidenceDot score={score} /> : null}
       </div>
       {children}
     </div>
@@ -890,8 +895,11 @@ function ReceiptPageInner() {
           // the user's default first account.
           const suggestion = suggestAccountIdForSource(d.source, accounts);
           if (suggestion) setAccountId(suggestion);
-          // We don't infer category from OCR — keep current default but
-          // signal low confidence so the user sees the "review this" cue.
+          // We don't infer category from OCR (a Yape can be rent, food,
+          // a friend payback, a gift — impossible to guess). Score 0
+          // hides the ring entirely so the row reads as a plain
+          // "you pick this" field, not a low-confidence guess.
+          //
           // Kind confidence is intentionally a notch lower than the
           // global score because the OCR can't tell whose phone the
           // screenshot came from (sent vs shared-by-someone-else).
@@ -899,7 +907,7 @@ function ReceiptPageInner() {
             merchant: d.confidence,
             amount: d.confidence,
             occurred_at: d.confidence,
-            suggested_category: 0.3,
+            suggested_category: 0,
             kind: Math.min(d.confidence, 0.75),
           });
           setDirty(false);
@@ -928,7 +936,7 @@ function ReceiptPageInner() {
             merchant: c,
             amount: c,
             occurred_at: c,
-            suggested_category: 0.2,
+            suggested_category: 0,
             kind: Math.min(c, 0.5),
           });
           setDirty(false);
@@ -1091,11 +1099,11 @@ function ReceiptPageInner() {
     setIsSaving(true);
     try {
       const trimmedMerchant = merchant.trim();
-      const categoryId = mapIconToCategoryId(
-        categoryIcon,
-        categories,
-        transactionKind,
-      );
+      // Empty categoryIcon = user didn't pick. Save uncategorized;
+      // the dashboard's "Otros" bucket will pick it up.
+      const categoryId = categoryIcon
+        ? mapIconToCategoryId(categoryIcon, categories, transactionKind)
+        : null;
 
       // Compose a stable noon-Lima `occurred_at` ISO so the dashboard's
       // by-day grouping doesn't oscillate on UTC/Lima crossings. The
@@ -1239,9 +1247,14 @@ function ReceiptPageInner() {
   // `account` may be null while `listAccounts` is still loading on a slow
   // network — the picker label below renders "Cargando..." in that case.
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
-  const categoryLabel =
-    CATEGORY_ICONS.find((c) => c.name === categoryIcon)?.label ?? "Otros";
-  const CategoryIcon = getCategoryIcon(categoryIcon);
+  // categoryIcon === "" means the user hasn't picked yet (OCR doesn't
+  // infer category). hasCategory drives the empty-state look in the
+  // picker row below.
+  const hasCategory = categoryIcon !== "";
+  const categoryLabel = hasCategory
+    ? (CATEGORY_ICONS.find((c) => c.name === categoryIcon)?.label ?? "Otros")
+    : "Elegir categoría";
+  const CategoryIcon = hasCategory ? getCategoryIcon(categoryIcon) : null;
 
   return (
     <div className="relative min-h-dvh bg-background pb-36 text-foreground md:pb-0">
@@ -1423,9 +1436,13 @@ function ReceiptPageInner() {
               />
             </FieldRow>
 
-            {/* Categoría — opens drawer */}
+            {/* Categoría — opens drawer. Always manual: the OCR does
+                NOT infer category because P2P transfers are too
+                ambiguous (rent? friend payback? gift?). Empty state
+                shows a dashed circle + "Elegir categoría" prompt
+                until the user opens the drawer and picks one. */}
             <FieldRow
-              label="Categoría sugerida"
+              label="Categoría"
               score={confidences.suggested_category}
             >
               <button
@@ -1437,14 +1454,25 @@ function ReceiptPageInner() {
               >
                 <span
                   aria-hidden="true"
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+                  className={cn(
+                    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full",
+                    hasCategory
+                      ? "bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
+                      : "border border-dashed border-border bg-transparent text-muted-foreground",
+                  )}
                 >
-                  <CategoryIcon size={16} />
+                  {CategoryIcon ? <CategoryIcon size={16} /> : null}
                 </span>
-                <span className="flex-1 text-base font-semibold">{categoryLabel}</span>
-                <Badge variant="outline" className="h-7 rounded-full px-2 text-[11px] font-semibold">
-                  cambiar
-                </Badge>
+                <span
+                  className={cn(
+                    "flex-1 text-base",
+                    hasCategory
+                      ? "font-semibold text-foreground"
+                      : "font-medium text-muted-foreground",
+                  )}
+                >
+                  {categoryLabel}
+                </span>
                 <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
               </button>
             </FieldRow>
