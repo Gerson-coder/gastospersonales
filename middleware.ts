@@ -78,8 +78,20 @@ export async function middleware(request: NextRequest) {
     if (!pathname.startsWith("/api/")) {
       redirectUrl.searchParams.set("next", pathname);
     }
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    redirectResponse.headers.set("Cache-Control", "no-store, max-age=0");
+    return redirectResponse;
   }
+
+  // Disable BFCache (back-forward cache) for every middleware-handled
+  // response. Without this, the browser snapshots authenticated pages in
+  // memory and serves them on the back button without re-running middleware
+  // or layouts — so a user who was kicked to /welcome (incomplete profile)
+  // or signed out can press back and see the dashboard from a stale
+  // snapshot. `no-store` makes the page ineligible for BFCache and forces
+  // a fresh fetch every navigation. The matcher already excludes static
+  // assets so they keep their long-lived caching.
+  supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0");
 
   return supabaseResponse;
 }
