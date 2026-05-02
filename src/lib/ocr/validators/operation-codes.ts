@@ -8,18 +8,20 @@ import type { OcrSource } from "../types";
  * confidence; it never rejects the parse outright. The user can still
  * see the autofilled form and override the field.
  *
- * Format references:
- *   - Yape: 9 digits, e.g. "123456789"
- *   - Plin: typically 11 alphanumeric chars (e.g. "P25030121456"),
- *           accept 8-12 to absorb future format tweaks.
- *   - BBVA: 6-9 digits depending on operation type. The constancia
- *           shows "N° de operación" usually 7-8 digits.
+ * Format references (verified against real screenshots):
+ *   - Yape: 8 digits in current app version (e.g. "09336248"). Accept
+ *           8-9 to tolerate older receipts and future format tweaks.
+ *   - Plin: varies by host bank. Interbank/BBVA Plin shows 8 numeric
+ *           digits (e.g. "86640457"); older Plin variants used 11
+ *           alphanumeric chars (e.g. "P25030121456"). Accept 6-12
+ *           alphanumeric to cover both ranges without false negatives.
+ *   - BBVA: 6-9 digits depending on operation type.
  *   - BCP:  same range as BBVA.
  *   - unknown: no validation; the generic prompt has no standard.
  */
 export const OPERATION_CODE_REGEX: Record<OcrSource, RegExp | null> = {
-  yape: /^\d{9}$/,
-  plin: /^[A-Z0-9]{8,12}$/i,
+  yape: /^\d{8,9}$/,
+  plin: /^[A-Z0-9]{6,12}$/i,
   bbva: /^\d{6,9}$/,
   bcp: /^\d{6,9}$/,
   unknown: null,

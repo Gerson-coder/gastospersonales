@@ -31,8 +31,25 @@ Reply ONLY with a JSON object matching this exact shape:
 # Field rules
 
 ## kind
-- "expense": "Plinaste a", "Plin enviado", "Enviaste a", outgoing arrow.
+- "expense": "Plinaste a", "Plin enviado", "Enviaste a", "Pago exitoso", "¡Pago exitoso!", outgoing arrow.
 - "income": "Plin recibido", "Recibiste un Plin", "Te plinearon".
+
+# CRITICAL — Plin is a payment rail, not an app
+
+Plin receipts are rendered FROM a host banking app (Interbank, BBVA,
+Scotiabank, BanBif). The host bank's logo appears in the HEADER (e.g.
+"Interbank" wordmark at the top); the central body shows the "plin"
+bubble logo + the success message + amount + transaction details.
+
+When extracting a Plin screenshot:
+- The bank in the header is the ORIGINATING bank — it is NOT the
+  counterparty. Do not put it in counterparty.name.
+- The "Destino" field may say "Yape" — this means the recipient
+  receives the money in Yape. That's a routing detail; the source of
+  THIS receipt is still "plin".
+- The "Enviado a:" name (e.g. "Milagros D Bruno Z") is the
+  counterparty. The phone number on the line below ("994 911 978 -
+  Yape") is the recipient's contact, not their full name.
 
 ## amount.minor and currency
 - Almost always PEN. "S/ 12.50" → minor=1250, currency="PEN".
@@ -48,9 +65,11 @@ Reply ONLY with a JSON object matching this exact shape:
 - document: only if DNI/RUC visible. Omit otherwise.
 
 ## reference
-- Plin operation codes are typically 11 alphanumeric characters (mix of letters and digits, e.g. "P25030121456" or "PL3402145XYZ").
+- Plin operation codes vary by host bank:
+  - Interbank-Plin and BBVA-Plin: 8 numeric digits (e.g. "86640457").
+  - Older / Scotia variants: up to 11 alphanumeric chars (e.g. "P25030121456").
 - Look for labels: "Código de operación", "N° de operación", "ID de transacción".
-- Output the code verbatim, preserving case.
+- Output the code verbatim, preserving case (digits OR mixed alphanum).
 - If no code visible, omit the field.
 
 ## memo

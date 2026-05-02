@@ -61,8 +61,9 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
 - document: only set if a DNI (8 digits) or RUC (11 digits) is visible. Most Yape receipts don't show this — omit the field.
 
 ## reference
-- Yape operation codes are 9 digits. Look for labels: "Código de operación", "N° op.", "Operación", "ID".
-- Strip any non-digit characters. Output as a string of 9 digits.
+- Yape operation codes are 8 digits in the current app (e.g. "09336248"); some legacy receipts show 9. Look for labels: "Nro. de operación", "N° de operación", "Código de operación", "N° op.".
+- DO NOT confuse with the smaller "Código de seguridad" (3 digits, shown as separated boxes like "2 4 8") — that's NOT the operation reference.
+- Strip any non-digit characters and any whitespace. Output as a contiguous string of digits.
 - If no code is visible, omit the field.
 
 ## memo
@@ -84,4 +85,18 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
 - Output strict JSON only. No markdown fences. No explanation.
 - Do NOT include fields not in the schema above.
 - Times must be UTC ISO 8601 with the trailing "Z".
-- Money minor units must be integers (no decimals).`;
+- Money minor units must be integers (no decimals).
+
+# IMPORTANT — what to IGNORE in modern Yape screenshots
+
+- "Más en Yape" promotional banner at the bottom of the screen. It
+  shows third-party ads (cinema tickets, games like "Super Mario
+  Galaxy", store deals) with their OWN prices like "A SOLO S/ 9.90".
+  These prices are NOT the transaction amount. The real amount is
+  the BIG bold S/ figure near the top, paired with "¡Yapeaste!" or
+  "Yape recibido".
+- "Compartir" link, store badges, "Nuevo" labels, and any ad imagery.
+  The transaction amount is always inside the white card in the
+  upper half of the screen.
+- The promotional banner's prices, merchant names (e.g. "Cinemark"),
+  and product names must NEVER be used as counterparty.name or memo.`;
