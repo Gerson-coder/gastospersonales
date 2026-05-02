@@ -1054,6 +1054,12 @@ function DangerZoneCard() {
   // word from the factory-reset confirmation so a fast-tap doesn't slip
   // from "wipe my data" into "delete my account".
   const [deleteConfirmText, setDeleteConfirmText] = React.useState("");
+  // Post-delete success drawer. Shown after the API call succeeds so the
+  // user has an explicit acknowledgement of the irreversible action; on
+  // close, the cleanup (signOut + storage + SW + caches) and hard reload
+  // execute. Separate from the generic showResult drawer used for the
+  // other danger-zone actions because its onClose carries side effects.
+  const [deleteSuccessOpen, setDeleteSuccessOpen] = React.useState(false);
 
   // Result-acknowledgement drawer — replaces the green sonner toast for
   // every destructive action below. The user explicitly asked for the
@@ -1177,63 +1183,82 @@ function DangerZoneCard() {
         return;
       }
 
-      // The account is gone. Clear local-only stores so the next login (if
-      // the user ever creates a fresh account on the same browser) starts
-      // truly empty — no stale theme/currency/budgets/goals tied to the
-      // deleted identity.
-      try {
-        const supabase = createSupabaseClient();
-        await supabase.auth.signOut();
-      } catch {
-        // Server already invalidated the session; client-side signOut is
-        // belt-and-suspenders. Failure here is fine.
-      }
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("lumi-prefs");
-          window.localStorage.removeItem("lumi-budgets");
-          window.localStorage.removeItem("lumi-goals");
-          window.localStorage.removeItem("lumi-user-name");
-          window.localStorage.removeItem("lumi_seen_intro");
-        }
-      } catch {
-        // Storage disabled — nothing to clean.
-      }
-
-      // PWA-specific cleanup: unregister service workers and drop caches
-      // so the post-reload navigation can't be served stale dashboard
-      // HTML by serwist's NetworkFirst-falling-back-to-cache strategy on
-      // a flaky mobile network. Best effort — don't block the redirect.
-      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-        try {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map((r) => r.unregister()));
-        } catch {
-          // SW APIs disabled — nothing to clean.
-        }
-      }
-      if (typeof window !== "undefined" && "caches" in window) {
-        try {
-          const keys = await window.caches.keys();
-          await Promise.all(keys.map((k) => window.caches.delete(k)));
-        } catch {
-          // Cache APIs disabled — nothing to clean.
-        }
-      }
-
-      // Hard reload, not router.replace. Soft navigation keeps the
-      // SessionProvider's cached `user` alive until onAuthStateChange
-      // catches up — during that window, downstream pages render with a
-      // ghost user and a null profile (the "miembro desde / id vacío" bug
-      // the user reported). A full page load drops React state, the
-      // SessionProvider re-mounts anonymous, and middleware sees no
-      // cookie. Use `replace` so the back button can't return them to
-      // /settings of an account that no longer exists.
-      window.location.replace("/onboarding/intro");
+      // Cuenta borrada server-side. Cerramos el sheet de confirmacion y
+      // mostramos el drawer de exito; el cleanup (signOut + storage + SW
+      // + caches) corre cuando el usuario acepte el drawer, no antes —
+      // asi tiene un acknowledgement explicito de una accion irreversible.
+      setDeleteAccountOpen(false);
+      setDeleteConfirmText("");
+      setDeleteSuccessOpen(true);
+      setSubmitting(false);
     } catch (err) {
       console.error("[settings] delete-account:", err);
       toast.error("No pudimos eliminar tu cuenta. Revisa tu conexión.");
       setSubmitting(false);
+    }
+  }
+
+  async function finalizeDeleteCleanup() {
+    // The account is gone. Clear local-only stores so the next login (if
+    // the user ever creates a fresh account on the same browser) starts
+    // truly empty — no stale theme/currency/budgets/goals tied to the
+    // deleted identity.
+    try {
+      const supabase = createSupabaseClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Server already invalidated the session; client-side signOut is
+      // belt-and-suspenders. Failure here is fine.
+    }
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("lumi-prefs");
+        window.localStorage.removeItem("lumi-budgets");
+        window.localStorage.removeItem("lumi-goals");
+        window.localStorage.removeItem("lumi-user-name");
+        window.localStorage.removeItem("lumi_seen_intro");
+      }
+    } catch {
+      // Storage disabled — nothing to clean.
+    }
+
+    // PWA-specific cleanup: unregister service workers and drop caches
+    // so the post-reload navigation can't be served stale dashboard
+    // HTML by serwist's NetworkFirst-falling-back-to-cache strategy on
+    // a flaky mobile network. Best effort — don't block the redirect.
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch {
+        // SW APIs disabled — nothing to clean.
+      }
+    }
+    if (typeof window !== "undefined" && "caches" in window) {
+      try {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((k) => window.caches.delete(k)));
+      } catch {
+        // Cache APIs disabled — nothing to clean.
+      }
+    }
+
+    // Hard reload, not router.replace. Soft navigation keeps the
+    // SessionProvider's cached `user` alive until onAuthStateChange
+    // catches up — during that window, downstream pages render with a
+    // ghost user and a null profile. A full page load drops React state,
+    // the SessionProvider re-mounts anonymous, and middleware sees no
+    // cookie. Use `replace` so the back button can't return them to
+    // /settings of an account that no longer exists.
+    if (typeof window !== "undefined") {
+      window.location.replace("/onboarding/intro");
+    }
+  }
+
+  function handleDeleteSuccessOpenChange(open: boolean) {
+    setDeleteSuccessOpen(open);
+    if (!open) {
+      void finalizeDeleteCleanup();
     }
   }
 
@@ -1644,6 +1669,18 @@ function DangerZoneCard() {
         onOpenChange={setResultOpen}
         title={resultTitle}
         description={resultDescription}
+        closeLabel="Continuar"
+        tone="success"
+      />
+
+      {/* Account-deletion success drawer. Closing this triggers the full
+          client-side cleanup (signOut + storage wipe + SW unregister +
+          caches drop) and the hard redirect to /onboarding/intro. */}
+      <ActionResultDrawer
+        open={deleteSuccessOpen}
+        onOpenChange={handleDeleteSuccessOpenChange}
+        title="Cuenta eliminada"
+        description="Tu cuenta y todos sus datos fueron eliminados de forma permanente."
         closeLabel="Continuar"
         tone="success"
       />
