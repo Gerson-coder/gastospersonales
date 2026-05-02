@@ -75,7 +75,9 @@ export async function POST(request: Request) {
     expires_at: expiresAt,
   });
   if (insertErr) {
-    console.error("[send-otp] insert_failed", { code: insertErr.code });
+    console.error(
+      `[send-otp] insert_failed code=${insertErr.code ?? "unknown"} message=${insertErr.message}`,
+    );
     return NextResponse.json(
       { error: "No pudimos generar el código. Intenta de nuevo." },
       { status: 500 },
@@ -87,6 +89,12 @@ export async function POST(request: Request) {
     code: otp,
     purpose,
   });
+
+  if (!sendResult.delivered && !sendResult.devMode) {
+    console.error(
+      `[send-otp] send_failed user_id=${user.id} purpose=${purpose}`,
+    );
+  }
 
   return NextResponse.json({
     delivered: sendResult.delivered,

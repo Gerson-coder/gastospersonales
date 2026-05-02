@@ -543,13 +543,21 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
       });
       if (error) {
         // Surface the "email not confirmed" case explicitly so we can offer a
-        // resend button. Everything else falls back to a generic message —
+        // resend button. Rate-limit gets its own message so the user knows to
+        // wait. Everything else falls back to a generic credentials message —
         // we deliberately don't reveal whether the email exists.
+        console.error(
+          `[login] signin_failed status=${error.status ?? "unknown"} code=${error.code ?? "unknown"} message=${error.message}`,
+        );
         const msg = error.message.toLowerCase();
         if (msg.includes("not confirmed") || msg.includes("confirm")) {
           setNeedsConfirmation(true);
           setServerError(
             "Confirma tu email primero. Revisa tu correo.",
+          );
+        } else if (error.status === 429 || msg.includes("rate")) {
+          toast.error(
+            "Demasiados intentos. Espera unos minutos antes de volver a probar.",
           );
         } else {
           toast.error("Email o contraseña incorrectos.");
@@ -559,8 +567,11 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
       router.push("/dashboard");
       // Refresh server components so middleware picks up the new session.
       router.refresh();
-    } catch {
-      toast.error("No pudimos iniciar sesión. Inténtalo de nuevo.");
+    } catch (err) {
+      console.error(
+        `[login] signin_threw message=${err instanceof Error ? err.message : String(err)}`,
+      );
+      toast.error("No pudimos iniciar sesión. Revisa tu conexión e intenta de nuevo.");
     } finally {
       setIsSubmitting(false);
     }

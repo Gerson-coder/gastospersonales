@@ -70,10 +70,12 @@ export async function POST(request: Request) {
     // /login → "olvidé mi contraseña". The raw Supabase error message
     // is logged server-side only.
     if (createErr) {
-      console.error("[register] create_failed", { code: createErr.code });
+      console.error(
+        `[register] create_failed code=${createErr.code ?? "unknown"} status=${createErr.status ?? "unknown"} message=${createErr.message}`,
+      );
     }
     return NextResponse.json(
-      { error: "No pudimos crear la cuenta. Verifica los datos e intenta de nuevo." },
+      { error: "No pudimos crear la cuenta. Si ya tienes una con ese correo, inicia sesión." },
       { status: 400 },
     );
   }
@@ -95,7 +97,9 @@ export async function POST(request: Request) {
     })
     .eq("id", userId);
   if (profileErr) {
-    console.error("[register] profile_update_failed", { code: profileErr.code });
+    console.error(
+      `[register] profile_update_failed code=${profileErr.code ?? "unknown"} message=${profileErr.message}`,
+    );
     // Best-effort — don't fail the whole flow over a profile update.
   }
 
@@ -106,7 +110,9 @@ export async function POST(request: Request) {
     password,
   });
   if (signInErr) {
-    console.error("[register] auto_signin_failed", { code: signInErr.code });
+    console.error(
+      `[register] auto_signin_failed code=${signInErr.code ?? "unknown"} status=${signInErr.status ?? "unknown"} message=${signInErr.message}`,
+    );
     return NextResponse.json(
       { error: "Cuenta creada, pero no pudimos iniciar sesión. Intenta entrar manualmente." },
       { status: 500 },
@@ -134,7 +140,9 @@ export async function POST(request: Request) {
     expires_at: expiresAt,
   });
   if (otpInsertErr) {
-    console.error("[register] otp_insert_failed", { code: otpInsertErr.code });
+    console.error(
+      `[register] otp_insert_failed code=${otpInsertErr.code ?? "unknown"} message=${otpInsertErr.message}`,
+    );
     return NextResponse.json(
       { error: "Cuenta creada, pero no pudimos enviar el código. Intenta de nuevo desde el login." },
       { status: 500 },
@@ -146,6 +154,12 @@ export async function POST(request: Request) {
     code: otp,
     purpose: "email_verification",
   });
+
+  if (!sendResult.delivered && !sendResult.devMode) {
+    console.error(
+      `[register] otp_send_failed user_id=${userId} email=${email}`,
+    );
+  }
 
   return NextResponse.json({
     userId,

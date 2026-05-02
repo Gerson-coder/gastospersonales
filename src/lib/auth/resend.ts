@@ -98,7 +98,13 @@ export async function sendOtpEmail(params: {
       text: `${HEADLINE_BY_PURPOSE[purpose]}\n\n${BODY_BY_PURPOSE[purpose]}\n\nTu código: ${code}\n\nEste código expira en 10 minutos.`,
     });
     if (result.error) {
-      console.error("[auth] Resend error:", result.error);
+      const errName = result.error.name ?? "unknown";
+      const errMessage = result.error.message ?? "unknown";
+      const errStatus =
+        (result.error as { statusCode?: number }).statusCode ?? "unknown";
+      console.error(
+        `[auth] resend send_failed name=${errName} statusCode=${errStatus} message=${errMessage}`,
+      );
       return { delivered: false, devMode: false };
     }
     return {
@@ -107,7 +113,9 @@ export async function sendOtpEmail(params: {
       messageId: result.data?.id,
     };
   } catch (err) {
-    console.error("[auth] Resend threw:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    const name = err instanceof Error ? err.name : "unknown";
+    console.error(`[auth] resend threw name=${name} message=${message}`);
     return { delivered: false, devMode: false };
   }
 }
