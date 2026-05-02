@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 
 // eslint-disable-next-line no-restricted-imports -- service-role required to skip Supabase email confirmation + write profile fields server-side
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,105 +10,101 @@ import { sendOtpEmail } from "@/lib/auth/resend";
 /**
  * POST /api/auth/register
  *
- * Creates the Supabase auth user (auto-confirmed via service role so we
- * skip Supabase's rate-limited SMTP), seeds profile fields, and emails
- * a 6-digit OTP via Resend. The client is responsible for navigating to
- * /auth/verify-email after a 200 response.
+ * Passwordless registration. Body is `{ email }` only. Three branches:
  *
- * Body: { email, password, fullName, birthDate?, phone? }
+ *   1. New email                  → create auth user with throwaway password,
+ *                                    sign-in to set cookies, send OTP, return 200.
+ *   2. Existing + verified        → 409 with redirect hint to /login?email=...
+ *   3. Existing + NOT verified    → reuse user, regenerate OTP, return 200 with
+ *                                    `resumed: true` — the client treats it
+ *                                    identically to the new-user path.
  *
- * On success the user is signed in (cookie set by signInWithPassword)
- * but their `profiles.email_verified_at` is still null — the middleware
- * gates /dashboard until that flips.
+ * The throwaway password is never surfaced. Future logins use OTP+PIN, so the
+ * password row in `auth.users.encrypted_password` becomes inert. We keep it
+ * (rather than wiping it) so a rollback to password-auth is trivial.
  */
 export async function POST(request: Request) {
-  let body: {
-    email?: string;
-    password?: string;
-    fullName?: string;
-    birthDate?: string;
-    phone?: string;
-  };
+  let body: { email?: string };
   try {
-    body = await request.json();
+    body = (await request.json()) as { email?: string };
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
   const email = body.email?.trim().toLowerCase();
-  const password = body.password;
-  const fullName = body.fullName?.trim();
-  const birthDate = body.birthDate?.trim() || null;
-  const phone = body.phone?.trim() || null;
 
-  if (!email || !password || !fullName) {
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return NextResponse.json(
-      { error: "Faltan campos obligatorios." },
-      { status: 400 },
-    );
-  }
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "La contraseña debe tener al menos 8 caracteres." },
+      { error: "Correo inválido." },
       { status: 400 },
     );
   }
 
   const admin = createAdminClient();
 
-  // Create the auth user with email_confirm:true so Supabase doesn't
-  // send its own confirmation link (we replace that with our OTP).
+  // Preflight: does an auth.users row already exist for this email?
+  // listUsers paginates (default perPage=50). For our MVP scale this is
+  // acceptable; revisit when user count grows past a few thousand.
+  const existing = await findUserByEmail(admin, email);
+
+  if (existing) {
+    const userId = existing.id;
+    const verified = await isEmailVerified(admin, userId);
+
+    if (verified) {
+      return NextResponse.json(
+        {
+          error: "email_exists_verified",
+          redirect: `/login?email=${encodeURIComponent(email)}`,
+        },
+        { status: 409 },
+      );
+    }
+
+    // Unverified ghost — reuse the row. Invalidate prior OTPs, insert a new
+    // one, and return as if it were a fresh register so the client can
+    // continue to /auth/verify-email without branching on `resumed`.
+    const otpResult = await issueEmailOtp(admin, userId, email);
+    if ("error" in otpResult) return otpResult.error;
+
+    return NextResponse.json({
+      userId,
+      delivered: otpResult.delivered,
+      devMode: otpResult.devMode,
+      resumed: true,
+    });
+  }
+
+  // New user. Generate a throwaway password — Supabase's createUser requires
+  // SOMETHING; the user never sees it and never types it again.
+  const throwawayPassword = randomBytes(32).toString("hex");
+
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
-    password,
+    password: throwawayPassword,
     email_confirm: true,
-    user_metadata: { full_name: fullName },
   });
   if (createErr || !created.user) {
-    // Email enumeration mitigation: never reveal whether the address is
-    // already registered. A generic message protects against mass-
-    // enumeration scrapes; the legitimate user can still recover via
-    // /login → "olvidé mi contraseña". The raw Supabase error message
-    // is logged server-side only.
     if (createErr) {
       console.error(
-        `[register] create_failed code=${createErr.code ?? "unknown"} status=${createErr.status ?? "unknown"} message=${createErr.message}`,
+        `[register] create_failed branch=new code=${createErr.code ?? "unknown"} status=${createErr.status ?? "unknown"} message=${createErr.message}`,
       );
     }
     return NextResponse.json(
-      { error: "No pudimos crear la cuenta. Si ya tienes una con ese correo, inicia sesión." },
+      { error: "No pudimos crear la cuenta. Intenta de nuevo." },
       { status: 400 },
     );
   }
 
   const userId = created.user.id;
 
-  // Seed extra profile fields. The handle_new_user trigger already
-  // created a blank row; we UPDATE it via service role.
-  const { error: profileErr } = await admin
-    .from("profiles")
-    .update({
-      full_name: fullName,
-      birth_date: birthDate,
-      phone,
-      // display_name is what the welcome screen sets — pre-fill from
-      // fullName so the dashboard greets correctly without forcing a
-      // second prompt.
-      display_name: fullName,
-    })
-    .eq("id", userId);
-  if (profileErr) {
-    console.error(
-      `[register] profile_update_failed code=${profileErr.code ?? "unknown"} message=${profileErr.message}`,
-    );
-    // Best-effort — don't fail the whole flow over a profile update.
-  }
-
-  // Sign in the new user so cookies are set on the response.
+  // Sign in the new user so cookies are set on the response. We use the
+  // throwaway password we just set; from this point on the user re-enters
+  // through OTP+PIN.
   const supabase = await createClient();
   const { error: signInErr } = await supabase.auth.signInWithPassword({
     email,
-    password,
+    password: throwawayPassword,
   });
   if (signInErr) {
     console.error(
@@ -119,13 +116,75 @@ export async function POST(request: Request) {
     );
   }
 
-  // Generate + persist + send OTP for email verification.
+  const otpResult = await issueEmailOtp(admin, userId, email);
+  if ("error" in otpResult) return otpResult.error;
+
+  return NextResponse.json({
+    userId,
+    delivered: otpResult.delivered,
+    devMode: otpResult.devMode,
+  });
+}
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+async function findUserByEmail(
+  admin: AdminClient,
+  email: string,
+): Promise<{ id: string } | null> {
+  // Walk pages until we find the email or run out. Supabase caps perPage at
+  // 1000 — for our scale we only ever hit page 1.
+  let page = 1;
+  const perPage = 200;
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error(
+        `[register] list_users_failed page=${page} message=${error.message}`,
+      );
+      return null;
+    }
+    const found = data.users.find(
+      (u) => u.email?.toLowerCase() === email,
+    );
+    if (found) return { id: found.id };
+    if (data.users.length < perPage) return null;
+    page += 1;
+    if (page > 50) return null;
+  }
+}
+
+async function isEmailVerified(
+  admin: AdminClient,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("email_verified_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) {
+    console.error(
+      `[register] profile_lookup_failed message=${error.message}`,
+    );
+    return false;
+  }
+  return !!data?.email_verified_at;
+}
+
+type OtpIssue =
+  | { delivered: boolean; devMode: boolean }
+  | { error: NextResponse };
+
+async function issueEmailOtp(
+  admin: AdminClient,
+  userId: string,
+  email: string,
+): Promise<OtpIssue> {
   const otp = generateOtp();
   const codeHash = await hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
 
-  // Invalidate any stale email_verification OTPs for this user before
-  // inserting the new one.
   await admin
     .from("auth_otps")
     .update({ used_at: new Date().toISOString() })
@@ -143,10 +202,12 @@ export async function POST(request: Request) {
     console.error(
       `[register] otp_insert_failed code=${otpInsertErr.code ?? "unknown"} message=${otpInsertErr.message}`,
     );
-    return NextResponse.json(
-      { error: "Cuenta creada, pero no pudimos enviar el código. Intenta de nuevo desde el login." },
-      { status: 500 },
-    );
+    return {
+      error: NextResponse.json(
+        { error: "No pudimos enviar el código. Intenta de nuevo." },
+        { status: 500 },
+      ),
+    };
   }
 
   const sendResult = await sendOtpEmail({
@@ -154,16 +215,10 @@ export async function POST(request: Request) {
     code: otp,
     purpose: "email_verification",
   });
-
   if (!sendResult.delivered && !sendResult.devMode) {
     console.error(
       `[register] otp_send_failed user_id=${userId} email=${email}`,
     );
   }
-
-  return NextResponse.json({
-    userId,
-    delivered: sendResult.delivered,
-    devMode: sendResult.devMode,
-  });
+  return { delivered: sendResult.delivered, devMode: sendResult.devMode };
 }
