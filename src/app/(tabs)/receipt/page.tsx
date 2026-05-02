@@ -73,8 +73,10 @@ import {
 import { type Category, listCategories } from "@/lib/data/categories";
 import {
   createTransaction,
+  getAccountBalances,
   type TransactionKind,
 } from "@/lib/data/transactions";
+import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -755,6 +757,19 @@ function ReceiptPageInner() {
   // first account is the default until OCR routes to a source-matching
   // account via suggestAccountIdForSource.
   const [accountId, setAccountId] = React.useState<string | null>(null);
+  // Per-account balances for the active currency, loaded from
+  // getAccountBalances. Mirrors the saldo guard in /capture: a Yape (or
+  // any) account can't go negative through the OCR flow either. Absent
+  // keys = zero balance.
+  const [balances, setBalances] = React.useState<Record<string, number>>({});
+  const [balancesLoaded, setBalancesLoaded] = React.useState(false);
+  // Modal triggered when an OCR-captured amount would overdraft the
+  // picked account. Same two-state contract as /capture: "empty"
+  // (saldo <= 0) vs "insufficient" (saldo < amount).
+  const [noBalanceOpen, setNoBalanceOpen] = React.useState(false);
+  const [noBalanceReason, setNoBalanceReason] = React.useState<
+    "empty" | "insufficient"
+  >("empty");
   // Transaction kind comes from the OCR result (Yape recibido → income,
   // everything else → expense). The user does NOT edit this in the form;
   // it travels through to handleAccept untouched.
@@ -822,6 +837,27 @@ function ReceiptPageInner() {
     // Mount-only load. Subsequent OCR runs don't need a refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Per-account balances. Reloads when currency switches so the saldo
+  // guard always reflects the right pool. Mirrors the /capture pattern.
+  React.useEffect(() => {
+    let cancelled = false;
+    setBalancesLoaded(false);
+    void (async () => {
+      try {
+        const map = await getAccountBalances(currency);
+        if (!cancelled) setBalances(map);
+      } catch {
+        // Soft-fail — guard simply won't trigger; user gets the network
+        // error from createTransaction if they overdraft.
+      } finally {
+        if (!cancelled) setBalancesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currency]);
 
   // Cleanup blob URL on unmount. We also revoke when picking a new image
   // (see handleFile below) — never leak the previous one.
@@ -1109,6 +1145,25 @@ function ReceiptPageInner() {
       return;
     }
 
+    // Saldo guard — espejo del que usa /capture en handleSave. El bug
+    // que motivo esto: el OCR de Yape llegaba con un monto, el usuario
+    // tocaba "Aceptar y guardar" y el gasto se persistia aunque dejara
+    // la cuenta sobregirada. Solo aplica para gastos; los ingresos no
+    // afectan saldo en negativo.
+    if (transactionKind === "expense" && balancesLoaded && accountId) {
+      const balance = balances[accountId] ?? 0;
+      if (balance <= 0) {
+        setNoBalanceReason("empty");
+        setNoBalanceOpen(true);
+        return;
+      }
+      if (balance < numericAmount) {
+        setNoBalanceReason("insufficient");
+        setNoBalanceOpen(true);
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const trimmedMerchant = merchant.trim();
@@ -1154,6 +1209,8 @@ function ReceiptPageInner() {
   }, [
     accountId,
     amount,
+    balances,
+    balancesLoaded,
     categories,
     categoryIcon,
     currency,
@@ -1759,6 +1816,24 @@ function ReceiptPageInner() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {/* Saldo guard — bloquea persistir un gasto OCR que dejaria la
+          cuenta sobregirada. Misma copy que el Drawer de /capture para
+          que el usuario reconozca el patron. Para abonar saldo el user
+          va a /accounts manualmente; el flujo inline-abono de capture es
+          mas pesado y por ahora no lo replicamos aca. */}
+      <ActionResultDrawer
+        open={noBalanceOpen}
+        onOpenChange={setNoBalanceOpen}
+        tone="warning"
+        title={noBalanceReason === "empty" ? "Sin saldo" : "Saldo insuficiente"}
+        description={
+          noBalanceReason === "empty"
+            ? "Esta cuenta no tiene saldo para realizar esta operación. Abona saldo desde Cuentas o elige otra cuenta."
+            : "El monto del gasto supera el saldo de esta cuenta. Abona saldo desde Cuentas o elige otra cuenta."
+        }
+        closeLabel="Entendido"
+      />
     </div>
   );
 }

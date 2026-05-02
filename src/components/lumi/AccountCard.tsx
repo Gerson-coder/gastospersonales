@@ -228,10 +228,18 @@ export function AccountCard({
   style,
   "data-shine": dataShine,
 }: AccountCardProps) {
-  const isNegative = saldoActual < 0;
-  const saldo = formatAdaptiveCurrency(saldoActual, currency);
+  // Clamp the displayed balance at 0 — a negative saldo on the card is a
+  // bug from somewhere upstream (an expense that slipped past the saldo
+  // guard, or a window-aggregation drift over long history). The user
+  // asked: "por ningun motivo deberia salir el monto rojo de - en el saldo
+  // actual dentro de la tarjeta". Showing 0 keeps the surface honest about
+  // "you have nothing to spend" without painting an angry negative number
+  // on the home screen. The real DB row remains untouched; movements and
+  // dashboards can still surface the underlying state if needed.
+  const displaySaldo = Math.max(0, saldoActual);
+  const saldo = formatAdaptiveCurrency(displaySaldo, currency);
 
-  const saldoText = hideAmounts ? "••••••" : `${isNegative ? "− " : ""}${saldo.text}`;
+  const saldoText = hideAmounts ? "••••••" : saldo.text;
   const saldoSize = getSaldoSizeClass(saldoText.length, variant);
   const bankLabelClass = getBankLabelClass(bankLabel.length, variant);
 
@@ -374,9 +382,8 @@ export function AccountCard({
         </p>
         <p
           className={cn(
-            "mt-1 font-bold tabular-nums tracking-tight",
+            "mt-1 font-bold tabular-nums tracking-tight text-white",
             saldoSize,
-            isNegative && !hideAmounts ? "text-red-300" : "text-white",
           )}
           style={{ fontFeatureSettings: '"tnum","lnum"' }}
         >
