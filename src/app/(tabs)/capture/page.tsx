@@ -1761,7 +1761,11 @@ function CapturePageInner() {
               Guardar {ready ? display : "el movimiento"} en una categoría.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="grid grid-cols-3 gap-2 px-4 pb-6">
+          {/* Scrollable: drawer alto fijo con header arriba + grid largo abajo.
+              Sin max-h + overflow las filas extra (>9 categorias) quedaban
+              cortadas debajo del viewport del drawer. overscroll-contain
+              evita que el scroll inercial de iOS propague al backdrop. */}
+          <div className="grid max-h-[65vh] grid-cols-3 gap-2 overflow-y-auto overscroll-contain px-4 pb-6">
             {categoriesLoading
               ? [0, 1, 2, 3, 4, 5].map((i) => (
                   <Skeleton
@@ -1827,7 +1831,7 @@ function CapturePageInner() {
               Cuenta o método de pago para este movimiento.
             </DrawerDescription>
           </DrawerHeader>
-          <ul className="flex flex-col gap-1 px-2 pb-6">
+          <ul className="flex max-h-[65vh] flex-col gap-1 overflow-y-auto overscroll-contain px-2 pb-6">
             {accountsLoading
               ? [0, 1, 2].map((i) => (
                   <li key={i}>
