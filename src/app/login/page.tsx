@@ -90,6 +90,12 @@ function LoginInner() {
   const initialMode: AuthMode =
     searchParams.get("mode") === "forgot" ? "forgot" : "signin";
 
+  // ?email=... prefills the email input — used when /register detects an
+  // already-verified address and bounces the user here to log in instead.
+  const rawEmail = searchParams.get("email");
+  const initialEmail =
+    rawEmail && EMAIL_REGEX.test(rawEmail.trim()) ? rawEmail.trim() : "";
+
   return (
     <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
       <HeroGlow />
@@ -109,7 +115,10 @@ function LoginInner() {
           ) : null}
 
           {SUPABASE_ENABLED ? (
-            <PasswordAuthForm initialMode={initialMode} />
+            <PasswordAuthForm
+              initialMode={initialMode}
+              initialEmail={initialEmail}
+            />
           ) : (
             <NameOnlyForm />
           )}
@@ -397,12 +406,20 @@ function NameOnlyForm() {
 }
 
 // ─── Real flow: Supabase email + password ─────────────────────────────────
-function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
+function PasswordAuthForm({
+  initialMode,
+  initialEmail,
+}: {
+  initialMode: AuthMode;
+  initialEmail: string;
+}) {
   const router = useRouter();
   const [mode, setMode] = React.useState<AuthMode>(initialMode);
 
-  // Shared state across modes.
-  const [email, setEmail] = React.useState("");
+  // Shared state across modes. `email` seeds from ?email= so the redirect
+  // from /register (verified-duplicate branch) lands with the input filled.
+  const [email, setEmail] = React.useState(initialEmail);
+  const [prefillNoticeShown, setPrefillNoticeShown] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
@@ -515,6 +532,15 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
     }, 1000);
     return () => window.clearInterval(id);
   }, [cooldown]);
+
+  // Notify the user once when we land here with a prefilled email — they
+  // were redirected from /register because their account already exists.
+  React.useEffect(() => {
+    if (initialEmail && !prefillNoticeShown) {
+      setPrefillNoticeShown(true);
+      toast.info("Ya tienes cuenta con este correo. Inicia sesión.");
+    }
+  }, [initialEmail, prefillNoticeShown]);
 
   // When mode changes, drop transient validation/error UI but keep the email
   // so users hopping signin → forgot don't have to retype.
