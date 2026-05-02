@@ -28,10 +28,11 @@ Reply ONLY with a JSON object matching this exact shape:
   "counterparty": { "name": "<string>", "document": "<string, optional>" },
   "reference": "<string, the operation code>",
   "memo": "<string, the user's message — empty string if none>",
+  "destinationApp": "yape" | "plin" (optional),
   "rawText": "<all visible text from the screenshot, concatenated>"
 }
 
-If a field is genuinely unreadable, OMIT the optional ones (counterparty, reference, memo) but ALWAYS include source, confidence, kind, amount, occurredAt, rawText.
+If a field is genuinely unreadable, OMIT the optional ones (counterparty, reference, memo, destinationApp) but ALWAYS include source, confidence, kind, amount, occurredAt, rawText.
 
 # Field rules
 
@@ -69,6 +70,13 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
 ## memo
 - The optional message text the sender typed. Often shown in quotes or in a chat bubble.
 - Empty string "" if none. Do NOT invent a memo.
+
+## destinationApp (optional)
+- Look at the "Datos de la transacción" block, specifically the "Destino" row.
+- If "Destino: Yape" → output destinationApp: "yape".
+- If "Destino: Plin" → output destinationApp: "plin".
+- This field is INDEPENDENT of the source. A Yape screenshot can have "Destino: Plin" because the user paid from their Yape but the recipient receives in their Plin wallet.
+- If the Destino row is absent or shows something else, OMIT this field entirely.
 
 ## confidence
 - 1.0: All fields read cleanly, image sharp, no occlusion.

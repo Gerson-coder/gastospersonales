@@ -97,6 +97,12 @@ export const llmOutputSchema = z
     // does NOT reject the parse — it only lowers confidence.
     reference: z.string().optional(),
     memo: z.string().optional(),
+    // The "Destino" field on Yape / Plin receipts — tells us which app
+    // the recipient receives the money in. A Yape with "Destino: Plin"
+    // means the user paid FROM their Yape but the counterpart receives
+    // in Plin. The UI uses this to pick the user's account (their Plin
+    // wallet, in that case) regardless of the screenshot UI.
+    destinationApp: z.enum(["yape", "plin"]).optional(),
     rawText: z.string(),
   })
   .strict();

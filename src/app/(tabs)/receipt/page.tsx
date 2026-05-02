@@ -682,6 +682,10 @@ type OcrApiResponse =
         counterparty?: { name: string; document?: string };
         reference?: string;
         memo?: string;
+        // The "Destino" row on Yape/Plin receipts. When present, this
+        // wins over `source` for account suggestion (e.g. a Yape with
+        // "Destino: Plin" should pre-select the user's Plin account).
+        destinationApp?: "yape" | "plin";
         rawText: string;
         modelUsed: string;
       };
@@ -702,6 +706,7 @@ type OcrApiResponse =
               amount?: { minor: number; currency: Currency };
               occurredAt?: string;
               counterparty?: { name: string; document?: string };
+              destinationApp?: "yape" | "plin";
               rawText?: string;
               modelUsed?: string;
             };
@@ -890,10 +895,15 @@ function ReceiptPageInner() {
           setCurrency(d.amount.currency);
           setOccurredAt(d.occurredAt.slice(0, 10));
           setTransactionKind(d.kind);
-          // Suggest the account whose `kind` matches the classified
-          // source. Yape/BBVA/BCP map directly; Plin and unknown keep
-          // the user's default first account.
-          const suggestion = suggestAccountIdForSource(d.source, accounts);
+          // Account suggestion priority:
+          //   1. `destinationApp` from the receipt's "Destino" row —
+          //      this is the wallet the recipient holds, which the
+          //      user often expects to record the txn against (e.g.
+          //      "I Yapeed but it landed in Plin → match Plin").
+          //   2. Fall back to the OCR-classified source (the format
+          //      of the screenshot itself).
+          const matchKey = d.destinationApp ?? d.source;
+          const suggestion = suggestAccountIdForSource(matchKey, accounts);
           if (suggestion) setAccountId(suggestion);
           // We don't infer category from OCR (a Yape can be rent, food,
           // a friend payback, a gift — impossible to guess). Score 0
@@ -927,8 +937,11 @@ function ReceiptPageInner() {
           }
           if (p.occurredAt) setOccurredAt(p.occurredAt.slice(0, 10));
           if (p.kind) setTransactionKind(p.kind);
-          if (p.source) {
-            const suggestion = suggestAccountIdForSource(p.source, accounts);
+          // Same priority as the success branch: Destino wins if
+          // visible, otherwise the screenshot source.
+          const matchKey = p.destinationApp ?? p.source;
+          if (matchKey) {
+            const suggestion = suggestAccountIdForSource(matchKey, accounts);
             if (suggestion) setAccountId(suggestion);
           }
           const c = p.confidence ?? 0.4;

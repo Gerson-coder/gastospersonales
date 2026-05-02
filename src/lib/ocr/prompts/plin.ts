@@ -25,6 +25,7 @@ Reply ONLY with a JSON object matching this exact shape:
   "counterparty": { "name": "<string>", "document": "<string, optional>" },
   "reference": "<string, the operation code>",
   "memo": "<string, optional>",
+  "destinationApp": "yape" | "plin" (optional),
   "rawText": "<all visible text concatenated>"
 }
 
@@ -74,6 +75,13 @@ When extracting a Plin screenshot:
 
 ## memo
 - Optional sender message. Empty string if none.
+
+## destinationApp (optional)
+- Look for a "Destino" row in the receipt body.
+- "Destino: Yape" → output destinationApp: "yape" (recipient holds Yape).
+- "Destino: Plin" → output destinationApp: "plin".
+- INDEPENDENT of source. A Plin from Interbank with "Destino: Yape" means the user paid from their Plin/Interbank account but the recipient receives in their Yape wallet.
+- Omit if the Destino row is absent or shows something else (e.g. a bank account number).
 
 ## confidence
 - Same rubric as Yape: 1.0 perfect, 0.7-0.9 minor uncertainty, <0.5 unreadable.
