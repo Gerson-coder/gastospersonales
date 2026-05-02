@@ -18,7 +18,6 @@
  */
 
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
-// TODO: swap MOCK_ACCOUNTS for `await listAccounts()` once data wiring phase begins.
 
 "use client";
 
@@ -64,6 +63,16 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { CATEGORY_ICONS, getCategoryIcon } from "@/lib/category-icons";
+import {
+  type Account,
+  accountDisplayLabel,
+  listAccounts,
+} from "@/lib/data/accounts";
+import { type Category, listCategories } from "@/lib/data/categories";
+import {
+  createTransaction,
+  type TransactionKind,
+} from "@/lib/data/transactions";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -75,36 +84,81 @@ type Status = "idle" | "preview" | "loading" | "failed" | "review";
 type FieldKey = "merchant" | "amount" | "occurred_at" | "suggested_category";
 type ConfidenceMap = Record<FieldKey, number>;
 
-type AccountId = "bcp" | "bbva" | "cash" | "yape";
-
 type LoadingPhase = 0 | 1 | 2;
 
-// ─── Mock OCR result ───────────────────────────────────────────────────────
-// NOTE: amount stays `number` (decimal pesos) until Batch B brings BIGINT
-// minor-units across the codebase. occurred_at is a stable ISO date so it
-// never causes hydration mismatches.
-const MOCK_OCR = {
-  merchant: "Cineplanet Plaza Norte",
-  amount: 80.0,
-  currency: "PEN" as Currency,
-  occurred_at: "2026-04-25",
-  suggested_category: "film",
-  confidence: {
-    merchant: 0.92,
-    amount: 0.88,
-    occurred_at: 0.71,
-    suggested_category: 0.65,
-  } satisfies ConfidenceMap,
+// ─── Initial form defaults ────────────────────────────────────────────────
+// Used for: (a) the very first paint before any OCR has run, and (b) reset
+// when the user picks a fresh image. The values are intentionally neutral
+// rather than pretending the OCR has succeeded — the per-field "confidence
+// alta" pills only show after the real OCR call returns.
+const INITIAL_FORM: {
+  merchant: string;
+  amount: string;
+  currency: Currency;
+  occurred_at: () => string;
+  category_icon: string;
+} = {
+  merchant: "",
+  amount: "0.00",
+  currency: "PEN",
+  occurred_at: () => new Date().toISOString().slice(0, 10),
+  // "shopping" reads as a generic catch-all; the user will almost always
+  // pick something specific in the drawer. The OCR pipeline does NOT
+  // infer category, so we keep this confidence low to nudge a review.
+  category_icon: "shopping",
 };
 
-// Mock account list — mirrors capture/page.tsx shape. Will be replaced by
-// `await listAccounts()` from @/lib/data/accounts in the wiring phase.
-const MOCK_ACCOUNTS: Array<{ id: AccountId; label: string; currency: Currency }> = [
-  { id: "bcp", label: "BCP Soles", currency: "PEN" },
-  { id: "bbva", label: "BBVA Soles", currency: "PEN" },
-  { id: "yape", label: "Yape", currency: "PEN" },
-  { id: "cash", label: "Efectivo", currency: "PEN" },
-];
+const INITIAL_CONFIDENCE: ConfidenceMap = {
+  // Pre-OCR all confidences sit at 0 → grey rings; the form looks "to be
+  // filled" rather than "trust me, I'm done".
+  merchant: 0,
+  amount: 0,
+  occurred_at: 0,
+  suggested_category: 0,
+};
+
+/**
+ * Pick the user's account that best matches the OCR-classified source.
+ *  - "yape"  → first account whose kind is "yape"
+ *  - "bbva"  → first account whose kind is "bbva"
+ *  - "bcp"   → first account whose kind is "bcp"
+ *  - "plin"  → no specific match (Plin renders from many host banks);
+ *              fall through to the user's first account
+ *  - "unknown" → first account
+ *
+ * Falls back to the first available account when no match is found.
+ * Returns null when the user has no accounts at all (caller must handle).
+ */
+function suggestAccountIdForSource(
+  source: string,
+  accounts: Account[],
+): string | null {
+  if (accounts.length === 0) return null;
+  const directMatch =
+    source === "yape" || source === "bbva" || source === "bcp"
+      ? accounts.find((a) => a.kind === source)
+      : undefined;
+  return (directMatch ?? accounts[0]).id;
+}
+
+/**
+ * Map an icon name (the picker UI value) to a real category id from the
+ * user's category list. Strategy: prefer an exact `category.icon` match;
+ * fall back to the first user/system category whose `kind` matches the
+ * transaction kind; finally null (uncategorized).
+ */
+function mapIconToCategoryId(
+  iconName: string,
+  categories: Category[],
+  kind: TransactionKind,
+): string | null {
+  const byIcon = categories.find(
+    (c) => c.icon === iconName && c.kind === kind && !c.archived_at,
+  );
+  if (byIcon) return byIcon.id;
+  const byKind = categories.find((c) => c.kind === kind && !c.archived_at);
+  return byKind?.id ?? null;
+}
 
 // Pretty-print the OCR-classified source for use as a fallback merchant
 // label when the receipt has no counterparty (e.g. a Yape with the name
@@ -631,11 +685,11 @@ function ReceiptPageInner() {
   // for that lives in the next phase — handleAccept).
   const [receiptId, setReceiptId] = React.useState<string | null>(null);
 
-  // Per-field confidences. Start with the MOCK values so the UI doesn't
-  // flash "no confidence" before the OCR runs; replaced wholesale with
-  // values derived from the API response.
+  // Per-field confidences. Start with grey rings (all zero) so the form
+  // visually says "to be filled" until the real OCR call lands and
+  // replaces the values wholesale.
   const [confidences, setConfidences] = React.useState<ConfidenceMap>(
-    MOCK_OCR.confidence,
+    INITIAL_CONFIDENCE,
   );
 
   // Refs for the two hidden file inputs — one with `capture` (camera),
@@ -643,14 +697,34 @@ function ReceiptPageInner() {
   const cameraInputRef = React.useRef<HTMLInputElement>(null);
   const galleryInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Form state — populated when the mock OCR "succeeds" and we transition
-  // into the review state. Defaults keep TS happy before that transition.
-  const [merchant, setMerchant] = React.useState(MOCK_OCR.merchant);
-  const [amount, setAmount] = React.useState(MOCK_OCR.amount.toFixed(2));
-  const [currency, setCurrency] = React.useState<Currency>(MOCK_OCR.currency);
-  const [occurredAt, setOccurredAt] = React.useState(MOCK_OCR.occurred_at);
-  const [categoryIcon, setCategoryIcon] = React.useState<string>(MOCK_OCR.suggested_category);
-  const [accountId, setAccountId] = React.useState<AccountId>("bcp");
+  // Form state. Defaults keep TS happy before the OCR transitions us into
+  // the review state. Once OCR resolves, every field below is overwritten.
+  const [merchant, setMerchant] = React.useState(INITIAL_FORM.merchant);
+  const [amount, setAmount] = React.useState(INITIAL_FORM.amount);
+  const [currency, setCurrency] = React.useState<Currency>(INITIAL_FORM.currency);
+  const [occurredAt, setOccurredAt] = React.useState(INITIAL_FORM.occurred_at);
+  const [categoryIcon, setCategoryIcon] = React.useState<string>(
+    INITIAL_FORM.category_icon,
+  );
+  // Real account id (uuid). Populated from listAccounts() on mount; the
+  // first account is the default until OCR routes to a source-matching
+  // account via suggestAccountIdForSource.
+  const [accountId, setAccountId] = React.useState<string | null>(null);
+  // Transaction kind comes from the OCR result (Yape recibido → income,
+  // everything else → expense). The user does NOT edit this in the form;
+  // it travels through to handleAccept untouched.
+  const [transactionKind, setTransactionKind] = React.useState<TransactionKind>(
+    "expense",
+  );
+
+  // Real data loaded from Supabase on mount. Both list calls are gated by
+  // SUPABASE_ENABLED inside their respective modules; if env is missing,
+  // they return [] and the UI shows a helpful empty state.
+  const [accounts, setAccounts] = React.useState<Account[]>([]);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  // Save submission state: prevents double-tap on the green "Aceptar y
+  // guardar" button while the network request is in flight.
+  const [isSaving, setIsSaving] = React.useState(false);
 
   // Loading phase ticks 0 → 1 → 2 every ~800ms while in the loading state.
   const [loadingPhase, setLoadingPhase] = React.useState<LoadingPhase>(0);
@@ -666,6 +740,39 @@ function ReceiptPageInner() {
   // Whether any field was edited from the OCR-suggested defaults — controls
   // whether we ask for confirmation on Descartar.
   const [dirty, setDirty] = React.useState(false);
+
+  // Load real accounts + categories on mount. Both calls are independent
+  // and cheap (cached by Supabase auto-refetch) so we fire them in
+  // parallel. If either fails we still let the user proceed — the form
+  // just opens with a thinner picker, and handleAccept enforces a non-
+  // empty account before submitting.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [accs, cats] = await Promise.all([
+          listAccounts(),
+          listCategories(),
+        ]);
+        if (cancelled) return;
+        setAccounts(accs);
+        setCategories(cats);
+        // Default account = first available. OCR success may override
+        // via suggestAccountIdForSource later.
+        if (accs.length > 0 && !accountId) {
+          setAccountId(accs[0].id);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[receipt] load_data_failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only load. Subsequent OCR runs don't need a refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cleanup blob URL on unmount. We also revoke when picking a new image
   // (see handleFile below) — never leak the previous one.
@@ -738,6 +845,12 @@ function ReceiptPageInner() {
           setAmount((d.amount.minor / 100).toFixed(2));
           setCurrency(d.amount.currency);
           setOccurredAt(d.occurredAt.slice(0, 10));
+          setTransactionKind(d.kind);
+          // Suggest the account whose `kind` matches the classified
+          // source. Yape/BBVA/BCP map directly; Plin and unknown keep
+          // the user's default first account.
+          const suggestion = suggestAccountIdForSource(d.source, accounts);
+          if (suggestion) setAccountId(suggestion);
           // We don't infer category from OCR — keep current default but
           // signal low confidence so the user sees the "review this" cue.
           setConfidences({
@@ -762,6 +875,11 @@ function ReceiptPageInner() {
             setCurrency(p.amount.currency);
           }
           if (p.occurredAt) setOccurredAt(p.occurredAt.slice(0, 10));
+          if (p.kind) setTransactionKind(p.kind);
+          if (p.source) {
+            const suggestion = suggestAccountIdForSource(p.source, accounts);
+            if (suggestion) setAccountId(suggestion);
+          }
           const c = p.confidence ?? 0.4;
           setConfidences({
             merchant: c,
@@ -913,18 +1031,69 @@ function ReceiptPageInner() {
     router.push("/capture");
   }, [router]);
 
-  const handleAccept = React.useCallback(() => {
-    // The transactions write happens in the next phase. When that lands,
-    // pass `receiptId` as `transactions.receipt_id` so the row links
-    // back to the OCR audit trail in `receipts.linked_transaction_id`.
-    if (receiptId) {
-      // Reserved for the wire-up of step 11+: persist transaction
-      // linked to this receipt before navigating.
+  const handleAccept = React.useCallback(async () => {
+    if (isSaving) return;
+    if (!accountId) {
+      toast.error("Elige una cuenta antes de guardar.");
+      setIsAccountOpen(true);
+      return;
     }
-    window.setTimeout(() => {
+    const numericAmount = Number(amount.replace(",", ".")) || 0;
+    if (numericAmount <= 0) {
+      toast.error("El monto debe ser mayor a cero.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const trimmedMerchant = merchant.trim();
+      const categoryId = mapIconToCategoryId(
+        categoryIcon,
+        categories,
+        transactionKind,
+      );
+
+      // Compose a stable noon-Lima `occurred_at` ISO so the dashboard's
+      // by-day grouping doesn't oscillate on UTC/Lima crossings. The
+      // form holds a YYYY-MM-DD; we anchor it at 12:00 Lima (= 17:00
+      // UTC) to land in the same day everywhere.
+      const occurredIso = `${occurredAt}T12:00:00-05:00`;
+
+      await createTransaction({
+        amount: numericAmount,
+        currency,
+        kind: transactionKind,
+        accountId,
+        categoryId,
+        merchantId: null,
+        note: trimmedMerchant.length > 0 ? trimmedMerchant : null,
+        occurredAt: occurredIso,
+        receiptId: receiptId ?? null,
+      });
+
+      toast.success("Movimiento guardado.");
       router.push("/dashboard");
-    }, 800);
-  }, [receiptId, router]);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No pudimos guardar el movimiento.";
+      toast.error(message);
+      setIsSaving(false);
+    }
+  }, [
+    accountId,
+    amount,
+    categories,
+    categoryIcon,
+    currency,
+    isSaving,
+    merchant,
+    occurredAt,
+    receiptId,
+    router,
+    transactionKind,
+  ]);
 
   const handleDiscard = React.useCallback(() => {
     if (dirty && !discardArmed) {
@@ -1018,7 +1187,9 @@ function ReceiptPageInner() {
 
   // ─── Review state (the meat) ─────────────────────────────────────────
   const parsedAmount = Number(amount.replace(",", ".")) || 0;
-  const account = MOCK_ACCOUNTS.find((a) => a.id === accountId) ?? MOCK_ACCOUNTS[0];
+  // `account` may be null while `listAccounts` is still loading on a slow
+  // network — the picker label below renders "Cargando..." in that case.
+  const account = accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
   const categoryLabel =
     CATEGORY_ICONS.find((c) => c.name === categoryIcon)?.label ?? "Otros";
   const CategoryIcon = getCategoryIcon(categoryIcon);
@@ -1198,10 +1369,14 @@ function ReceiptPageInner() {
                 aria-expanded={isAccountOpen}
                 className="flex h-11 w-full items-center gap-3 rounded-lg text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="flex-1 text-base font-semibold">{account.label}</span>
-                <Badge variant="outline" className="h-7 rounded-full px-2 text-[11px] font-semibold">
-                  {account.currency}
-                </Badge>
+                <span className="flex-1 text-base font-semibold">
+                  {account ? accountDisplayLabel(account) : "Cargando..."}
+                </span>
+                {account && (
+                  <Badge variant="outline" className="h-7 rounded-full px-2 text-[11px] font-semibold">
+                    {account.currency}
+                  </Badge>
+                )}
                 <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
               </button>
             </div>
@@ -1255,11 +1430,16 @@ function ReceiptPageInner() {
               <Button
                 type="button"
                 onClick={handleAccept}
+                disabled={isSaving || !accountId}
                 className="h-12 rounded-full text-base font-bold md:flex-[2]"
                 style={{ boxShadow: "var(--shadow-fab)" }}
               >
-                <Check size={18} aria-hidden="true" />
-                Aceptar y guardar
+                {isSaving ? (
+                  <Loader2 size={18} aria-hidden="true" className="animate-spin" />
+                ) : (
+                  <Check size={18} aria-hidden="true" />
+                )}
+                {isSaving ? "Guardando..." : "Aceptar y guardar"}
               </Button>
             </>
           )}
@@ -1314,7 +1494,7 @@ function ReceiptPageInner() {
           <DrawerHeader>
             <DrawerTitle>Elegir categoría</DrawerTitle>
             <DrawerDescription id="receipt-category-desc">
-              Sugerencia: {CATEGORY_ICONS.find((c) => c.name === MOCK_OCR.suggested_category)?.label ?? "—"}
+              Elige la que mejor describe el gasto.
             </DrawerDescription>
           </DrawerHeader>
           <div className="grid grid-cols-4 gap-2 px-4 pb-2">
@@ -1375,7 +1555,12 @@ function ReceiptPageInner() {
             </DrawerDescription>
           </DrawerHeader>
           <ul className="flex flex-col gap-1 px-2 pb-2">
-            {MOCK_ACCOUNTS.map((a) => {
+            {accounts.length === 0 && (
+              <li className="px-3 py-4 text-center text-[13px] text-muted-foreground">
+                Aún no tienes cuentas. Crea una desde Cuentas.
+              </li>
+            )}
+            {accounts.map((a) => {
               const selected = accountId === a.id;
               return (
                 <li key={a.id}>
@@ -1394,7 +1579,9 @@ function ReceiptPageInner() {
                     )}
                   >
                     <span className="flex-1">
-                      <span className="block text-[13px] font-semibold">{a.label}</span>
+                      <span className="block text-[13px] font-semibold">
+                        {accountDisplayLabel(a)}
+                      </span>
                       <span className="block text-[11px] text-muted-foreground">
                         {a.currency}
                       </span>

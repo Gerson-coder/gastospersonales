@@ -20,7 +20,11 @@
 "use client";
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
-import type { Currency, CategoryKind } from "@/lib/supabase/types";
+import type {
+  Currency,
+  CategoryKind,
+  TransactionSource,
+} from "@/lib/supabase/types";
 
 // `transactions.kind` reuses the `expense | income` literal in the DB schema,
 // which is also the shape of `CategoryKind`. Re-export with a domain-specific
@@ -101,6 +105,15 @@ export type TransactionDraft = {
   accountId: string;
   note: string | null;
   occurredAt?: string;
+  /**
+   * When set, the new transaction is linked to this receipts row.
+   * `source` defaults to "manual" but flips to "ocr" automatically
+   * when receiptId is present, so callers don't have to remember to
+   * set both.
+   */
+  receiptId?: string | null;
+  /** Override the default `source: "manual"`. Useful for OCR flows. */
+  source?: TransactionSource;
 };
 
 /** Opaque pagination cursor: `(occurred_at DESC, id DESC)` tuple. */
@@ -121,7 +134,8 @@ export type TransactionInsertPayload = {
   currency: Currency;
   note: string | null;
   occurred_at?: string;
-  source: "manual";
+  source: TransactionSource;
+  receipt_id?: string | null;
 };
 
 // ─── Mappers ──────────────────────────────────────────────────────────────
@@ -190,6 +204,12 @@ export function toInsertPayload(
     throw new Error("El monto es demasiado grande para registrarlo.");
   }
 
+  // If the draft is linked to a receipt, default the source to "ocr"
+  // so callers don't have to set both. Explicit `draft.source` still
+  // wins (e.g. for tests or future flows).
+  const inferredSource: TransactionSource =
+    draft.source ?? (draft.receiptId ? "ocr" : "manual");
+
   const payload: TransactionInsertPayload = {
     user_id: userId,
     account_id: draft.accountId,
@@ -199,7 +219,8 @@ export function toInsertPayload(
     amount_minor: amountMinor,
     currency: draft.currency,
     note: draft.note?.trim() ? draft.note.trim() : null,
-    source: "manual",
+    source: inferredSource,
+    receipt_id: draft.receiptId ?? null,
   };
   if (draft.occurredAt) {
     payload.occurred_at = draft.occurredAt;
