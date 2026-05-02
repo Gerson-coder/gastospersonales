@@ -1200,8 +1200,15 @@ function DangerZoneCard() {
         // Storage disabled — nothing to clean.
       }
 
-      router.replace("/login");
-      router.refresh();
+      // Hard reload, not router.replace. Soft navigation keeps the
+      // SessionProvider's cached `user` alive until onAuthStateChange
+      // catches up — during that window, downstream pages render with a
+      // ghost user and a null profile (the "miembro desde / id vacío" bug
+      // the user reported). A full page load drops React state, the
+      // SessionProvider re-mounts anonymous, and middleware sees no
+      // cookie. Use `replace` so the back button can't return them to
+      // /settings of an account that no longer exists.
+      window.location.replace("/onboarding/intro");
     } catch (err) {
       console.error("[settings] delete-account:", err);
       toast.error("No pudimos eliminar tu cuenta. Revisa tu conexión.");
