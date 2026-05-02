@@ -7,23 +7,36 @@ import {
   fingerprintHash,
   type DeviceSignals,
 } from "@/lib/auth/device-fingerprint";
+import { findUserByEmail } from "@/lib/auth/lookup";
+
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
  * POST /api/auth/check-device
  *
- * Body: { deviceSignals: { screenResolution, timezone } }
+ * Body: { email?, deviceSignals: { screenResolution, timezone } }
  *
  * Decides what /login should show:
+ *   - exists    — does an auth.users row exist for this email?
  *   - hasPin    — does the user have a PIN configured at all?
- *   - trusted   — is this device known + trusted?
+ *   - trusted   — is this device known + trusted for that user?
  *
- * Combined: only render the PIN screen when (hasPin && trusted).
- * Else render the email-OTP / password fallback.
+ * Combined: only render the PIN screen when (exists && hasPin && trusted).
+ * Else send the user through the OTP path (new_device flow).
  *
- * Auth: requires an active Supabase session.
+ * Two modes:
+ *   1. Body has `email` → no-session lookup. The login page calls this
+ *      after the user types their email but BEFORE any auth state exists.
+ *   2. Body has no `email` → requires an active Supabase session and uses
+ *      its user.id (legacy path used inside the app, e.g. settings).
+ *
+ * For unknown emails we return `{ exists: false, hasPin: false, trusted: false }`
+ * — the caller treats it as "ask for an account" without leaking enumeration
+ * beyond what `/register` already exposes (it 409s on existing emails).
  */
 export async function POST(request: Request) {
   let body: {
+    email?: string;
     deviceSignals?: Pick<DeviceSignals, "screenResolution" | "timezone">;
   };
   try {
@@ -32,15 +45,34 @@ export async function POST(request: Request) {
     body = {};
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Sesión expirada." }, { status: 401 });
-  }
-
   const admin = createAdminClient();
+
+  let userId: string | null = null;
+
+  if (body.email && body.email.trim().length > 0) {
+    const normalized = body.email.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalized)) {
+      return NextResponse.json({ error: "Correo inválido." }, { status: 400 });
+    }
+    const found = await findUserByEmail(admin, normalized);
+    if (!found) {
+      return NextResponse.json({
+        exists: false,
+        hasPin: false,
+        trusted: false,
+      });
+    }
+    userId = found.id;
+  } else {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Sesión expirada." }, { status: 401 });
+    }
+    userId = user.id;
+  }
 
   const userAgent = request.headers.get("user-agent");
   const acceptLanguage = request.headers.get("accept-language");
@@ -53,11 +85,11 @@ export async function POST(request: Request) {
   const fp = fingerprintHash(signals);
 
   const [pinResult, deviceResult] = await Promise.all([
-    admin.from("user_pins").select("user_id").eq("user_id", user.id).maybeSingle(),
+    admin.from("user_pins").select("user_id").eq("user_id", userId).maybeSingle(),
     admin
       .from("trusted_devices")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("fingerprint_hash", fp)
       .maybeSingle(),
   ]);
@@ -72,6 +104,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
+    exists: true,
     hasPin: !!pinResult.data,
     trusted: !!deviceResult.data,
     fingerprintHash: fp,

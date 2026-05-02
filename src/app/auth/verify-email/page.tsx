@@ -33,11 +33,29 @@ const VALID_PURPOSES: ReadonlyArray<OtpPurpose> = [
   "pin_reset",
 ];
 
-const NEXT_BY_PURPOSE: Record<OtpPurpose, string> = {
-  email_verification: "/onboarding/name",
-  new_device: "/dashboard",
-  pin_reset: "/auth/set-pin",
-};
+/**
+ * Where to land after a successful OTP verification.
+ *
+ * - email_verification → onboarding flow always.
+ * - pin_reset          → /auth/set-pin always.
+ * - new_device         → /auth/set-pin if the user has no PIN yet (e.g.
+ *                        their account was set up on another device, or
+ *                        they came via "Olvidé mi PIN" with `?next=set-pin`),
+ *                        otherwise /dashboard.
+ *
+ * The `next` query param overrides everything when present.
+ */
+function computeNextRoute(
+  purpose: OtpPurpose,
+  hasPin: boolean,
+  next: string | null,
+): string {
+  if (next === "set-pin") return "/auth/set-pin";
+  if (purpose === "email_verification") return "/onboarding/name";
+  if (purpose === "pin_reset") return "/auth/set-pin";
+  if (purpose === "new_device") return hasPin ? "/dashboard" : "/auth/set-pin";
+  return "/dashboard";
+}
 
 const TITLE_BY_PURPOSE: Record<OtpPurpose, string> = {
   email_verification: "Verifica tu correo",
@@ -85,6 +103,14 @@ function VerifyEmailInner() {
   )
     ? (purposeParam as OtpPurpose)
     : "email_verification";
+  // Email comes via URL only on the no-session new_device flow (login →
+  // device not trusted). For email_verification and pin_reset the user is
+  // already authenticated and the API uses session.user.email instead.
+  const emailParam = searchParams.get("email")?.trim().toLowerCase() ?? "";
+  // ?next=set-pin → after a successful new_device verification, override
+  // the default destination (dashboard / set-pin via hasPin) and force the
+  // user into /auth/set-pin. Used by the "Olvidé mi PIN" link in /login.
+  const nextParam = searchParams.get("next");
 
   const [digits, setDigits] = React.useState<string[]>(() =>
     Array.from({ length: 6 }, () => ""),
@@ -93,8 +119,22 @@ function VerifyEmailInner() {
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
   const [successOpen, setSuccessOpen] = React.useState(false);
+  const [hasPin, setHasPin] = React.useState(false);
 
   const code = digits.join("");
+
+  function getDeviceSignals() {
+    return {
+      screenResolution:
+        typeof window !== "undefined"
+          ? `${window.screen.width}x${window.screen.height}`
+          : null,
+      timezone:
+        typeof Intl !== "undefined"
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : null,
+    };
+  }
 
   // Tick down the resend cooldown each second.
   React.useEffect(() => {
@@ -116,17 +156,28 @@ function VerifyEmailInner() {
     setSubmitting(true);
 
     try {
+      const isNoSession = purpose === "new_device" && emailParam.length > 0;
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: value, purpose }),
+        body: JSON.stringify({
+          code: value,
+          purpose,
+          ...(isNoSession
+            ? { email: emailParam, deviceSignals: getDeviceSignals() }
+            : {}),
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        hasPin?: boolean;
+      };
       if (!res.ok) {
         setErrorMsg(data.error ?? "Código inválido.");
         setSubmitting(false);
         return;
       }
+      setHasPin(!!data.hasPin);
       setSuccessOpen(true);
     } catch (err) {
       console.error("[verify-email] submit:", err);
@@ -137,16 +188,17 @@ function VerifyEmailInner() {
 
   function handleSuccessOpenChange(open: boolean) {
     setSuccessOpen(open);
-    // Drawer cerrado = continuar al siguiente paso. Tipo de navegacion
-    // depende del flujo: email_verification arranca onboarding (full reload
-    // para que el SessionProvider re-monte con la cookie ya verificada),
-    // los otros usan router.push porque la sesion no cambia.
+    // Drawer cerrado = continuar al siguiente paso. Para flujos que
+    // cambian la sesion (email_verification post-signup, new_device login
+    // sin sesion previa) hacemos full reload asi el SessionProvider
+    // re-monta con la cookie nueva. Para pin_reset la sesion no cambia,
+    // soft nav alcanza.
     if (!open) {
-      const target = NEXT_BY_PURPOSE[purpose];
-      if (purpose === "email_verification") {
-        if (typeof window !== "undefined") {
-          window.location.assign(target);
-        }
+      const target = computeNextRoute(purpose, hasPin, nextParam);
+      const needsFullReload =
+        purpose === "email_verification" || purpose === "new_device";
+      if (needsFullReload && typeof window !== "undefined") {
+        window.location.assign(target);
       } else {
         router.push(target);
       }
@@ -161,10 +213,14 @@ function VerifyEmailInner() {
   async function handleResend() {
     if (resendCountdown > 0) return;
     try {
+      const isNoSession = purpose === "new_device" && emailParam.length > 0;
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ purpose }),
+        body: JSON.stringify({
+          purpose,
+          ...(isNoSession ? { email: emailParam } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;

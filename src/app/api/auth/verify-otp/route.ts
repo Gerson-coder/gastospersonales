@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 
 // eslint-disable-next-line no-restricted-imports -- service-role required to read auth_otps + flip email_verified_at server-side
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,25 +10,45 @@ import {
   type OtpPurpose,
   verifyOtp,
 } from "@/lib/auth/otp";
+import {
+  deviceNameFromUserAgent,
+  fingerprintHash,
+  type DeviceSignals,
+} from "@/lib/auth/device-fingerprint";
+import { findUserByEmail } from "@/lib/auth/lookup";
 import { recordAttempt } from "@/lib/auth/rate-limit";
+
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
  * POST /api/auth/verify-otp
  *
- * Body: { code, purpose }
+ * Body: { code, purpose, email?, deviceSignals? }
  *
- * Requires an active Supabase session (the user is signed in but their
- * email may not be verified yet). On success:
- *   - email_verification → set profiles.email_verified_at = now()
- *   - new_device         → trust this device (caller passes signals separately
- *                          to /api/auth/trust-device after a successful verify)
- *   - pin_reset          → flag the session as eligible to write a new PIN
- *                          (the next /api/auth/set-pin call enforces this)
+ * Two modes:
+ *   1. With session (default) — uses session's user.id. Used for
+ *      `email_verification` (post-signup) and `pin_reset` (in-app).
+ *      On success:
+ *        - email_verification → set profiles.email_verified_at = now()
+ *        - pin_reset          → flag the OTP as used (next /set-pin checks)
+ *   2. With `email` + `deviceSignals` body params + no session — used
+ *      by /login when the device is not trusted yet. Restricted to
+ *      `purpose === "new_device"`. On success:
+ *        - Marks `trusted_devices` for this user + fingerprint.
+ *        - Rotates the throwaway password and signInWithPassword to set
+ *          a fresh session cookie on the response.
  *
- * Returns: { ok: true, purpose } on success.
+ * Returns: { ok: true, purpose, hasPin? } on success.
+ *   `hasPin` is included in the no-session new_device path so the client
+ *   can route to /auth/set-pin (PIN missing) vs /dashboard (PIN exists).
  */
 export async function POST(request: Request) {
-  let body: { code?: string; purpose?: OtpPurpose };
+  let body: {
+    code?: string;
+    purpose?: OtpPurpose;
+    email?: string;
+    deviceSignals?: Pick<DeviceSignals, "screenResolution" | "timezone">;
+  };
   try {
     body = await request.json();
   } catch {
@@ -37,10 +58,7 @@ export async function POST(request: Request) {
   const code = body.code?.trim();
   const purpose = body.purpose;
   if (!code || !purpose) {
-    return NextResponse.json(
-      { error: "Faltan datos." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Faltan datos." }, { status: 400 });
   }
   if (!/^\d{6}$/.test(code)) {
     return NextResponse.json(
@@ -51,9 +69,41 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const {
-    data: { user },
+    data: { user: sessionUser },
   } = await supabase.auth.getUser();
-  if (!user) {
+
+  let userId: string;
+  let userEmail: string;
+  const noSession = !sessionUser;
+
+  if (sessionUser && sessionUser.email) {
+    userId = sessionUser.id;
+    userEmail = sessionUser.email;
+  } else if (body.email && body.email.trim().length > 0) {
+    if (purpose !== "new_device") {
+      return NextResponse.json(
+        { error: "Sesión expirada." },
+        { status: 401 },
+      );
+    }
+    const normalized = body.email.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalized)) {
+      return NextResponse.json(
+        { error: "Correo inválido." },
+        { status: 400 },
+      );
+    }
+    const admin = createAdminClient();
+    const found = await findUserByEmail(admin, normalized);
+    if (!found) {
+      return NextResponse.json(
+        { error: "Código incorrecto." },
+        { status: 400 },
+      );
+    }
+    userId = found.id;
+    userEmail = found.email;
+  } else {
     return NextResponse.json({ error: "Sesión expirada." }, { status: 401 });
   }
 
@@ -63,7 +113,7 @@ export async function POST(request: Request) {
   const { data: otpRow, error: otpErr } = await admin
     .from("auth_otps")
     .select("id, code_hash, expires_at, attempts, used_at")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("purpose", purpose)
     .is("used_at", null)
     .order("created_at", { ascending: false })
@@ -71,7 +121,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (otpErr || !otpRow) {
-    await recordAttempt(user.id, getIp(request), "otp", false);
+    await recordAttempt(userId, getIp(request), "otp", false);
     return NextResponse.json(
       { error: "No hay un código pendiente. Solicita uno nuevo." },
       { status: 400 },
@@ -79,7 +129,7 @@ export async function POST(request: Request) {
   }
 
   if (isExpired(otpRow.expires_at)) {
-    await recordAttempt(user.id, getIp(request), "otp", false);
+    await recordAttempt(userId, getIp(request), "otp", false);
     return NextResponse.json(
       { error: "El código expiró. Solicita uno nuevo." },
       { status: 400 },
@@ -101,7 +151,7 @@ export async function POST(request: Request) {
       .from("auth_otps")
       .update({ attempts: (otpRow.attempts ?? 0) + 1 })
       .eq("id", otpRow.id);
-    await recordAttempt(user.id, getIp(request), "otp", false);
+    await recordAttempt(userId, getIp(request), "otp", false);
     return NextResponse.json(
       { error: "Código incorrecto." },
       { status: 400 },
@@ -118,14 +168,84 @@ export async function POST(request: Request) {
     await admin
       .from("profiles")
       .update({ email_verified_at: new Date().toISOString() })
-      .eq("id", user.id);
+      .eq("id", userId);
   }
-  // For new_device + pin_reset, the OTP being marked as used is the
-  // signal the next step (trust-device / set-pin) checks against.
 
-  await recordAttempt(user.id, getIp(request), "otp", true);
+  // No-session new_device path: trust the device, rotate the throwaway
+  // password, and sign the user in so cookies are attached to this
+  // response. The next request from the browser carries a real session.
+  let hasPin = false;
+  if (noSession && purpose === "new_device") {
+    const userAgent = request.headers.get("user-agent");
+    const acceptLanguage = request.headers.get("accept-language");
+    const signals: DeviceSignals = {
+      userAgent,
+      acceptLanguage,
+      screenResolution: body.deviceSignals?.screenResolution ?? null,
+      timezone: body.deviceSignals?.timezone ?? null,
+    };
+    const fp = fingerprintHash(signals);
+    const deviceName = deviceNameFromUserAgent(userAgent);
 
-  return NextResponse.json({ ok: true, purpose });
+    const { error: deviceErr } = await admin
+      .from("trusted_devices")
+      .upsert(
+        {
+          user_id: userId,
+          fingerprint_hash: fp,
+          device_name: deviceName,
+          last_seen_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,fingerprint_hash" },
+      );
+    if (deviceErr) {
+      console.error(
+        `[verify-otp] trust_device_failed user=${userId} message=${deviceErr.message}`,
+      );
+      // Soft-fail — we still want to sign them in. They'll re-OTP on
+      // next login until the trust insert succeeds.
+    }
+
+    const newPassword = randomBytes(32).toString("hex");
+    const { error: updateErr } = await admin.auth.admin.updateUserById(
+      userId,
+      { password: newPassword },
+    );
+    if (updateErr) {
+      console.error(
+        `[verify-otp] password_rotation_failed user=${userId} message=${updateErr.message}`,
+      );
+      return NextResponse.json(
+        { error: "No pudimos iniciar sesión. Intenta otra vez." },
+        { status: 500 },
+      );
+    }
+
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: newPassword,
+    });
+    if (signInErr) {
+      console.error(
+        `[verify-otp] signin_failed user=${userId} message=${signInErr.message}`,
+      );
+      return NextResponse.json(
+        { error: "No pudimos iniciar sesión." },
+        { status: 500 },
+      );
+    }
+
+    const { data: pinRow } = await admin
+      .from("user_pins")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    hasPin = !!pinRow;
+  }
+
+  await recordAttempt(userId, getIp(request), "otp", true);
+
+  return NextResponse.json({ ok: true, purpose, hasPin });
 }
 
 function getIp(request: Request): string | null {

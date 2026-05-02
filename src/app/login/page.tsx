@@ -1,77 +1,50 @@
 /**
- * Login route — Lumi
+ * /login — passwordless email-first login.
  *
- * Two macro-modes, branched at runtime by the presence of NEXT_PUBLIC_SUPABASE_URL
- * (Next inlines NEXT_PUBLIC_* at build time, so the check works in the browser
- * bundle):
+ * Step 1: user types email. We POST to /api/auth/check-device with the
+ *   email + device signals (no session needed) and decide:
  *
- *   1. Envs PRESENT  → real Supabase email + password flow with five sub-modes:
- *        - "signin"        → sign in with email + password
- *        - "signup"        → create account (email + password + confirm)
- *        - "signup-sent"   → "check your inbox to confirm"
- *        - "forgot"        → request a password-reset email
- *        - "forgot-sent"   → "check your inbox for the reset link"
+ *     - exists && hasPin && trusted   → step "pin": render the 4-digit
+ *                                        keypad. On match, /api/auth/login-with-pin
+ *                                        rotates the throwaway password
+ *                                        and signs the user in.
+ *     - exists && (!trusted || !hasPin) → send a `new_device` OTP and
+ *                                        redirect to /auth/verify-email
+ *                                        which finishes the auth + lands
+ *                                        the user on /auth/set-pin or
+ *                                        /dashboard depending on hasPin.
+ *     - !exists                       → inline error pointing the user
+ *                                        at /register.
  *
- *      Magic-link is no longer the primary path. The /auth/callback route still
- *      handles `?code=` exchanges (signup confirmation, password reset, and any
- *      stray magic links Supabase might still issue via OTP).
- *
- *   2. Envs ABSENT   → name-only stub (offline preview / demo). Enter name,
- *      persist to localStorage, jump to /dashboard. Lets `npm run dev` work
- *      without a Supabase project.
- *
- * Layout: the form card is centered both vertically and horizontally inside
- * a `min-h-[100dvh] flex items-center justify-center` shell so it sits in the
- * middle of the viewport on every screen size. We use `100dvh` (dynamic
- * viewport height) instead of `100vh` to avoid the mobile Chrome address-bar
- * jump that pushes the card off-screen when the URL bar collapses/expands.
+ * No password input anywhere — the legacy email+password forms got
+ * replaced by this flow. The "Olvidé mi PIN" link in step 2 reuses the
+ * new_device OTP path with `?next=set-pin` so the user lands directly
+ * on /auth/set-pin after verifying.
  */
 
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
+import { Delete, KeyRound, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
-import { createClient } from "@/lib/supabase/client";
-import { useUserName } from "@/lib/use-user-name";
+import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-// Runtime feature flag: do we have Supabase wired up?
-const SUPABASE_ENABLED =
-  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
-  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
-  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
-
-// Maps the `?error=` codes that /auth/callback may send back to user-facing
-// copy. Anything not listed falls through to the generic message.
-const ERROR_MESSAGES: Record<string, string> = {
-  missing_code: "El enlace no es válido. Pide uno nuevo.",
-  auth_disabled: "El inicio de sesión no está activo en este entorno.",
-};
-const GENERIC_ERROR = "No pudimos iniciarte sesión. Inténtalo de nuevo.";
-
-// Cooldown between "resend confirmation/reset" clicks. Long enough to
-// discourage spamming the SMTP queue, short enough to retry without rage.
-const RESEND_COOLDOWN_SECONDS = 30;
-
-// Min password length enforced on the client. Supabase enforces a server-side
-// minimum too (default 6, configurable). 8 is a friendlier default.
-const MIN_PASSWORD_LENGTH = 8;
-
+const PIN_LENGTH = 4;
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-type AuthMode = "signin" | "signup" | "signup-sent" | "forgot" | "forgot-sent";
+type Step = "email" | "pin";
 
 export default function LoginPage() {
-  // useSearchParams() forces this subtree to be client-rendered, so wrap the
-  // body in Suspense to satisfy Next 15+/16's static-rendering check.
+  // useSearchParams() forces a client-rendered subtree, so wrap with Suspense
+  // to satisfy Next.js' static-rendering check.
   return (
     <React.Suspense fallback={<LoginShell />}>
       <LoginInner />
@@ -79,456 +52,192 @@ export default function LoginPage() {
   );
 }
 
-function LoginInner() {
-  const searchParams = useSearchParams();
-  const errorParam = searchParams.get("error");
-  const errorMessage = errorParam
-    ? (ERROR_MESSAGES[errorParam] ?? GENERIC_ERROR)
-    : null;
-
-  // ?mode=forgot lets external callers (e.g. the "link expired" page on
-  // /auth/reset-password) deep-link straight into the forgot-password screen.
-  const initialMode: AuthMode =
-    searchParams.get("mode") === "forgot" ? "forgot" : "signin";
-
-  // ?email=... prefills the email input — used when /register detects an
-  // already-verified address and bounces the user here to log in instead.
-  const rawEmail = searchParams.get("email");
-  const initialEmail =
-    rawEmail && EMAIL_REGEX.test(rawEmail.trim()) ? rawEmail.trim() : "";
-
-  return (
-    <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
-      <HeroGlow />
-
-      <div className="relative w-full max-w-[440px]">
-        <section
-          aria-labelledby="login-heading"
-          className="animate-in fade-in slide-in-from-bottom-2 duration-500 rounded-2xl border border-border bg-card p-6 shadow-card md:p-8"
-        >
-          {errorMessage ? (
-            <div
-              role="alert"
-              className="mb-5 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive"
-            >
-              {errorMessage}
-            </div>
-          ) : null}
-
-          {SUPABASE_ENABLED ? (
-            <PasswordAuthForm
-              initialMode={initialMode}
-              initialEmail={initialEmail}
-            />
-          ) : (
-            <NameOnlyForm />
-          )}
-        </section>
-
-        <footer className="mt-8">
-          <nav
-            aria-label="Legal"
-            className="flex justify-center gap-5 text-[12px] text-muted-foreground"
-          >
-            <a
-              href="#"
-              className="rounded-sm hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              Términos
-            </a>
-            <span aria-hidden="true">·</span>
-            <a
-              href="#"
-              className="rounded-sm hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              Privacidad
-            </a>
-          </nav>
-        </footer>
-      </div>
-    </main>
-  );
-}
-
 function LoginShell() {
   return (
-    <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
-      <HeroGlow />
-      <div className="relative w-full max-w-[440px]">
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8" />
-      </div>
+    <main className="flex min-h-[100dvh] items-center justify-center bg-background">
+      <Loader2
+        size={20}
+        className="animate-spin text-muted-foreground"
+        aria-label="Cargando"
+      />
     </main>
   );
 }
 
-// ─── Hero visual ──────────────────────────────────────────────────────────
-function HeroGlow() {
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[360px] overflow-hidden"
-    >
-      <div
-        className="absolute left-1/2 top-[-120px] h-[420px] w-[420px] -translate-x-1/2 rounded-full opacity-70"
-        style={{
-          background:
-            "radial-gradient(closest-side, var(--color-primary-soft), transparent 70%)",
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── Header (heading + subtitle, varies per mode) ─────────────────────────
-function ModeHeading({ mode }: { mode: AuthMode }) {
-  const subtitle = SUBTITLE_BY_MODE[mode];
-  return (
-    <header className="text-center">
-      <h1
-        id="login-heading"
-        className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
-      >
-        Bienvenido a Lumi
-      </h1>
-      {subtitle ? (
-        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          {subtitle}
-        </p>
-      ) : null}
-    </header>
-  );
-}
-
-const SUBTITLE_BY_MODE: Record<AuthMode, string> = {
-  signin: "Inicia sesión con tu email y contraseña.",
-  signup: "Crea tu cuenta para empezar.",
-  "signup-sent": "Revisa tu correo",
-  forgot: "Recuperar contraseña",
-  "forgot-sent": "Te enviamos un enlace",
-};
-
-// ─── Password-visibility toggle input ─────────────────────────────────────
-function PasswordInput({
-  id,
-  value,
-  onChange,
-  autoComplete,
-  disabled,
-  ariaInvalid,
-  ariaDescribedBy,
-  placeholder,
-  autoFocus,
-}: {
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  autoComplete: string;
-  disabled?: boolean;
-  ariaInvalid?: boolean;
-  ariaDescribedBy?: string;
-  placeholder?: string;
-  autoFocus?: boolean;
-}) {
-  const [visible, setVisible] = React.useState(false);
-  return (
-    <div className="relative">
-      <Input
-        id={id}
-        name={id}
-        type={visible ? "text" : "password"}
-        autoComplete={autoComplete}
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-        autoFocus={autoFocus}
-        required
-        maxLength={128}
-        placeholder={placeholder ?? "••••••••"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        aria-invalid={ariaInvalid ? true : undefined}
-        aria-describedby={ariaDescribedBy}
-        className="h-12 rounded-xl px-4 pr-12 text-base"
-      />
-      <button
-        type="button"
-        onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
-        aria-pressed={visible}
-        tabIndex={-1}
-        className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      >
-        {visible ? (
-          <EyeOff size={18} aria-hidden="true" />
-        ) : (
-          <Eye size={18} aria-hidden="true" />
-        )}
-      </button>
-    </div>
-  );
-}
-
-// ─── Stub: name-only onboarding (no Supabase) ─────────────────────────────
-function NameOnlyForm() {
+function LoginInner() {
   const router = useRouter();
-  const { setName: persistName } = useUserName();
-  const [name, setName] = React.useState("");
-  const [submitted, setSubmitted] = React.useState(false);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const searchParams = useSearchParams();
+  const prefillEmail = (searchParams.get("email") ?? "").toLowerCase();
 
-  const trimmed = name.trim();
-  const isEmpty = trimmed.length === 0;
-  const showError = submitted && isEmpty;
+  const [step, setStep] = React.useState<Step>("email");
+  const [email, setEmail] = React.useState(prefillEmail);
+  const [pin, setPin] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setSubmitted(true);
-    if (isEmpty) return;
+  // Drawer info que aparece cuando el usuario aterriza con ?email= desde
+  // /register (caso 409 email_exists_verified): un "ya tienes cuenta"
+  // explicito antes de pedirle PIN.
+  const [prefillDrawerOpen, setPrefillDrawerOpen] = React.useState(false);
+  const [prefillNoticeShown, setPrefillNoticeShown] = React.useState(false);
+  React.useEffect(() => {
+    if (prefillEmail && !prefillNoticeShown) {
+      setPrefillNoticeShown(true);
+      setPrefillDrawerOpen(true);
+    }
+  }, [prefillEmail, prefillNoticeShown]);
 
-    setIsSubmitting(true);
-    void persistName(trimmed);
-    router.push("/dashboard");
+  function getDeviceSignals() {
+    return {
+      screenResolution:
+        typeof window !== "undefined"
+          ? `${window.screen.width}x${window.screen.height}`
+          : null,
+      timezone:
+        typeof Intl !== "undefined"
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : null,
+    };
   }
 
-  return (
-    <>
-      <header className="text-center">
-        <h1
-          id="login-heading"
-          className="font-sans text-3xl font-bold leading-tight tracking-tight text-foreground md:text-[34px]"
-        >
-          Bienvenido a Lumi
-        </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          ¿Cómo te llamas? Así te llamaremos desde aquí.
-        </p>
-      </header>
+  const trimmedEmail = email.trim();
+  const emailInvalid = !EMAIL_REGEX.test(trimmedEmail);
 
-      <form
-        noValidate
-        onSubmit={handleSubmit}
-        aria-busy={isSubmitting}
-        className="mt-8 space-y-4"
-      >
-        <div className="space-y-2">
-          <Label
-            htmlFor="login-name"
-            className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-          >
-            Tu nombre
-          </Label>
-          <Input
-            id="login-name"
-            name="name"
-            type="text"
-            autoComplete="given-name"
-            inputMode="text"
-            autoCapitalize="words"
-            autoCorrect="off"
-            spellCheck={false}
-            autoFocus
-            required
-            maxLength={40}
-            placeholder="Tu nombre"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (submitted) setSubmitted(false);
-            }}
-            disabled={isSubmitting}
-            aria-invalid={showError ? true : undefined}
-            aria-describedby={
-              showError ? "login-name-error" : "login-name-hint"
-            }
-            className="h-12 rounded-xl px-4 text-base"
-          />
-          {showError ? (
-            <p
-              id="login-name-error"
-              role="alert"
-              className="text-[13px] font-medium text-destructive"
-            >
-              Necesito un nombre para comenzar.
-            </p>
-          ) : (
-            <p
-              id="login-name-hint"
-              className="text-[12px] leading-relaxed text-muted-foreground"
-            >
-              Puedes cambiarlo después.
-            </p>
-          )}
-        </div>
-
-        <Button
-          type="submit"
-          disabled={isSubmitting || isEmpty}
-          className={cn(
-            "h-12 w-full rounded-xl text-[15px] font-semibold",
-            "transition-transform active:scale-[0.99]",
-          )}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2
-                size={16}
-                className="mr-2 animate-spin"
-                aria-hidden="true"
-              />
-              Comenzando…
-            </>
-          ) : (
-            "Comenzar"
-          )}
-        </Button>
-
-        <p className="pt-3 text-center text-[12px] leading-relaxed text-muted-foreground">
-          Al continuar, aceptas los{" "}
-          <a
-            href="#"
-            className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-          >
-            términos
-          </a>{" "}
-          y la{" "}
-          <a
-            href="#"
-            className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-          >
-            política de privacidad
-          </a>
-          .
-        </p>
-      </form>
-    </>
-  );
-}
-
-// ─── Real flow: Supabase email + password ─────────────────────────────────
-function PasswordAuthForm({
-  initialMode,
-  initialEmail,
-}: {
-  initialMode: AuthMode;
-  initialEmail: string;
-}) {
-  const router = useRouter();
-  const [mode, setMode] = React.useState<AuthMode>(initialMode);
-
-  // Shared state across modes. `email` seeds from ?email= so the redirect
-  // from /register (verified-duplicate branch) lands with the input filled.
-  const [email, setEmail] = React.useState(initialEmail);
-  const [prefillNoticeShown, setPrefillNoticeShown] = React.useState(false);
-  const [prefillDrawerOpen, setPrefillDrawerOpen] = React.useState(false);
-  const [password, setPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [submitted, setSubmitted] = React.useState(false);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [serverError, setServerError] = React.useState<string | null>(null);
-
-  // "Email not confirmed" surfaces a one-tap resend on the signin screen.
-  const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
-
-  // Cooldown timer shared by signup-sent and forgot-sent.
-  const [cooldown, setCooldown] = React.useState(0);
-
-  // ── Trusted-device PIN check ─────────────────────────────────────────
-  // On mount, if the user already has an active Supabase session AND a
-  // PIN configured AND this device is trusted, we flip to a Yape-style
-  // PIN-only screen. Otherwise we fall through to the existing email +
-  // password form. The `pinGate` state holds the resolution; null means
-  // "still checking" — we show a tiny spinner then.
-  type PinGate =
-    | { state: "checking" }
-    | { state: "pin-only" }
-    | { state: "password" };
-  const [pinGate, setPinGate] = React.useState<PinGate>({ state: "checking" });
-  const [pinValue, setPinValue] = React.useState("");
-  const [pinSubmitting, setPinSubmitting] = React.useState(false);
-  const [pinError, setPinError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const deviceSignals = {
-          screenResolution:
-            typeof window !== "undefined"
-              ? `${window.screen.width}x${window.screen.height}`
-              : null,
-          timezone:
-            typeof Intl !== "undefined"
-              ? Intl.DateTimeFormat().resolvedOptions().timeZone
-              : null,
-        };
-        const res = await fetch("/api/auth/check-device", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ deviceSignals }),
-        });
-        if (!res.ok) {
-          // 401 = no session, fall through to password screen.
-          if (!cancelled) setPinGate({ state: "password" });
-          return;
-        }
-        const data = (await res.json()) as { hasPin: boolean; trusted: boolean };
-        if (cancelled) return;
-        setPinGate({
-          state: data.hasPin && data.trusted ? "pin-only" : "password",
-        });
-      } catch {
-        if (!cancelled) setPinGate({ state: "password" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function handlePinSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pinSubmitting) return;
-    if (pinValue.length !== 4) {
-      setPinError("Ingresa los 4 dígitos del PIN.");
-      return;
-    }
-    setPinSubmitting(true);
-    setPinError(null);
+  async function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting || emailInvalid) return;
+    setSubmitting(true);
+    setErrorMsg(null);
     try {
-      const res = await fetch("/api/auth/verify-pin", {
+      const checkRes = await fetch("/api/auth/check-device", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pin: pinValue }),
+        body: JSON.stringify({
+          email: trimmedEmail,
+          deviceSignals: getDeviceSignals(),
+        }),
+      });
+      const checkData = (await checkRes.json().catch(() => ({}))) as {
+        exists?: boolean;
+        hasPin?: boolean;
+        trusted?: boolean;
+        error?: string;
+      };
+
+      if (!checkRes.ok) {
+        setErrorMsg(checkData.error ?? "No pudimos continuar.");
+        setSubmitting(false);
+        return;
+      }
+
+      if (!checkData.exists) {
+        setErrorMsg(
+          "No encontramos una cuenta con ese correo.",
+        );
+        setSubmitting(false);
+        return;
+      }
+
+      if (checkData.hasPin && checkData.trusted) {
+        setStep("pin");
+        setSubmitting(false);
+        return;
+      }
+
+      // Untrusted device or no PIN: route through new_device OTP.
+      const otpRes = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          purpose: "new_device",
+        }),
+      });
+      const otpData = (await otpRes.json().catch(() => ({}))) as {
+        error?: string;
+        delivered?: boolean;
+        devMode?: boolean;
+      };
+      if (!otpRes.ok) {
+        setErrorMsg(otpData.error ?? "No pudimos enviar el código.");
+        setSubmitting(false);
+        return;
+      }
+      if (otpData.devMode) {
+        toast.info("Modo dev: revisa la consola del servidor.");
+      }
+      router.push(
+        `/auth/verify-email?purpose=new_device&email=${encodeURIComponent(trimmedEmail)}`,
+      );
+    } catch (err) {
+      console.error("[login] email_submit:", err);
+      setErrorMsg("Error de red. Intenta otra vez.");
+      setSubmitting(false);
+    }
+  }
+
+  // Auto-submit when the 4 digits are filled.
+  React.useEffect(() => {
+    if (step !== "pin") return;
+    if (pin.length !== PIN_LENGTH) return;
+    if (submitting) return;
+    void submitPin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin, step]);
+
+  async function submitPin() {
+    if (submitting) return;
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/auth/login-with-pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          pin,
+          deviceSignals: getDeviceSignals(),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         attemptsRemaining?: number;
+        lockedUntil?: string | null;
       };
       if (!res.ok) {
-        setPinError(data.error ?? "PIN incorrecto.");
-        setPinValue("");
-        setPinSubmitting(false);
+        setErrorMsg(data.error ?? "No pudimos iniciar sesión.");
+        setPin("");
+        setSubmitting(false);
         return;
       }
-      router.replace("/dashboard");
-      router.refresh();
-    } catch {
-      setPinError("No pudimos verificar el PIN.");
-      setPinSubmitting(false);
+      // Hard navigate so SessionProvider re-mounts with the fresh cookie
+      // and (tabs)/layout's server-side guard sees the active session.
+      if (typeof window !== "undefined") {
+        window.location.assign("/dashboard");
+      }
+    } catch (err) {
+      console.error("[login] pin_submit:", err);
+      setErrorMsg("Error de red. Intenta otra vez.");
+      setPin("");
+      setSubmitting(false);
     }
   }
 
   async function handleForgotPin() {
-    if (pinSubmitting) return;
-    setPinSubmitting(true);
-    setPinError(null);
+    if (submitting) return;
+    setSubmitting(true);
+    setErrorMsg(null);
     try {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ purpose: "pin_reset" }),
+        body: JSON.stringify({
+          email: trimmedEmail,
+          // Reusing new_device because pin_reset still requires a session.
+          // The verify-email page reads ?next=set-pin and forces /auth/set-pin
+          // after the OTP regardless of hasPin, so the user gets a fresh PIN.
+          purpose: "new_device",
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -537,676 +246,163 @@ function PasswordAuthForm({
       };
       if (!res.ok) {
         toast.error(data.error ?? "No pudimos enviar el código.");
-        setPinSubmitting(false);
+        setSubmitting(false);
         return;
       }
       if (data.devMode) {
         toast.info("Modo dev: revisa la consola del servidor.");
-      } else {
-        toast.success("Te enviamos un código a tu correo.");
       }
-      router.push("/auth/verify-email?purpose=pin_reset");
-    } catch {
-      toast.error("No pudimos enviar el código.");
-      setPinSubmitting(false);
-    }
-  }
-
-  const trimmedEmail = email.trim();
-  const emailInvalid =
-    trimmedEmail.length === 0 || !EMAIL_REGEX.test(trimmedEmail);
-  const passwordTooShort = password.length < MIN_PASSWORD_LENGTH;
-  const passwordsMismatch = password !== confirmPassword;
-
-  // Tick the cooldown each second.
-  React.useEffect(() => {
-    if (cooldown <= 0) return;
-    const id = window.setInterval(() => {
-      setCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [cooldown]);
-
-  // Notify the user once when we land here with a prefilled email — they
-  // were redirected from /register because their account already exists.
-  // Drawer-style modal (vs. the previous Sonner toast) so the message is
-  // unmissable; the user has to acknowledge before they reach the form.
-  React.useEffect(() => {
-    if (initialEmail && !prefillNoticeShown) {
-      setPrefillNoticeShown(true);
-      setPrefillDrawerOpen(true);
-    }
-  }, [initialEmail, prefillNoticeShown]);
-
-  // When mode changes, drop transient validation/error UI but keep the email
-  // so users hopping signin → forgot don't have to retype.
-  function switchMode(next: AuthMode) {
-    setMode(next);
-    setSubmitted(false);
-    setServerError(null);
-    setNeedsConfirmation(false);
-  }
-
-  // ─── Submit handlers ────────────────────────────────────────────────────
-  async function handleSignin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setSubmitted(true);
-    if (emailInvalid || password.length === 0) return;
-
-    setIsSubmitting(true);
-    setServerError(null);
-    setNeedsConfirmation(false);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
-      if (error) {
-        // Surface the "email not confirmed" case explicitly so we can offer a
-        // resend button. Rate-limit gets its own message so the user knows to
-        // wait. Everything else falls back to a generic credentials message —
-        // we deliberately don't reveal whether the email exists.
-        console.error(
-          `[login] signin_failed status=${error.status ?? "unknown"} code=${error.code ?? "unknown"} message=${error.message}`,
-        );
-        const msg = error.message.toLowerCase();
-        if (msg.includes("not confirmed") || msg.includes("confirm")) {
-          setNeedsConfirmation(true);
-          setServerError(
-            "Confirma tu email primero. Revisa tu correo.",
-          );
-        } else if (error.status === 429 || msg.includes("rate")) {
-          toast.error(
-            "Demasiados intentos. Espera unos minutos antes de volver a probar.",
-          );
-        } else {
-          toast.error("Email o contraseña incorrectos.");
-        }
-        return;
-      }
-      router.push("/dashboard");
-      // Refresh server components so middleware picks up the new session.
-      router.refresh();
+      router.push(
+        `/auth/verify-email?purpose=new_device&email=${encodeURIComponent(trimmedEmail)}&next=set-pin`,
+      );
     } catch (err) {
-      console.error(
-        `[login] signin_threw message=${err instanceof Error ? err.message : String(err)}`,
-      );
-      toast.error("No pudimos iniciar sesión. Revisa tu conexión e intenta de nuevo.");
-    } finally {
-      setIsSubmitting(false);
+      console.error("[login] forgot_pin:", err);
+      toast.error("No pudimos enviar el código.");
+      setSubmitting(false);
     }
   }
 
-  async function handleSignup(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setSubmitted(true);
-    if (emailInvalid || passwordTooShort || passwordsMismatch) return;
-
-    setIsSubmitting(true);
-    setServerError(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signUp({
-        email: trimmedEmail,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-        },
-      });
-      if (error) {
-        const msg = error.message.toLowerCase();
-        if (
-          msg.includes("already registered") ||
-          msg.includes("already been registered") ||
-          msg.includes("user already")
-        ) {
-          toast.error("Ya tienes una cuenta con ese email. Inicia sesión.");
-          switchMode("signin");
-          return;
-        }
-        toast.error(error.message || "No pudimos crear la cuenta.");
-        return;
-      }
-      setMode("signup-sent");
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } catch {
-      toast.error("No pudimos crear la cuenta.");
-    } finally {
-      setIsSubmitting(false);
-    }
+  function handleStartOver() {
+    setStep("email");
+    setPin("");
+    setErrorMsg(null);
   }
 
-  async function handleForgot(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setSubmitted(true);
-    if (emailInvalid) return;
-
-    setIsSubmitting(true);
-    setServerError(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        trimmedEmail,
-        {
-          // Route through /auth/callback so the server handler exchanges the
-          // PKCE code and writes session cookies, then forwards to the
-          // reset-password form. Going directly to /auth/reset-password skips
-          // the exchange and the page can't see a session.
-          redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
-        },
-      );
-      if (error) {
-        toast.error(error.message || "No pudimos enviar el correo.");
-        return;
-      }
-      setMode("forgot-sent");
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } catch {
-      toast.error("No pudimos enviar el correo.");
-    } finally {
-      setIsSubmitting(false);
-    }
+  function handleKeypadDigit(d: string) {
+    if (submitting) return;
+    if (pin.length >= PIN_LENGTH) return;
+    setPin(pin + d);
+    if (errorMsg) setErrorMsg(null);
   }
 
-  async function handleResendSignup() {
-    if (cooldown > 0 || isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: trimmedEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-        },
-      });
-      if (error) {
-        toast.error("No pudimos reenviar el correo. Inténtalo más tarde.");
-        return;
-      }
-      toast.success("Correo reenviado");
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } finally {
-      setIsSubmitting(false);
-    }
+  function handleKeypadBackspace() {
+    if (submitting) return;
+    if (pin.length === 0) return;
+    setPin(pin.slice(0, -1));
+    if (errorMsg) setErrorMsg(null);
   }
 
-  async function handleResendForgot() {
-    if (cooldown > 0 || isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        trimmedEmail,
-        {
-          // Route through /auth/callback so the server handler exchanges the
-          // PKCE code and writes session cookies, then forwards to the
-          // reset-password form. Going directly to /auth/reset-password skips
-          // the exchange and the page can't see a session.
-          redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
-        },
-      );
-      if (error) {
-        toast.error("No pudimos reenviar el correo. Inténtalo más tarde.");
-        return;
-      }
-      toast.success("Correo reenviado");
-      setCooldown(RESEND_COOLDOWN_SECONDS);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleResendConfirmationFromSignin() {
-    if (isSubmitting || emailInvalid) return;
-    setIsSubmitting(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: trimmedEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-        },
-      });
-      if (error) {
-        toast.error("No pudimos reenviar el correo.");
-        return;
-      }
-      toast.success("Correo de confirmación reenviado.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  // ─── Trusted-device PIN screen (Yape style) ─────────────────────────────
-  // While `check-device` resolves, show a calm spinner instead of flashing
-  // the email form. After resolution, render either the PIN screen or fall
-  // through to the existing email+password modes.
-  if (pinGate.state === "checking") {
-    return (
-      <div
-        className="flex min-h-[180px] items-center justify-center"
-        aria-busy
-      >
-        <Loader2
-          size={20}
-          className="animate-spin text-muted-foreground"
-          aria-label="Cargando"
-        />
-      </div>
-    );
-  }
-
-  if (pinGate.state === "pin-only") {
-    return (
-      <form
-        onSubmit={handlePinSubmit}
-        className="mt-6 flex flex-col gap-4"
-        noValidate
-      >
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Hola de nuevo
-          </p>
-          <h2 className="mt-1 text-[20px] font-bold text-foreground">
-            Ingresa tu PIN
-          </h2>
-          <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
-            4 dígitos. Sigues conectado en este dispositivo.
-          </p>
-        </div>
-
-        <Input
-          type="password"
-          inputMode="numeric"
-          autoComplete="off"
-          autoFocus
-          value={pinValue}
-          onChange={(e) =>
-            setPinValue(e.target.value.replace(/\D/g, "").slice(0, 4))
-          }
-          placeholder="••••"
-          maxLength={4}
-          className="h-14 text-center text-[28px] font-bold tracking-[0.5em] tabular-nums"
-          aria-label="PIN de 4 dígitos"
-        />
-
-        {pinError && (
-          <div
-            role="alert"
-            className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
-          >
-            {pinError}
-          </div>
-        )}
-
-        <Button
-          type="submit"
-          disabled={pinSubmitting || pinValue.length !== 4}
-          className="h-11 w-full rounded-xl text-[14px] font-semibold"
-        >
-          {pinSubmitting ? (
-            <>
-              <Loader2 size={16} className="animate-spin" aria-hidden />
-              Verificando…
-            </>
-          ) : (
-            "Entrar"
-          )}
-        </Button>
-
-        <button
-          type="button"
-          onClick={handleForgotPin}
-          disabled={pinSubmitting}
-          className="text-center text-[13px] font-semibold text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Olvidé mi PIN
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setPinGate({ state: "password" });
-            setPinError(null);
-          }}
-          className="text-center text-[13px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Ingresa con tu correo
-        </button>
-      </form>
-    );
-  }
-
-  // ─── Sent-state cards (shared layout for signup-sent and forgot-sent) ───
-  if (mode === "signup-sent" || mode === "forgot-sent") {
-    const isSignupSent = mode === "signup-sent";
-    const heading = isSignupSent
-      ? "Revisa tu correo"
-      : "Te enviamos el enlace de recuperación";
-    const description = isSignupSent
-      ? "para confirmar tu cuenta. Tócalo para activarla."
-      : "y toca el link para crear una contraseña nueva.";
-    const onResend = isSignupSent ? handleResendSignup : handleResendForgot;
-
-    return (
-      <SentCard
-        heading={heading}
-        email={trimmedEmail}
-        description={description}
-        cooldown={cooldown}
-        isSubmitting={isSubmitting}
-        onResend={onResend}
-        onChangeEmail={() => switchMode(isSignupSent ? "signup" : "forgot")}
-        onBackToSignin={() => switchMode("signin")}
-      />
-    );
-  }
-
-  // ─── Forms ──────────────────────────────────────────────────────────────
   return (
-    <>
-      <ModeHeading mode={mode} />
-
-      {mode === "signin" ? (
-        <form
-          noValidate
-          onSubmit={handleSignin}
-          aria-busy={isSubmitting}
-          className="mt-8 space-y-4"
-        >
-          <EmailField
-            value={email}
-            onChange={(v) => {
-              setEmail(v);
-              if (submitted) setSubmitted(false);
-              if (serverError) setServerError(null);
-              if (needsConfirmation) setNeedsConfirmation(false);
-            }}
-            disabled={isSubmitting}
-            invalid={submitted && emailInvalid}
-            autoFocus
-          />
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="login-password"
-                className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-              >
-                Contraseña
-              </Label>
-              <button
-                type="button"
-                onClick={() => switchMode("forgot")}
-                className="text-[12px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
-              >
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
-            <PasswordInput
-              id="login-password"
-              value={password}
-              onChange={(v) => {
-                setPassword(v);
-                if (submitted) setSubmitted(false);
-                if (serverError) setServerError(null);
-              }}
-              autoComplete="current-password"
-              disabled={isSubmitting}
-              ariaInvalid={submitted && password.length === 0}
-            />
-            {submitted && password.length === 0 ? (
-              <p
-                role="alert"
-                className="text-[13px] font-medium text-destructive"
-              >
-                Ingresa tu contraseña.
-              </p>
-            ) : null}
-          </div>
-
-          {serverError ? (
-            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[13px] font-medium text-destructive">
-              {serverError}
-              {needsConfirmation ? (
-                <button
-                  type="button"
-                  onClick={handleResendConfirmationFromSignin}
-                  disabled={isSubmitting}
-                  className="ml-2 underline underline-offset-2 hover:no-underline disabled:opacity-60"
-                >
-                  Reenviar correo de confirmación
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            className={cn(
-              "h-12 w-full rounded-xl text-[15px] font-semibold",
-              "transition-transform active:scale-[0.99]",
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-                Iniciando sesión…
-              </>
-            ) : (
-              "Iniciar sesión"
-            )}
-          </Button>
-
-          <p className="pt-2 text-center text-[13px] text-muted-foreground">
-            ¿No tienes cuenta?{" "}
-            <a
-              href="/register"
-              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
-            >
-              Crear cuenta
-            </a>
-          </p>
-        </form>
-      ) : null}
-
-      {mode === "signup" ? (
-        <form
-          noValidate
-          onSubmit={handleSignup}
-          aria-busy={isSubmitting}
-          className="mt-8 space-y-4"
-        >
-          <EmailField
-            value={email}
-            onChange={(v) => {
-              setEmail(v);
-              if (submitted) setSubmitted(false);
-            }}
-            disabled={isSubmitting}
-            invalid={submitted && emailInvalid}
-            autoFocus
-          />
-
-          <div className="space-y-2">
-            <Label
-              htmlFor="signup-password"
-              className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-            >
-              Contraseña
-            </Label>
-            <PasswordInput
-              id="signup-password"
-              value={password}
-              onChange={(v) => {
-                setPassword(v);
-                if (submitted) setSubmitted(false);
-              }}
-              autoComplete="new-password"
-              disabled={isSubmitting}
-              ariaInvalid={submitted && passwordTooShort}
-              ariaDescribedBy="signup-password-hint"
-            />
-            <p
-              id="signup-password-hint"
-              className={cn(
-                "text-[12px] leading-relaxed",
-                submitted && passwordTooShort
-                  ? "text-destructive"
-                  : "text-muted-foreground",
-              )}
-            >
-              Mínimo {MIN_PASSWORD_LENGTH} caracteres.
+    <main className="relative flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8 text-foreground">
+      <div className="relative w-full max-w-[440px]">
+        <section className="rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
+          <header className="mb-6">
+            <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <KeyRound size={20} aria-hidden />
+            </span>
+            <h1 className="text-[22px] font-bold leading-tight text-foreground">
+              {step === "email" ? "Inicia sesión" : "Ingresa tu PIN"}
+            </h1>
+            <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
+              {step === "email"
+                ? `Bienvenido de vuelta a ${APP_NAME}. Te pediremos tu PIN si este dispositivo ya está autorizado.`
+                : `Hola${trimmedEmail ? `, ${trimmedEmail}` : ""}. Toca tu PIN de 4 dígitos.`}
             </p>
-          </div>
+          </header>
 
-          <div className="space-y-2">
-            <Label
-              htmlFor="signup-confirm"
-              className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-            >
-              Confirmar contraseña
-            </Label>
-            <PasswordInput
-              id="signup-confirm"
-              value={confirmPassword}
-              onChange={(v) => {
-                setConfirmPassword(v);
-                if (submitted) setSubmitted(false);
-              }}
-              autoComplete="new-password"
-              disabled={isSubmitting}
-              ariaInvalid={submitted && passwordsMismatch}
-            />
-            {submitted && passwordsMismatch ? (
-              <p
-                role="alert"
-                className="text-[13px] font-medium text-destructive"
+          {step === "email" ? (
+            <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="login-email">Correo</Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  placeholder="tu@correo.com"
+                  required
+                />
+              </div>
+
+              {errorMsg && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
+                >
+                  {errorMsg}
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                disabled={submitting || emailInvalid}
+                className={cn("h-11 w-full rounded-xl text-[14px] font-semibold")}
               >
-                Las contraseñas no coinciden.
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" aria-hidden />
+                    Verificando…
+                  </>
+                ) : (
+                  "Continuar"
+                )}
+              </Button>
+
+              <p className="text-center text-[12px] text-muted-foreground">
+                ¿No tienes cuenta?{" "}
+                <Link
+                  href="/register"
+                  className="font-semibold text-primary hover:underline"
+                >
+                  Crea una
+                </Link>
               </p>
-            ) : null}
-          </div>
+            </form>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <PinDots length={PIN_LENGTH} filled={pin.length} />
 
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            className={cn(
-              "h-12 w-full rounded-xl text-[15px] font-semibold",
-              "transition-transform active:scale-[0.99]",
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-                Creando cuenta…
-              </>
-            ) : (
-              "Crear cuenta"
-            )}
-          </Button>
+              {errorMsg && (
+                <div
+                  role="alert"
+                  className="mt-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-center text-[13px] text-destructive"
+                >
+                  {errorMsg}
+                </div>
+              )}
 
-          <p className="pt-2 text-center text-[13px] text-muted-foreground">
-            ¿Ya tienes cuenta?{" "}
-            <button
-              type="button"
-              onClick={() => switchMode("signin")}
-              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
-            >
-              Iniciar sesión
-            </button>
-          </p>
-        </form>
-      ) : null}
+              <Keypad
+                onDigit={handleKeypadDigit}
+                onBackspace={handleKeypadBackspace}
+                disabled={submitting}
+              />
 
-      {mode === "forgot" ? (
-        <form
-          noValidate
-          onSubmit={handleForgot}
-          aria-busy={isSubmitting}
-          className="mt-8 space-y-4"
-        >
-          <p className="text-[14px] leading-relaxed text-muted-foreground">
-            Ingresa tu email y te enviaremos un enlace para crear una contraseña
-            nueva.
-          </p>
-          <EmailField
-            value={email}
-            onChange={(v) => {
-              setEmail(v);
-              if (submitted) setSubmitted(false);
-            }}
-            disabled={isSubmitting}
-            invalid={submitted && emailInvalid}
-            autoFocus
-          />
-
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            className={cn(
-              "h-12 w-full rounded-xl text-[15px] font-semibold",
-              "transition-transform active:scale-[0.99]",
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-                Enviando…
-              </>
-            ) : (
-              "Enviar enlace de recuperación"
-            )}
-          </Button>
-
-          <p className="pt-2 text-center text-[13px] text-muted-foreground">
-            <button
-              type="button"
-              onClick={() => switchMode("signin")}
-              className="font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
-            >
-              Volver a iniciar sesión
-            </button>
-          </p>
-        </form>
-      ) : null}
-
-      <p className="pt-6 text-center text-[12px] leading-relaxed text-muted-foreground">
-        Al continuar, aceptas los{" "}
-        <a
-          href="#"
-          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-        >
-          términos
-        </a>{" "}
-        y la{" "}
-        <a
-          href="#"
-          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
-        >
-          política de privacidad
-        </a>
-        .
-      </p>
+              <div className="mt-3 flex flex-col items-center gap-2">
+                {submitting && (
+                  <span className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
+                    <Loader2 size={14} className="animate-spin" aria-hidden />
+                    Verificando…
+                  </span>
+                )}
+                {!submitting && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleForgotPin}
+                      className="text-[13px] font-semibold text-primary hover:underline"
+                    >
+                      Olvidé mi PIN
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStartOver}
+                      className="text-[12px] font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      Cambiar correo
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
 
       <ActionResultDrawer
         open={prefillDrawerOpen}
@@ -1214,179 +410,114 @@ function PasswordAuthForm({
         tone="info"
         title="Ya tienes cuenta"
         description={
-          initialEmail
-            ? `Encontramos una cuenta con ${initialEmail}. Inicia sesión para continuar.`
-            : "Encontramos una cuenta con este correo. Inicia sesión para continuar."
+          prefillEmail
+            ? `Encontramos una cuenta con ${prefillEmail}. Ingresa tu PIN para continuar.`
+            : "Encontramos una cuenta con este correo. Ingresa tu PIN para continuar."
         }
         closeLabel="Entendido"
       />
-    </>
+    </main>
   );
 }
 
-// ─── Reusable email field (signin/signup/forgot share it) ─────────────────
-function EmailField({
-  value,
-  onChange,
-  disabled,
-  invalid,
-  autoFocus,
+function PinDots({
+  length,
+  filled,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  invalid?: boolean;
-  autoFocus?: boolean;
+  length: number;
+  filled: number;
 }) {
   return (
-    <div className="space-y-2">
-      <Label
-        htmlFor="login-email"
-        className="text-[13px] font-semibold uppercase tracking-[0.04em] text-muted-foreground"
-      >
-        Tu email
-      </Label>
-      <Input
-        id="login-email"
-        name="email"
-        type="email"
-        autoComplete="email"
-        inputMode="email"
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-        autoFocus={autoFocus}
-        required
-        maxLength={254}
-        placeholder="tu@email.com"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        aria-invalid={invalid ? true : undefined}
-        aria-describedby={invalid ? "login-email-error" : undefined}
-        className="h-12 rounded-xl px-4 text-base"
-      />
-      {invalid ? (
-        <p
-          id="login-email-error"
-          role="alert"
-          className="text-[13px] font-medium text-destructive"
-        >
-          Ingresa un email válido.
-        </p>
-      ) : null}
+    <div
+      role="img"
+      aria-label={`PIN: ${filled} de ${length} dígitos`}
+      className="flex items-center justify-center gap-4 py-3"
+    >
+      {Array.from({ length }, (_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={cn(
+            "h-3.5 w-3.5 rounded-full transition-colors",
+            i < filled ? "bg-primary" : "border-2 border-border bg-transparent",
+          )}
+        />
+      ))}
     </div>
   );
 }
 
-// ─── Sent card (shared by signup-sent and forgot-sent) ────────────────────
-function SentCard({
-  heading,
-  email,
-  description,
-  cooldown,
-  isSubmitting,
-  onResend,
-  onChangeEmail,
-  onBackToSignin,
+const KEYPAD_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+
+function Keypad({
+  onDigit,
+  onBackspace,
+  disabled,
 }: {
-  heading: string;
-  email: string;
-  description: string;
-  cooldown: number;
-  isSubmitting: boolean;
-  onResend: () => void;
-  onChangeEmail: () => void;
-  onBackToSignin: () => void;
+  onDigit: (d: string) => void;
+  onBackspace: () => void;
+  disabled?: boolean;
 }) {
-  // Move focus to the resend button so screen readers announce the new state.
-  const resendBtnRef = React.useRef<HTMLButtonElement | null>(null);
-  React.useEffect(() => {
-    resendBtnRef.current?.focus();
-  }, []);
-
   return (
-    <section
-      role="status"
-      aria-live="polite"
-      aria-labelledby="sent-card-heading"
-      className="animate-in fade-in slide-in-from-bottom-2 duration-500"
+    <div className="mt-4 grid grid-cols-3 gap-3">
+      {KEYPAD_DIGITS.map((d) => (
+        <KeypadButton
+          key={d}
+          onClick={() => onDigit(d)}
+          disabled={disabled}
+          ariaLabel={`Dígito ${d}`}
+        >
+          {d}
+        </KeypadButton>
+      ))}
+      <span aria-hidden />
+      <KeypadButton
+        onClick={() => onDigit("0")}
+        disabled={disabled}
+        ariaLabel="Dígito 0"
+      >
+        0
+      </KeypadButton>
+      <KeypadButton
+        onClick={onBackspace}
+        disabled={disabled}
+        ariaLabel="Borrar último dígito"
+        variant="utility"
+      >
+        <Delete size={22} aria-hidden />
+      </KeypadButton>
+    </div>
+  );
+}
+
+function KeypadButton({
+  children,
+  onClick,
+  disabled,
+  ariaLabel,
+  variant = "digit",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  variant?: "digit" | "utility";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className={cn(
+        "flex h-16 items-center justify-center rounded-2xl border border-border",
+        "text-[24px] font-semibold tabular-nums transition-colors",
+        "active:scale-[0.97] active:bg-primary/10",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        variant === "utility" ? "text-muted-foreground" : "text-foreground",
+      )}
     >
-      <div className="text-center">
-        <div
-          aria-hidden="true"
-          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
-        >
-          <MailCheck size={26} strokeWidth={2} />
-        </div>
-
-        <h2
-          id="sent-card-heading"
-          className="mt-5 font-sans text-2xl font-bold leading-tight tracking-tight text-foreground md:text-[28px]"
-        >
-          {heading}
-        </h2>
-
-        <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-          Te enviamos un correo a
-        </p>
-        <p className="mt-1 break-all text-[15px] font-semibold tracking-tight text-foreground">
-          {email}
-        </p>
-        <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-
-        <div className="mt-6 flex flex-col gap-3">
-          <Button
-            ref={resendBtnRef}
-            type="button"
-            variant="secondary"
-            onClick={onResend}
-            disabled={cooldown > 0 || isSubmitting}
-            aria-live="polite"
-            className={cn(
-              "h-11 w-full rounded-xl text-[14px] font-semibold",
-              "transition-transform active:scale-[0.99]",
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-                Reenviando…
-              </>
-            ) : cooldown > 0 ? (
-              `Reenviar en ${cooldown}s`
-            ) : (
-              "Reenviar correo"
-            )}
-          </Button>
-
-          <button
-            type="button"
-            onClick={onChangeEmail}
-            className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            ¿No es tu correo? <span className="underline">Cambiar</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onBackToSignin}
-            className="self-center rounded-sm text-[13px] font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            Volver a iniciar sesión
-          </button>
-        </div>
-      </div>
-
-      <p className="mt-5 px-2 text-center text-[12px] leading-relaxed text-muted-foreground">
-        Si no lo ves en unos minutos, revisa la carpeta de spam o promociones.
-      </p>
-    </section>
+      {children}
+    </button>
   );
 }
