@@ -45,6 +45,7 @@ async function recoverFromStaleSession(
       window.localStorage.removeItem("lumi-goals");
       window.localStorage.removeItem("lumi-user-name");
       window.localStorage.removeItem("lumi_seen_intro");
+      window.localStorage.removeItem("lumi-last-email");
     } catch {
       // storage disabled
     }
