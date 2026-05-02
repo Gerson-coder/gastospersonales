@@ -1,5 +1,6 @@
 /**
- * /auth/set-pin — third step of the new auth flow.
+ * /auth/set-pin — third step of the new auth flow (also reused for PIN
+ * recovery).
  *
  * The user has verified their email; now they pick a 4-digit PIN. This
  * is what they'll type every time they open the app on a trusted device
@@ -7,24 +8,35 @@
  * also mark the current device as trusted so the next /login can skip
  * the email path.
  *
- * Two stages on the same screen:
- *   1. Type PIN
- *   2. Confirm by typing again
- *
- * The page also reads the device signals (screen + tz) and posts them
- * with the PIN so the server can compute the fingerprint hash.
+ * UI: 4 dot indicators + a custom 3x4 numeric keypad (no native keyboard
+ * on mobile). Two stages on the same screen: type → confirm.
  */
 
 "use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2 } from "lucide-react";
+import { Delete, KeyRound, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+const PIN_LENGTH = 4;
+const TRIVIAL_PINS = new Set([
+  "0000",
+  "1111",
+  "2222",
+  "3333",
+  "4444",
+  "5555",
+  "6666",
+  "7777",
+  "8888",
+  "9999",
+  "1234",
+  "4321",
+]);
 
 type Stage = "create" | "confirm";
 
@@ -36,33 +48,46 @@ export default function SetPinPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  function handleCreateNext(e: React.FormEvent) {
-    e.preventDefault();
-    setErrorMsg(null);
+  const activeValue = stage === "create" ? pin : confirmPin;
+  const setActiveValue = stage === "create" ? setPin : setConfirmPin;
+
+  // Auto-advance from "create" to "confirm" once 4 digits are filled.
+  React.useEffect(() => {
+    if (stage !== "create") return;
+    if (pin.length !== PIN_LENGTH) return;
     if (!/^\d{4}$/.test(pin)) {
-      setErrorMsg("El PIN debe ser de 4 dígitos.");
+      setErrorMsg("El PIN debe tener 4 dígitos.");
       return;
     }
-    if (["0000", "1111", "1234", "4321"].includes(pin)) {
+    if (TRIVIAL_PINS.has(pin)) {
       setErrorMsg("Elige un PIN menos predecible.");
       return;
     }
-    setStage("confirm");
-  }
+    setErrorMsg(null);
+    const id = window.setTimeout(() => setStage("confirm"), 180);
+    return () => window.clearTimeout(id);
+  }, [pin, stage]);
 
-  async function handleConfirmSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // Auto-submit once confirm has 4 digits.
+  React.useEffect(() => {
+    if (stage !== "confirm") return;
+    if (confirmPin.length !== PIN_LENGTH) return;
+    if (submitting) return;
+    void submitPin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmPin, stage]);
+
+  async function submitPin() {
     if (submitting) return;
     setErrorMsg(null);
     if (confirmPin !== pin) {
-      setErrorMsg("Los PINs no coinciden.");
+      setErrorMsg("Los PIN no coinciden.");
+      // Reset confirm so the user can retry without backspacing.
+      setConfirmPin("");
       return;
     }
     setSubmitting(true);
 
-    // Capture client-side signals — the server combines them with the
-    // request headers (UA + Accept-Language) to compute the device
-    // fingerprint hash.
     const deviceSignals = {
       screenResolution:
         typeof window !== "undefined"
@@ -84,14 +109,16 @@ export default function SetPinPage() {
       if (!res.ok) {
         setErrorMsg(data.error ?? "No pudimos guardar tu PIN.");
         setSubmitting(false);
+        setConfirmPin("");
         return;
       }
       toast.success("Listo. Ya puedes ingresar con tu PIN.");
-      router.push("/dashboard");
+      router.push("/onboarding/account");
     } catch (err) {
       console.error("[set-pin] submit:", err);
       setErrorMsg("Error de red. Intenta otra vez.");
       setSubmitting(false);
+      setConfirmPin("");
     }
   }
 
@@ -100,6 +127,20 @@ export default function SetPinPage() {
     setConfirmPin("");
     setErrorMsg(null);
     setStage("create");
+  }
+
+  function handleKeypadDigit(d: string) {
+    if (submitting) return;
+    if (activeValue.length >= PIN_LENGTH) return;
+    setActiveValue(activeValue + d);
+    if (errorMsg) setErrorMsg(null);
+  }
+
+  function handleKeypadBackspace() {
+    if (submitting) return;
+    if (activeValue.length === 0) return;
+    setActiveValue(activeValue.slice(0, -1));
+    if (errorMsg) setErrorMsg(null);
   }
 
   return (
@@ -115,109 +156,158 @@ export default function SetPinPage() {
             </h1>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
               {stage === "create"
-                ? "Será tu acceso rápido en este dispositivo. Elige 4 dígitos que recuerdes."
+                ? "Usarás este PIN para ingresar a la app en este dispositivo."
                 : "Ingresa el mismo PIN otra vez para confirmar."}
             </p>
           </header>
 
-          {stage === "create" ? (
-            <form onSubmit={handleCreateNext} className="flex flex-col gap-4">
-              <PinInput
-                value={pin}
-                onChange={setPin}
-                ariaLabel="PIN de 4 dígitos"
-              />
-              {errorMsg && (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
-                >
-                  {errorMsg}
-                </div>
-              )}
-              <Button
-                type="submit"
-                disabled={pin.length !== 4}
-                className={cn("h-11 w-full rounded-xl text-[14px] font-semibold")}
-              >
-                Continuar
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleConfirmSubmit} className="flex flex-col gap-4">
-              <PinInput
-                value={confirmPin}
-                onChange={setConfirmPin}
-                ariaLabel="Confirma tu PIN"
-                autoFocus
-              />
-              {errorMsg && (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[13px] text-destructive"
-                >
-                  {errorMsg}
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
-                <Button
-                  type="submit"
-                  disabled={submitting || confirmPin.length !== 4}
-                  className={cn("h-11 w-full rounded-xl text-[14px] font-semibold")}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" aria-hidden />
-                      Guardando…
-                    </>
-                  ) : (
-                    "Confirmar y entrar"
-                  )}
-                </Button>
-                <button
-                  type="button"
-                  onClick={handleStartOver}
-                  className="text-center text-[12px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Volver a elegir PIN
-                </button>
-              </div>
-            </form>
+          <PinDots
+            length={PIN_LENGTH}
+            filled={activeValue.length}
+            ariaLabel={stage === "create" ? "PIN" : "Confirmación de PIN"}
+          />
+
+          {errorMsg && (
+            <div
+              role="alert"
+              className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-center text-[13px] text-destructive"
+            >
+              {errorMsg}
+            </div>
           )}
+
+          <Keypad
+            onDigit={handleKeypadDigit}
+            onBackspace={handleKeypadBackspace}
+            disabled={submitting}
+          />
+
+          <div className="mt-4 flex flex-col items-center gap-3">
+            {submitting && (
+              <span className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" aria-hidden />
+                Guardando…
+              </span>
+            )}
+            {stage === "confirm" && !submitting && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleStartOver}
+                className="h-9 text-[13px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                Volver a elegir PIN
+              </Button>
+            )}
+          </div>
         </section>
       </div>
     </main>
   );
 }
 
-/**
- * Single 4-digit text field styled like the OTP input. Uses
- * `inputMode="numeric"` + `autoComplete="off"` so iOS / Android show the
- * numeric keypad without proposing autofill suggestions.
- */
-function PinInput({
-  value,
-  onChange,
+function PinDots({
+  length,
+  filled,
   ariaLabel,
-  autoFocus,
 }: {
-  value: string;
-  onChange: (v: string) => void;
+  length: number;
+  filled: number;
   ariaLabel: string;
-  autoFocus?: boolean;
 }) {
   return (
-    <Input
-      type="password"
-      inputMode="numeric"
-      autoComplete="off"
-      autoFocus={autoFocus ?? true}
-      value={value}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
-      placeholder="••••"
-      maxLength={4}
-      className="h-14 text-center text-[28px] font-bold tracking-[0.5em] tabular-nums"
+    <div
+      role="img"
+      aria-label={`${ariaLabel}: ${filled} de ${length} dígitos`}
+      className="flex items-center justify-center gap-4 py-3"
+    >
+      {Array.from({ length }, (_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={cn(
+            "h-3.5 w-3.5 rounded-full transition-colors",
+            i < filled ? "bg-primary" : "border-2 border-border bg-transparent",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+const KEYPAD_DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+
+function Keypad({
+  onDigit,
+  onBackspace,
+  disabled,
+}: {
+  onDigit: (d: string) => void;
+  onBackspace: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mt-6 grid grid-cols-3 gap-3">
+      {KEYPAD_DIGITS.map((d) => (
+        <KeypadButton
+          key={d}
+          onClick={() => onDigit(d)}
+          disabled={disabled}
+          ariaLabel={`Dígito ${d}`}
+        >
+          {d}
+        </KeypadButton>
+      ))}
+      <span aria-hidden />
+      <KeypadButton
+        onClick={() => onDigit("0")}
+        disabled={disabled}
+        ariaLabel="Dígito 0"
+      >
+        0
+      </KeypadButton>
+      <KeypadButton
+        onClick={onBackspace}
+        disabled={disabled}
+        ariaLabel="Borrar último dígito"
+        variant="utility"
+      >
+        <Delete size={22} aria-hidden />
+      </KeypadButton>
+    </div>
+  );
+}
+
+function KeypadButton({
+  children,
+  onClick,
+  disabled,
+  ariaLabel,
+  variant = "digit",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  variant?: "digit" | "utility";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
       aria-label={ariaLabel}
-    />
+      className={cn(
+        "flex h-16 items-center justify-center rounded-2xl border border-border",
+        "text-[24px] font-semibold tabular-nums transition-colors",
+        "active:scale-[0.97] active:bg-primary/10",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "digit"
+          ? "bg-background text-foreground hover:border-primary/40 hover:bg-primary/5"
+          : "bg-muted/40 text-muted-foreground hover:bg-muted",
+      )}
+    >
+      {children}
+    </button>
   );
 }

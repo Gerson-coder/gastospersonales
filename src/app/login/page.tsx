@@ -518,6 +518,38 @@ function PasswordAuthForm({
     }
   }
 
+  async function handleForgotPin() {
+    if (pinSubmitting) return;
+    setPinSubmitting(true);
+    setPinError(null);
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ purpose: "pin_reset" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        delivered?: boolean;
+        devMode?: boolean;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "No pudimos enviar el código.");
+        setPinSubmitting(false);
+        return;
+      }
+      if (data.devMode) {
+        toast.info("Modo dev: revisa la consola del servidor.");
+      } else {
+        toast.success("Te enviamos un código a tu correo.");
+      }
+      router.push("/auth/verify-email?purpose=pin_reset");
+    } catch {
+      toast.error("No pudimos enviar el código.");
+      setPinSubmitting(false);
+    }
+  }
+
   const trimmedEmail = email.trim();
   const emailInvalid =
     trimmedEmail.length === 0 || !EMAIL_REGEX.test(trimmedEmail);
@@ -823,6 +855,15 @@ function PasswordAuthForm({
             "Entrar"
           )}
         </Button>
+
+        <button
+          type="button"
+          onClick={handleForgotPin}
+          disabled={pinSubmitting}
+          className="text-center text-[13px] font-semibold text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Olvidé mi PIN
+        </button>
 
         <button
           type="button"

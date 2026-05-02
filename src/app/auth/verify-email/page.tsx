@@ -1,36 +1,91 @@
 /**
- * /auth/verify-email — second step of the new auth flow.
+ * /auth/verify-email — OTP entry screen for three flows:
+ *   - email_verification (default) → on success, /onboarding/name
+ *   - pin_reset                     → on success, /auth/set-pin
+ *   - new_device                    → on success, /dashboard
  *
- * The user landed here from /register; they're signed in but their
- * email_verified_at is still NULL. They type the 6-digit OTP that arrived
- * in their inbox; we POST to /api/auth/verify-otp; on success we route
- * them to /auth/set-pin.
+ * The flow is selected via `?purpose=...`. The 6-digit code lands in six
+ * individual cells with paste-fill, auto-advance, and backspace-back.
  *
- * Resend is throttled to 3 codes per 10 minutes per (user, purpose) on
- * the server. The "Reenviar código" button has its own client-side
- * cooldown to discourage trigger-happy retries.
+ * Resend is throttled server-side (3 codes / 10 min / purpose). The
+ * "Reenviar código" button gets its own client-side cooldown so the user
+ * doesn't get rate-limited from a fat finger.
  */
 
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const RESEND_COOLDOWN_SECONDS = 45;
 
+type OtpPurpose = "email_verification" | "new_device" | "pin_reset";
+const VALID_PURPOSES: ReadonlyArray<OtpPurpose> = [
+  "email_verification",
+  "new_device",
+  "pin_reset",
+];
+
+const NEXT_BY_PURPOSE: Record<OtpPurpose, string> = {
+  email_verification: "/onboarding/name",
+  new_device: "/dashboard",
+  pin_reset: "/auth/set-pin",
+};
+
+const TITLE_BY_PURPOSE: Record<OtpPurpose, string> = {
+  email_verification: "Verifica tu correo",
+  new_device: "Verifica este dispositivo",
+  pin_reset: "Recupera tu PIN",
+};
+
+const SUCCESS_TOAST_BY_PURPOSE: Record<OtpPurpose, string> = {
+  email_verification: "Correo verificado.",
+  new_device: "Dispositivo verificado.",
+  pin_reset: "Código verificado. Crea tu nuevo PIN.",
+};
+
 export default function VerifyEmailPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <main className="flex min-h-[100dvh] items-center justify-center bg-background">
+          <Loader2
+            size={20}
+            className="animate-spin text-muted-foreground"
+            aria-label="Cargando"
+          />
+        </main>
+      }
+    >
+      <VerifyEmailInner />
+    </React.Suspense>
+  );
+}
+
+function VerifyEmailInner() {
   const router = useRouter();
-  const [code, setCode] = React.useState("");
+  const searchParams = useSearchParams();
+  const purposeParam = searchParams.get("purpose");
+  const purpose: OtpPurpose = VALID_PURPOSES.includes(
+    purposeParam as OtpPurpose,
+  )
+    ? (purposeParam as OtpPurpose)
+    : "email_verification";
+
+  const [digits, setDigits] = React.useState<string[]>(() =>
+    Array.from({ length: 6 }, () => ""),
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
+
+  const code = digits.join("");
 
   // Tick down the resend cooldown each second.
   React.useEffect(() => {
@@ -42,11 +97,9 @@ export default function VerifyEmailPage() {
     return () => window.clearTimeout(id);
   }, [resendCountdown]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitCode(value: string) {
     if (submitting) return;
-    const trimmed = code.replace(/\D/g, "").slice(0, 6);
-    if (trimmed.length !== 6) {
+    if (value.length !== 6) {
       setErrorMsg("Ingresa los 6 dígitos del código.");
       return;
     }
@@ -57,7 +110,7 @@ export default function VerifyEmailPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: trimmed, purpose: "email_verification" }),
+        body: JSON.stringify({ code: value, purpose }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -65,13 +118,18 @@ export default function VerifyEmailPage() {
         setSubmitting(false);
         return;
       }
-      toast.success("Correo verificado.");
-      router.push("/auth/set-pin");
+      toast.success(SUCCESS_TOAST_BY_PURPOSE[purpose]);
+      router.push(NEXT_BY_PURPOSE[purpose]);
     } catch (err) {
       console.error("[verify-email] submit:", err);
       setErrorMsg("No pudimos verificar el código.");
       setSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void submitCode(code);
   }
 
   async function handleResend() {
@@ -80,7 +138,7 @@ export default function VerifyEmailPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ purpose: "email_verification" }),
+        body: JSON.stringify({ purpose }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -111,7 +169,7 @@ export default function VerifyEmailPage() {
               <MailCheck size={20} aria-hidden />
             </span>
             <h1 className="text-[22px] font-bold leading-tight text-foreground">
-              Verifica tu correo
+              {TITLE_BY_PURPOSE[purpose]}
             </h1>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
               Te enviamos un código de 6 dígitos. Ingrésalo abajo para
@@ -120,17 +178,17 @@ export default function VerifyEmailPage() {
           </header>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              className="h-14 text-center text-[28px] font-bold tracking-[0.4em] tabular-nums"
-              aria-label="Código de 6 dígitos"
+            <OtpCells
+              digits={digits}
+              onChange={(next) => {
+                setDigits(next);
+                if (errorMsg) setErrorMsg(null);
+                const joined = next.join("");
+                if (joined.length === 6) {
+                  void submitCode(joined);
+                }
+              }}
+              disabled={submitting}
             />
 
             {errorMsg && (
@@ -176,5 +234,108 @@ export default function VerifyEmailPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+/**
+ * 6-cell OTP input with paste-fill + auto-advance + backspace-back.
+ * Keeps the same 6-digit semantics — only the visual changes.
+ */
+function OtpCells({
+  digits,
+  onChange,
+  disabled,
+}: {
+  digits: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const refs = React.useRef<Array<HTMLInputElement | null>>([]);
+
+  // Auto-focus the first cell on mount.
+  React.useEffect(() => {
+    refs.current[0]?.focus();
+  }, []);
+
+  function handleCellChange(idx: number, raw: string) {
+    const onlyDigits = raw.replace(/\D/g, "");
+    if (onlyDigits.length === 0) {
+      const next = digits.slice();
+      next[idx] = "";
+      onChange(next);
+      return;
+    }
+    // If the user pasted multiple chars into one cell, distribute them.
+    const next = digits.slice();
+    let cursor = idx;
+    for (const ch of onlyDigits) {
+      if (cursor >= next.length) break;
+      next[cursor] = ch;
+      cursor += 1;
+    }
+    onChange(next);
+    const focusIdx = Math.min(cursor, next.length - 1);
+    refs.current[focusIdx]?.focus();
+  }
+
+  function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && !digits[idx] && idx > 0) {
+      e.preventDefault();
+      const next = digits.slice();
+      next[idx - 1] = "";
+      onChange(next);
+      refs.current[idx - 1]?.focus();
+      return;
+    }
+    if (e.key === "ArrowLeft" && idx > 0) {
+      e.preventDefault();
+      refs.current[idx - 1]?.focus();
+      return;
+    }
+    if (e.key === "ArrowRight" && idx < digits.length - 1) {
+      e.preventDefault();
+      refs.current[idx + 1]?.focus();
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!text) return;
+    e.preventDefault();
+    const next = Array.from({ length: 6 }, (_, i) => text[i] ?? "");
+    onChange(next);
+    const focusIdx = Math.min(text.length, 5);
+    refs.current[focusIdx]?.focus();
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-2" role="group" aria-label="Código de 6 dígitos">
+      {digits.map((d, idx) => (
+        <input
+          key={idx}
+          ref={(el) => {
+            refs.current[idx] = el;
+          }}
+          type="text"
+          inputMode="numeric"
+          autoComplete={idx === 0 ? "one-time-code" : "off"}
+          maxLength={1}
+          value={d}
+          disabled={disabled}
+          onChange={(e) => handleCellChange(idx, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(idx, e)}
+          onPaste={handlePaste}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label={`Dígito ${idx + 1}`}
+          className={cn(
+            "h-14 w-12 rounded-xl border border-input bg-background",
+            "text-center text-[24px] font-bold tabular-nums text-foreground",
+            "outline-none transition-colors",
+            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+            "disabled:opacity-60",
+          )}
+        />
+      ))}
+    </div>
   );
 }
