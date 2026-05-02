@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 // eslint-disable-next-line no-restricted-imports -- service-role required to delete receipts + storage objects across all users
 import { createAdminClient } from "@/lib/supabase/admin";
-import { serverEnv } from "@/lib/env";
+
+// Force Node runtime + dynamic execution. The cron target must NOT be
+// prerendered or evaluated for static analysis at build time — it
+// reads process.env.CRON_SECRET, calls Supabase admin, and deletes
+// rows. None of that is safe to run during build.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 /**
  * POST /api/ocr/cleanup-expired
@@ -36,9 +42,11 @@ const MAX_BATCHES = 50;
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
-  const expected = serverEnv.CRON_SECRET
-    ? `Bearer ${serverEnv.CRON_SECRET}`
-    : null;
+  // Read process.env directly inside the handler — keeps the module
+  // evaluation cheap so Next 16's build-time route analysis doesn't
+  // trip over an env-var lookup on a route that's strictly runtime.
+  const cronSecret = process.env.CRON_SECRET;
+  const expected = cronSecret ? `Bearer ${cronSecret}` : null;
 
   // If no CRON_SECRET is configured, refuse — never run this in prod
   // without auth, and never expose a public mass-delete endpoint.

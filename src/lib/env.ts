@@ -10,13 +10,27 @@ const clientSchema = z.object({
 
 // Schema for variables ONLY the server may read.
 // Reading these from a client bundle MUST throw at module init.
+// Helper: treat "" as absent so missing or empty env vars both validate
+// as `undefined`. This matters during Next 16 build-time page-data
+// collection — env vars that aren't part of the build environment may
+// surface as empty strings rather than `undefined`, which a strict
+// `.min(1).optional()` would reject and crash module load.
+const optionalNonEmpty = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" ? undefined : v));
+
 const serverSchema = z.object({
+  // Required. The app cannot serve any data without it.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  // Optional at the env level — runtime callers (lib/ocr/client.ts)
+  // throw a typed error when missing, so the failure mode is reported
+  // by the OCR pipeline instead of crashing the build.
+  OPENAI_API_KEY: optionalNonEmpty,
   // Bearer token Vercel Cron sends as `Authorization: Bearer <secret>`.
-  // Optional in dev so local boots succeed; required in prod for the
-  // cleanup-expired route to authorize the caller.
-  CRON_SECRET: z.string().min(16).optional(),
+  // Optional in dev so local boots succeed; the cleanup-expired route
+  // refuses to run when this is missing.
+  CRON_SECRET: optionalNonEmpty,
 });
 
 function parseOrThrow<T extends z.ZodTypeAny>(

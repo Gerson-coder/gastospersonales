@@ -7,6 +7,13 @@ import { extractFromImage } from "@/lib/ocr";
 import type { ExtractedReceipt, OcrModel, OcrSource } from "@/lib/ocr/types";
 import type { Currency } from "@/lib/supabase/types";
 
+// Runtime-only: uses Buffer, crypto.randomUUID, and the OpenAI fetch.
+// Force Node runtime so we never get accidentally pushed onto Edge,
+// and force dynamic so Next never tries to prerender or statically
+// analyze this route at build time.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * POST /api/ocr/extract
  *
