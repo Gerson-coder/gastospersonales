@@ -43,6 +43,7 @@ import {
   Trash2,
   RotateCcw,
   Wallet,
+  UserX,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -1030,10 +1031,12 @@ const ACCOUNT_KIND_OPTIONS: AccountKind[] = [
  */
 function DangerZoneCard() {
   const router = useRouter();
+  const session = useSession();
 
   const [resetCatsOpen, setResetCatsOpen] = React.useState(false);
   const [resetAccountsOpen, setResetAccountsOpen] = React.useState(false);
   const [factoryOpen, setFactoryOpen] = React.useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
   // For the accounts sub-flow we use an "armed" pattern: tapping a button
@@ -1046,6 +1049,11 @@ function DangerZoneCard() {
 
   // Factory reset confirm — user must type BORRAR exactly.
   const [factoryConfirmText, setFactoryConfirmText] = React.useState("");
+
+  // Account deletion confirm — user must type ELIMINAR exactly. Different
+  // word from the factory-reset confirmation so a fast-tap doesn't slip
+  // from "wipe my data" into "delete my account".
+  const [deleteConfirmText, setDeleteConfirmText] = React.useState("");
 
   // Result-acknowledgement drawer — replaces the green sonner toast for
   // every destructive action below. The user explicitly asked for the
@@ -1069,6 +1077,9 @@ function DangerZoneCard() {
   React.useEffect(() => {
     if (!factoryOpen) setFactoryConfirmText("");
   }, [factoryOpen]);
+  React.useEffect(() => {
+    if (!deleteAccountOpen) setDeleteConfirmText("");
+  }, [deleteAccountOpen]);
 
   async function handleResetCategories() {
     setSubmitting(true);
@@ -1139,6 +1150,61 @@ function DangerZoneCard() {
           : "No pudimos restablecer la cuenta.";
       toast.error(message);
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirmText !== "ELIMINAR") return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "ELIMINAR" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: boolean;
+      };
+      if (!res.ok || !data.ok) {
+        toast.error(
+          data.error === "missing_confirmation"
+            ? "Confirmación inválida."
+            : "No pudimos eliminar tu cuenta. Intenta otra vez.",
+        );
+        setSubmitting(false);
+        return;
+      }
+
+      // The account is gone. Clear local-only stores so the next login (if
+      // the user ever creates a fresh account on the same browser) starts
+      // truly empty — no stale theme/currency/budgets/goals tied to the
+      // deleted identity.
+      try {
+        const supabase = createSupabaseClient();
+        await supabase.auth.signOut();
+      } catch {
+        // Server already invalidated the session; client-side signOut is
+        // belt-and-suspenders. Failure here is fine.
+      }
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("lumi-prefs");
+          window.localStorage.removeItem("lumi-budgets");
+          window.localStorage.removeItem("lumi-goals");
+          window.localStorage.removeItem("lumi-user-name");
+          window.localStorage.removeItem("lumi_seen_intro");
+        }
+      } catch {
+        // Storage disabled — nothing to clean.
+      }
+
+      router.replace("/login");
+      router.refresh();
+    } catch (err) {
+      console.error("[settings] delete-account:", err);
+      toast.error("No pudimos eliminar tu cuenta. Revisa tu conexión.");
       setSubmitting(false);
     }
   }
@@ -1232,6 +1298,36 @@ function DangerZoneCard() {
                 <div className="text-[12px] text-muted-foreground">
                   {disabledHint ??
                     "Borra movimientos, cuentas, categorías y comercios."}
+                </div>
+              </div>
+              <ChevronRight
+                size={16}
+                className="text-muted-foreground"
+                aria-hidden="true"
+              />
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => setDeleteAccountOpen(true)}
+              disabled={!SUPABASE_ENABLED || submitting}
+              aria-label="Eliminar cuenta"
+              className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-destructive/10 focus-visible:bg-destructive/10 focus-visible:outline-none disabled:opacity-60"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive"
+              >
+                <UserX size={16} aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-semibold text-destructive">
+                  Eliminar cuenta
+                </div>
+                <div className="text-[12px] text-muted-foreground">
+                  {disabledHint ??
+                    "Borra tu cuenta y todo su contenido para siempre."}
                 </div>
               </div>
               <ChevronRight
@@ -1426,6 +1522,86 @@ function DangerZoneCard() {
             >
               <Trash2 size={16} aria-hidden="true" />
               <span className="ml-1">Restablecer todo</span>
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Eliminar cuenta — type ELIMINAR to confirm */}
+      <Sheet open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen}>
+        <SheetContent
+          side="bottom"
+          role="alertdialog"
+          aria-labelledby="delete-account-title"
+          aria-describedby="delete-account-desc"
+          className="rounded-t-2xl md:max-w-md"
+        >
+          <SheetHeader>
+            <SheetTitle
+              id="delete-account-title"
+              className="flex items-center gap-2"
+            >
+              <AlertTriangle
+                size={18}
+                className="text-destructive"
+                aria-hidden="true"
+              />
+              ¿Eliminar tu cuenta?
+            </SheetTitle>
+            <SheetDescription id="delete-account-desc">
+              Esto eliminará{" "}
+              {session.user?.email ? (
+                <span className="font-medium text-foreground">
+                  {session.user.email}
+                </span>
+              ) : (
+                "tu cuenta"
+              )}{" "}
+              y todos sus datos: movimientos, cuentas, categorías propias,
+              comercios, recibos y tu perfil. Esta acción no se puede
+              deshacer.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-3 px-1 pb-1">
+            <Label
+              htmlFor="delete-account-confirm"
+              className="text-[13px] font-semibold"
+            >
+              Escribe{" "}
+              <span className="font-mono text-destructive">ELIMINAR</span>{" "}
+              para confirmar
+            </Label>
+            <Input
+              id="delete-account-confirm"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="ELIMINAR"
+              disabled={submitting}
+              className="h-11 font-mono"
+            />
+          </div>
+          <SheetFooter className="flex-col-reverse gap-2 md:flex-row md:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeleteAccountOpen(false)}
+              disabled={submitting}
+              className="min-h-11"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={submitting || deleteConfirmText !== "ELIMINAR"}
+              className="min-h-11"
+            >
+              <UserX size={16} aria-hidden="true" />
+              <span className="ml-1">Eliminar cuenta</span>
             </Button>
           </SheetFooter>
         </SheetContent>
