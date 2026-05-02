@@ -39,6 +39,34 @@ import { cn } from "@/lib/utils";
 
 const PIN_LENGTH = 4;
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Persist the last successfully-authed email per device. Lets a returning
+// user skip the email step entirely on the next /login. Cleared on account
+// deletion (settings/page.tsx) and on explicit "Cambiar correo" tap.
+const LAST_EMAIL_KEY = "lumi-last-email";
+
+function readLastEmail(): string {
+  try {
+    return window.localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function persistLastEmail(email: string) {
+  try {
+    window.localStorage.setItem(LAST_EMAIL_KEY, email);
+  } catch {
+    // storage disabled
+  }
+}
+
+function clearLastEmail() {
+  try {
+    window.localStorage.removeItem(LAST_EMAIL_KEY);
+  } catch {
+    // storage disabled
+  }
+}
 
 type Step = "email" | "pin";
 
@@ -86,6 +114,62 @@ function LoginInner() {
       setPrefillDrawerOpen(true);
     }
   }, [prefillEmail, prefillNoticeShown]);
+
+  // Auto-skip a step "pin" si este device ya autentico antes a una
+  // cuenta que sigue siendo confiable. Se ejecuta solo en el mount,
+  // sin disparar OTP — silencioso. Si las condiciones cambiaron
+  // (cuenta borrada, device revocado), el email queda prefilled en
+  // step "email" y el usuario continua manualmente.
+  const [autoSkipChecked, setAutoSkipChecked] = React.useState(false);
+  React.useEffect(() => {
+    if (autoSkipChecked) return;
+    if (prefillEmail) {
+      setAutoSkipChecked(true);
+      return;
+    }
+    const last = readLastEmail();
+    if (!last) {
+      setAutoSkipChecked(true);
+      return;
+    }
+    setEmail(last);
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/check-device", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: last,
+            deviceSignals: getDeviceSignals(),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          exists?: boolean;
+          hasPin?: boolean;
+          trusted?: boolean;
+        };
+        if (cancelled) return;
+        if (res.ok && data.exists && data.hasPin && data.trusted) {
+          setStep("pin");
+        } else if (res.ok && !data.exists) {
+          // Email no longer exists in DB — clear stale entry.
+          clearLastEmail();
+        }
+        // Else (untrusted or no PIN): leave on step "email" with prefill,
+        // let the user click "Continuar" so the OTP send is intentional.
+      } catch {
+        // Network error — fall through with email prefilled.
+      } finally {
+        if (!cancelled) setAutoSkipChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function getDeviceSignals() {
     return {
@@ -210,6 +294,9 @@ function LoginInner() {
         setSubmitting(false);
         return;
       }
+      // Recordar este email para skip-to-PIN en el proximo /login en
+      // este device.
+      persistLastEmail(trimmedEmail);
       // Hard navigate so SessionProvider re-mounts with the fresh cookie
       // and (tabs)/layout's server-side guard sees the active session.
       if (typeof window !== "undefined") {
@@ -263,7 +350,11 @@ function LoginInner() {
   }
 
   function handleStartOver() {
+    // El usuario explicitamente quiere cambiar de cuenta — borramos el
+    // last-email cache asi no auto-volvemos al PIN del email anterior.
+    clearLastEmail();
     setStep("email");
+    setEmail("");
     setPin("");
     setErrorMsg(null);
   }

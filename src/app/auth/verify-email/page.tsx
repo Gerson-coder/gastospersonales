@@ -177,6 +177,20 @@ function VerifyEmailInner() {
         setSubmitting(false);
         return;
       }
+      // Persistir email del flujo new_device para auto-skip al PIN en
+      // el proximo /login en este mismo device. Replica la misma key
+      // que /login/page.tsx escribe en login-with-pin.
+      if (
+        purpose === "new_device" &&
+        emailParam.length > 0 &&
+        typeof window !== "undefined"
+      ) {
+        try {
+          window.localStorage.setItem("lumi-last-email", emailParam);
+        } catch {
+          // storage disabled
+        }
+      }
       setHasPin(!!data.hasPin);
       setSuccessOpen(true);
     } catch (err) {
