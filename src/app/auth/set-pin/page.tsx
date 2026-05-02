@@ -1,7 +1,7 @@
 /**
  * /auth/set-pin — third step of the new auth flow.
  *
- * The user has verified their email; now they pick a 6-digit PIN. This
+ * The user has verified their email; now they pick a 4-digit PIN. This
  * is what they'll type every time they open the app on a trusted device
  * (Yape-style). The PIN's bcrypt hash goes to user_pins via the API; we
  * also mark the current device as trusted so the next /login can skip
@@ -39,11 +39,11 @@ export default function SetPinPage() {
   function handleCreateNext(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
-    if (!/^\d{6}$/.test(pin)) {
-      setErrorMsg("El PIN debe ser de 6 dígitos.");
+    if (!/^\d{4}$/.test(pin)) {
+      setErrorMsg("El PIN debe ser de 4 dígitos.");
       return;
     }
-    if (["000000", "111111", "123456", "654321"].includes(pin)) {
+    if (["0000", "1111", "1234", "4321"].includes(pin)) {
       setErrorMsg("Elige un PIN menos predecible.");
       return;
     }
@@ -115,7 +115,7 @@ export default function SetPinPage() {
             </h1>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
               {stage === "create"
-                ? "Será tu acceso rápido en este dispositivo. Elige 6 dígitos que recuerdes."
+                ? "Será tu acceso rápido en este dispositivo. Elige 4 dígitos que recuerdes."
                 : "Ingresa el mismo PIN otra vez para confirmar."}
             </p>
           </header>
@@ -125,7 +125,7 @@ export default function SetPinPage() {
               <PinInput
                 value={pin}
                 onChange={setPin}
-                ariaLabel="PIN de 6 dígitos"
+                ariaLabel="PIN de 4 dígitos"
               />
               {errorMsg && (
                 <div
@@ -137,7 +137,7 @@ export default function SetPinPage() {
               )}
               <Button
                 type="submit"
-                disabled={pin.length !== 6}
+                disabled={pin.length !== 4}
                 className={cn("h-11 w-full rounded-xl text-[14px] font-semibold")}
               >
                 Continuar
@@ -162,7 +162,7 @@ export default function SetPinPage() {
               <div className="flex flex-col gap-2">
                 <Button
                   type="submit"
-                  disabled={submitting || confirmPin.length !== 6}
+                  disabled={submitting || confirmPin.length !== 4}
                   className={cn("h-11 w-full rounded-xl text-[14px] font-semibold")}
                 >
                   {submitting ? (
@@ -191,7 +191,7 @@ export default function SetPinPage() {
 }
 
 /**
- * Single 6-digit text field styled like the OTP input. Uses
+ * Single 4-digit text field styled like the OTP input. Uses
  * `inputMode="numeric"` + `autoComplete="off"` so iOS / Android show the
  * numeric keypad without proposing autofill suggestions.
  */
@@ -213,9 +213,9 @@ function PinInput({
       autoComplete="off"
       autoFocus={autoFocus ?? true}
       value={value}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
-      placeholder="••••••"
-      maxLength={6}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
+      placeholder="••••"
+      maxLength={4}
       className="h-14 text-center text-[28px] font-bold tracking-[0.5em] tabular-nums"
       aria-label={ariaLabel}
     />

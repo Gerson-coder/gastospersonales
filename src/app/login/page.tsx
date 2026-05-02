@@ -471,8 +471,8 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
   async function handlePinSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pinSubmitting) return;
-    if (pinValue.length !== 6) {
-      setPinError("Ingresa los 6 dígitos del PIN.");
+    if (pinValue.length !== 4) {
+      setPinError("Ingresa los 4 dígitos del PIN.");
       return;
     }
     setPinSubmitting(true);
@@ -755,7 +755,7 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
             Ingresa tu PIN
           </h2>
           <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
-            6 dígitos. Sigues conectado en este dispositivo.
+            4 dígitos. Sigues conectado en este dispositivo.
           </p>
         </div>
 
@@ -766,12 +766,12 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
           autoFocus
           value={pinValue}
           onChange={(e) =>
-            setPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))
+            setPinValue(e.target.value.replace(/\D/g, "").slice(0, 4))
           }
-          placeholder="••••••"
-          maxLength={6}
+          placeholder="••••"
+          maxLength={4}
           className="h-14 text-center text-[28px] font-bold tracking-[0.5em] tabular-nums"
-          aria-label="PIN de 6 dígitos"
+          aria-label="PIN de 4 dígitos"
         />
 
         {pinError && (
@@ -785,7 +785,7 @@ function PasswordAuthForm({ initialMode }: { initialMode: AuthMode }) {
 
         <Button
           type="submit"
-          disabled={pinSubmitting || pinValue.length !== 6}
+          disabled={pinSubmitting || pinValue.length !== 4}
           className="h-11 w-full rounded-xl text-[14px] font-semibold"
         >
           {pinSubmitting ? (

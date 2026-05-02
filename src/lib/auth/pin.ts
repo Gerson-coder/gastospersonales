@@ -3,7 +3,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 
 /**
- * PIN helpers — server-only. The PIN is a 6-digit secondary credential
+ * PIN helpers — server-only. The PIN is a 4-digit secondary credential
  * the user types every time they unlock the app on a trusted device.
  *
  * - `hashPin` runs bcrypt cost 10 (~70ms on a typical CPU). Slower would
@@ -17,7 +17,8 @@ import bcrypt from "bcryptjs";
  */
 
 const BCRYPT_COST = 10;
-const PIN_REGEX = /^\d{6}$/;
+export const PIN_LENGTH = 4;
+export const PIN_REGEX = /^\d{4}$/;
 
 /**
  * Reject obvious bad inputs before bcrypt to keep the API route cheap.
@@ -28,17 +29,13 @@ export function validatePinFormat(pin: string): void {
     throw new Error("El PIN debe ser un texto.");
   }
   if (!PIN_REGEX.test(pin)) {
-    throw new Error("El PIN debe ser exactamente 6 dígitos.");
+    throw new Error("El PIN debe ser exactamente 4 dígitos.");
   }
-  // Trivial sequences are not strictly forbidden but we discourage them.
-  // Guard rejects 000000, 111111, 123456, 654321 — the obvious ones.
-  // Users who insist can choose a different trivial PIN we didn't list,
-  // which is acceptable for v1.
   if (
-    pin === "000000" ||
-    pin === "111111" ||
-    pin === "123456" ||
-    pin === "654321"
+    pin === "0000" ||
+    pin === "1111" ||
+    pin === "1234" ||
+    pin === "4321"
   ) {
     throw new Error("Elige un PIN menos predecible.");
   }
