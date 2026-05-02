@@ -21,6 +21,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
 const RESEND_COOLDOWN_SECONDS = 45;
@@ -44,10 +45,17 @@ const TITLE_BY_PURPOSE: Record<OtpPurpose, string> = {
   pin_reset: "Recupera tu PIN",
 };
 
-const SUCCESS_TOAST_BY_PURPOSE: Record<OtpPurpose, string> = {
-  email_verification: "Correo verificado.",
-  new_device: "Dispositivo verificado.",
-  pin_reset: "Código verificado. Crea tu nuevo PIN.",
+const SUCCESS_TITLE_BY_PURPOSE: Record<OtpPurpose, string> = {
+  email_verification: "Correo verificado",
+  new_device: "Dispositivo verificado",
+  pin_reset: "Código verificado",
+};
+
+const SUCCESS_DESC_BY_PURPOSE: Record<OtpPurpose, string> = {
+  email_verification:
+    "Listo. Sigamos con tu nombre para terminar de configurar la cuenta.",
+  new_device: "Este dispositivo quedó marcado como confiable.",
+  pin_reset: "Ahora podrás crear un PIN nuevo en el siguiente paso.",
 };
 
 export default function VerifyEmailPage() {
@@ -84,6 +92,7 @@ function VerifyEmailInner() {
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = React.useState(0);
+  const [successOpen, setSuccessOpen] = React.useState(false);
 
   const code = digits.join("");
 
@@ -118,12 +127,29 @@ function VerifyEmailInner() {
         setSubmitting(false);
         return;
       }
-      toast.success(SUCCESS_TOAST_BY_PURPOSE[purpose]);
-      router.push(NEXT_BY_PURPOSE[purpose]);
+      setSuccessOpen(true);
     } catch (err) {
       console.error("[verify-email] submit:", err);
       setErrorMsg("No pudimos verificar el código.");
       setSubmitting(false);
+    }
+  }
+
+  function handleSuccessOpenChange(open: boolean) {
+    setSuccessOpen(open);
+    // Drawer cerrado = continuar al siguiente paso. Tipo de navegacion
+    // depende del flujo: email_verification arranca onboarding (full reload
+    // para que el SessionProvider re-monte con la cookie ya verificada),
+    // los otros usan router.push porque la sesion no cambia.
+    if (!open) {
+      const target = NEXT_BY_PURPOSE[purpose];
+      if (purpose === "email_verification") {
+        if (typeof window !== "undefined") {
+          window.location.assign(target);
+        }
+      } else {
+        router.push(target);
+      }
     }
   }
 
@@ -233,6 +259,15 @@ function VerifyEmailInner() {
           </form>
         </section>
       </div>
+
+      <ActionResultDrawer
+        open={successOpen}
+        onOpenChange={handleSuccessOpenChange}
+        tone="success"
+        title={SUCCESS_TITLE_BY_PURPOSE[purpose]}
+        description={SUCCESS_DESC_BY_PURPOSE[purpose]}
+        closeLabel="Continuar"
+      />
     </main>
   );
 }
