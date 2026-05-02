@@ -121,6 +121,121 @@ export async function sendOtpEmail(params: {
 }
 
 /**
+ * Send a "new device login" notification AFTER the user finishes the OTP
+ * verification on a previously-untrusted device. Distinct from the OTP
+ * email itself: that one is "here's the code"; this one is "we trusted
+ * the device, here's what we know about it" — the security signal big
+ * apps (Google, Apple) send when an account is accessed somewhere new.
+ *
+ * Fire-and-forget from the caller — never block the auth flow on this.
+ */
+export async function sendNewDeviceLoginEmail(params: {
+  to: string;
+  deviceName: string;
+  ipAddress?: string | null;
+  occurredAt?: Date;
+}): Promise<{ delivered: boolean; devMode: boolean; messageId?: string }> {
+  const { to, deviceName, ipAddress } = params;
+  const occurredAt = params.occurredAt ?? new Date();
+
+  const formattedDate = occurredAt.toLocaleString("es-PE", {
+    timeZone: "America/Lima",
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+
+  console.log(
+    `[auth] new_device_login to=${to} device="${deviceName}" ip=${ipAddress ?? "n/a"} at=${occurredAt.toISOString()}`,
+  );
+
+  const client = getClient();
+  if (!client) {
+    return { delivered: false, devMode: true };
+  }
+
+  try {
+    const result = await client.emails.send({
+      from: getFromAddress(),
+      to,
+      subject: "Nuevo inicio de sesión en tu cuenta",
+      html: renderNewDeviceHtml({
+        deviceName,
+        ipAddress: ipAddress ?? null,
+        formattedDate,
+      }),
+      text: `Detectamos un nuevo inicio de sesión en tu cuenta de Lumi.\n\nDispositivo: ${deviceName}\nFecha: ${formattedDate}${ipAddress ? `\nIP: ${ipAddress}` : ""}\n\nSi fuiste tú, no necesitas hacer nada. Si no reconoces este acceso, cambia tu PIN desde la app y revisa la lista de dispositivos confiables en Configuración.`,
+    });
+    if (result.error) {
+      const errName = result.error.name ?? "unknown";
+      const errMessage = result.error.message ?? "unknown";
+      console.error(
+        `[auth] resend new_device_send_failed name=${errName} message=${errMessage}`,
+      );
+      return { delivered: false, devMode: false };
+    }
+    return {
+      delivered: true,
+      devMode: false,
+      messageId: result.data?.id,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[auth] resend new_device threw message=${message}`);
+    return { delivered: false, devMode: false };
+  }
+}
+
+function renderNewDeviceHtml(params: {
+  deviceName: string;
+  ipAddress: string | null;
+  formattedDate: string;
+}): string {
+  const { deviceName, ipAddress, formattedDate } = params;
+  const escapedDevice = deviceName.replace(/[<>&"']/g, (c) => {
+    const map: Record<string, string> = {
+      "<": "&lt;",
+      ">": "&gt;",
+      "&": "&amp;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return map[c] ?? c;
+  });
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuevo inicio de sesión</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f7f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#0f172a;">
+  <div style="max-width:480px;margin:0 auto;padding:32px 16px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.06);">
+      <tr>
+        <td style="padding:32px 28px;">
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#16a34a;margin-bottom:24px;">Lumi</div>
+          <h1 style="font-size:22px;font-weight:700;line-height:1.3;margin:0 0 12px 0;color:#0f172a;">Nuevo inicio de sesión</h1>
+          <p style="font-size:15px;line-height:1.55;margin:0 0 24px 0;color:#475569;">Detectamos un inicio de sesión en tu cuenta desde un dispositivo nuevo. Si fuiste tú, no necesitas hacer nada.</p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f5f9;border-radius:12px;margin-bottom:24px;">
+            <tr>
+              <td style="padding:16px 20px;font-size:13px;color:#475569;">
+                <div style="margin-bottom:10px;"><span style="color:#94a3b8;">Dispositivo:</span> <strong style="color:#0f172a;">${escapedDevice}</strong></div>
+                <div style="margin-bottom:10px;"><span style="color:#94a3b8;">Fecha:</span> <strong style="color:#0f172a;">${formattedDate}</strong></div>
+                ${ipAddress ? `<div><span style="color:#94a3b8;">IP:</span> <strong style="color:#0f172a;">${ipAddress}</strong></div>` : ""}
+              </td>
+            </tr>
+          </table>
+          <p style="font-size:13px;line-height:1.55;color:#475569;margin:0 0 16px 0;"><strong style="color:#0f172a;">¿No fuiste tú?</strong> Cambia tu PIN desde la app y revisa la lista de dispositivos confiables en Configuración.</p>
+        </td>
+      </tr>
+    </table>
+    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:18px;">Lumi · controla tu dinero</p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
  * Inline HTML for the OTP email. Hand-written rather than via React Email
  * because the template is tiny and the runtime cost of importing
  * @react-email/components into every server action is real. If we add

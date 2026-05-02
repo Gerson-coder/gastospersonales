@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 
-// eslint-disable-next-line no-restricted-imports -- service-role required to read auth_otps + flip email_verified_at server-side
+// eslint-disable-next-line no-restricted-imports -- service-role required to read auth_otps + flip email_verified_at + mint magiclink for new-device session
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -17,6 +16,7 @@ import {
 } from "@/lib/auth/device-fingerprint";
 import { findUserByEmail } from "@/lib/auth/lookup";
 import { recordAttempt } from "@/lib/auth/rate-limit";
+import { sendNewDeviceLoginEmail } from "@/lib/auth/resend";
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -171,9 +171,10 @@ export async function POST(request: Request) {
       .eq("id", userId);
   }
 
-  // No-session new_device path: trust the device, rotate the throwaway
-  // password, and sign the user in so cookies are attached to this
-  // response. The next request from the browser carries a real session.
+  // No-session new_device path: trust the device, mint a magiclink token
+  // and consume it server-side to attach a fresh session cookie. Does NOT
+  // invalidate other live sessions (multi-device support). After session
+  // is up, fire-and-forget a "new device login" notification email.
   let hasPin = false;
   if (noSession && purpose === "new_device") {
     const userAgent = request.headers.get("user-agent");
@@ -206,14 +207,14 @@ export async function POST(request: Request) {
       // next login until the trust insert succeeds.
     }
 
-    const newPassword = randomBytes(32).toString("hex");
-    const { error: updateErr } = await admin.auth.admin.updateUserById(
-      userId,
-      { password: newPassword },
-    );
-    if (updateErr) {
+    const { data: linkData, error: linkErr } =
+      await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email: userEmail,
+      });
+    if (linkErr || !linkData?.properties?.hashed_token) {
       console.error(
-        `[verify-otp] password_rotation_failed user=${userId} message=${updateErr.message}`,
+        `[verify-otp] generate_link_failed user=${userId} message=${linkErr?.message ?? "no token"}`,
       );
       return NextResponse.json(
         { error: "No pudimos iniciar sesión. Intenta otra vez." },
@@ -221,13 +222,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email: userEmail,
-      password: newPassword,
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash: linkData.properties.hashed_token,
+      type: "magiclink",
     });
-    if (signInErr) {
+    if (verifyErr) {
       console.error(
-        `[verify-otp] signin_failed user=${userId} message=${signInErr.message}`,
+        `[verify-otp] verify_magic_failed user=${userId} message=${verifyErr.message}`,
       );
       return NextResponse.json(
         { error: "No pudimos iniciar sesión." },
@@ -241,6 +242,18 @@ export async function POST(request: Request) {
       .eq("user_id", userId)
       .maybeSingle();
     hasPin = !!pinRow;
+
+    // Notify the account holder of the new-device login. Fire-and-forget —
+    // a slow Resend call should never block the redirect to /dashboard.
+    void sendNewDeviceLoginEmail({
+      to: userEmail,
+      deviceName,
+      ipAddress: getIp(request),
+    }).catch((err) => {
+      console.error(
+        `[verify-otp] notify_new_device_failed user=${userId} message=${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   await recordAttempt(userId, getIp(request), "otp", true);

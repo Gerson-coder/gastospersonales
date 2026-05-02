@@ -1,9 +1,8 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 
-// eslint-disable-next-line no-restricted-imports -- service-role required to look up users by email, validate trusted device + PIN hash, and rotate the throwaway password
+// eslint-disable-next-line no-restricted-imports -- service-role required to look up users by email, validate trusted device + PIN hash, and mint a magiclink token for session creation
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -30,16 +29,13 @@ import { checkAttemptLockout, recordAttempt } from "@/lib/auth/rate-limit";
  *   4. The user is not locked out (5 failures / 15 min via auth_attempts,
  *      plus a per-row `locked_until` set when the PIN itself goes 5-deep).
  *
- * On success, rotates the throwaway password (auth.users.encrypted_password)
- * to a fresh random string and signs the user in with it via the SSR client.
- * The cookie set on the response gives the browser a normal Supabase session.
- *
- * Why rotate the password: the throwaway one set at /api/auth/register is
- * never surfaced to the user, but it lives in the DB. Rotating per login
- * means a leaked DB row can't be re-used to sign in (the password from the
- * dump is already invalid by the next legitimate login). Side effect: any
- * other live session for this user is invalidated, which is desirable —
- * if you're logging in with PIN you intend this to be your active session.
+ * On success, mints a one-time magiclink token via `admin.generateLink` and
+ * consumes it server-side via `verifyOtp({ token_hash, type: "magiclink" })`.
+ * The verifyOtp call attaches a fresh session cookie to the response WITHOUT
+ * touching the user's existing sessions on other devices — multi-device by
+ * default. The original throwaway password from /api/auth/register stays
+ * unchanged (32 random bytes; uncrackable in practice, so rotation is not
+ * a meaningful defense).
  *
  * Response:
  *   200 { ok: true } — cookies attached.
@@ -184,14 +180,17 @@ export async function POST(request: Request) {
     );
   }
 
-  // PIN matched. Rotate the throwaway password and sign in.
-  const newPassword = randomBytes(32).toString("hex");
-  const { error: updateErr } = await admin.auth.admin.updateUserById(userId, {
-    password: newPassword,
-  });
-  if (updateErr) {
+  // PIN matched. Mint a magiclink token and consume it server-side so the
+  // SSR client attaches a fresh session cookie. Does NOT invalidate the
+  // user's other live sessions (multi-device support).
+  const { data: linkData, error: linkErr } =
+    await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: userEmail,
+    });
+  if (linkErr || !linkData?.properties?.hashed_token) {
     console.error(
-      `[login-with-pin] password_rotation_failed user=${userId} message=${updateErr.message}`,
+      `[login-with-pin] generate_link_failed user=${userId} message=${linkErr?.message ?? "no token"}`,
     );
     return NextResponse.json(
       { error: "No pudimos iniciar sesión. Intenta otra vez." },
@@ -200,13 +199,13 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error: signInErr } = await supabase.auth.signInWithPassword({
-    email: userEmail,
-    password: newPassword,
+  const { error: verifyErr } = await supabase.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: "magiclink",
   });
-  if (signInErr) {
+  if (verifyErr) {
     console.error(
-      `[login-with-pin] signin_failed user=${userId} message=${signInErr.message}`,
+      `[login-with-pin] verify_otp_failed user=${userId} message=${verifyErr.message}`,
     );
     return NextResponse.json(
       { error: "No pudimos iniciar sesión." },
