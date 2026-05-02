@@ -13,6 +13,10 @@ const clientSchema = z.object({
 const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  // Bearer token Vercel Cron sends as `Authorization: Bearer <secret>`.
+  // Optional in dev so local boots succeed; required in prod for the
+  // cleanup-expired route to authorize the caller.
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 function parseOrThrow<T extends z.ZodTypeAny>(
@@ -53,6 +57,7 @@ export const serverEnv: ServerEnv =
         {
           SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
           OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+          CRON_SECRET: process.env.CRON_SECRET,
         },
         "server",
       )

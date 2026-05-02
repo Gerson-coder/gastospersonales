@@ -19,7 +19,6 @@
 
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
 // TODO: swap MOCK_ACCOUNTS for `await listAccounts()` once data wiring phase begins.
-// TODO: replace simulated 2.5s setTimeout with a real call to /api/ocr.
 
 "use client";
 
@@ -107,13 +106,22 @@ const MOCK_ACCOUNTS: Array<{ id: AccountId; label: string; currency: Currency }>
   { id: "cash", label: "Efectivo", currency: "PEN" },
 ];
 
-// Module-scope counter for the dev failure simulation. We deterministically
-// fail every 4th attempt so reviewers can see the failed state by retrying;
-// using a real RNG would make screenshots inconsistent across reloads.
-let mockOcrAttempts = 0;
-function shouldMockFail(): boolean {
-  // % 4 === 3 → fails on attempts #4, #8, #12 …  (0-indexed remainder 3)
-  return mockOcrAttempts++ % 4 === 3;
+// Pretty-print the OCR-classified source for use as a fallback merchant
+// label when the receipt has no counterparty (e.g. a Yape with the name
+// cropped). "yape" → "Yape", "bcp" → "BCP", etc.
+function prettySourceName(source: string): string {
+  switch (source) {
+    case "yape":
+      return "Yape";
+    case "plin":
+      return "Plin";
+    case "bbva":
+      return "BBVA";
+    case "bcp":
+      return "BCP";
+    default:
+      return "Comprobante";
+  }
 }
 
 const LOADING_STEPS = [
@@ -523,15 +531,112 @@ function dataUrlToFile(dataUrl: string, mime: string, name: string): File | null
   }
 }
 
+// ─── OCR API client helpers ───────────────────────────────────────────────
+//
+// Compress before upload so we don't push a 6 MB phone photo over the
+// network. 1024×1024 JPEG q80 sits at ~150-300 KB for typical receipts
+// and is enough resolution for OpenAI's vision model to read screenshot
+// text. The model itself crops to 512×512 internally on `imageDetail:
+// "low"`, so going higher than 1024 is wasted bytes.
+async function compressImageToDataUrl(
+  file: File,
+  maxDim = 1024,
+  quality = 0.8,
+): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const ratio = Math.min(maxDim / bitmap.width, maxDim / bitmap.height, 1);
+  const w = Math.max(1, Math.round(bitmap.width * ratio));
+  const h = Math.max(1, Math.round(bitmap.height * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas-2d-unavailable");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", quality),
+  );
+  if (!blob) throw new Error("canvas-toblob-failed");
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("filereader-not-string"));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Mirror of the API route's response. Kept loose because the route can
+// also send 4xx/5xx with a generic { error: string } that we render
+// as a toast message.
+type OcrApiResponse =
+  | {
+      ok: true;
+      data: {
+        receiptId: string;
+        source: string;
+        confidence: number;
+        kind: "expense" | "income";
+        amount: { minor: number; currency: Currency };
+        occurredAt: string;
+        counterparty?: { name: string; document?: string };
+        reference?: string;
+        memo?: string;
+        rawText: string;
+        modelUsed: string;
+      };
+      issues: Array<{ field: string; severity: string; message: string }>;
+    }
+  | {
+      ok: false;
+      error:
+        | { kind: "INVALID_IMAGE"; message: string }
+        | { kind: "MODEL_FAILURE"; retryable: boolean }
+        | {
+            kind: "LOW_CONFIDENCE";
+            partial: {
+              receiptId: string;
+              source?: string;
+              confidence?: number;
+              kind?: "expense" | "income";
+              amount?: { minor: number; currency: Currency };
+              occurredAt?: string;
+              counterparty?: { name: string; document?: string };
+              rawText?: string;
+              modelUsed?: string;
+            };
+          };
+    };
+
 function ReceiptPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [status, setStatus] = React.useState<Status>("idle");
 
-  // Image: stored as a blob URL so we never upload anywhere in this phase.
-  // Revoked on unmount + on each re-pick to avoid memory leaks.
+  // Image: stored as a blob URL for preview AND as the original File for
+  // the OCR upload pipeline. The blob URL is revoked on unmount + on each
+  // re-pick; the File is replaced (no leak — refs go out of scope).
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [imageFile, setImageFile] = React.useState<File | null>(null);
+
+  // Receipt id assigned by the API route once the image is persisted.
+  // Saved into transactions.receipt_id when the user confirms (wiring
+  // for that lives in the next phase — handleAccept).
+  const [receiptId, setReceiptId] = React.useState<string | null>(null);
+
+  // Per-field confidences. Start with the MOCK values so the UI doesn't
+  // flash "no confidence" before the OCR runs; replaced wholesale with
+  // values derived from the API response.
+  const [confidences, setConfidences] = React.useState<ConfidenceMap>(
+    MOCK_OCR.confidence,
+  );
 
   // Refs for the two hidden file inputs — one with `capture` (camera),
   // one without (gallery). Triggered programmatically by the idle/preview UIs.
@@ -573,35 +678,134 @@ function ReceiptPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Loading simulation — 2.5s total, three phases (~800ms each), then either
-  // resolves to review or fails based on the dev mock counter. setTimeouts
-  // are tracked + cleared on cancel/unmount so we don't transition a
-  // stale component.
+  // OCR pipeline: ticks the 3-phase animation (cosmetic, ~2.4s) in
+  // parallel with the real /api/ocr/extract call. We resolve either when
+  // the API answers AND a 1.5s minimum has elapsed (so a cache-warm 600ms
+  // response doesn't feel rushed), or after a 35s ceiling (covers mini +
+  // optional 4o escalation with margin). On unmount/cancel we abort the
+  // fetch and clear all timers so a stale response doesn't transition a
+  // remounted component.
   React.useEffect(() => {
     if (status !== "loading") return;
+    if (!imageFile) {
+      // Loading was triggered without a file — bail to failed.
+      setStatus("failed");
+      return;
+    }
+
     setLoadingPhase(0);
     const t1 = window.setTimeout(() => setLoadingPhase(1), 800);
     const t2 = window.setTimeout(() => setLoadingPhase(2), 1600);
-    const t3 = window.setTimeout(() => {
-      if (shouldMockFail()) {
+
+    const minDelay = new Promise<void>((res) => window.setTimeout(res, 1500));
+    const controller = new AbortController();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const dataUrl = await compressImageToDataUrl(imageFile);
+
+        const res = await fetch("/api/ocr/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: dataUrl }),
+          signal: controller.signal,
+        });
+
+        // Wait for the minimum animation time before flipping state.
+        await minDelay;
+        if (cancelled) return;
+
+        if (!res.ok && res.status !== 200) {
+          let message = "No pude procesar la imagen.";
+          try {
+            const j = (await res.json()) as { error?: string };
+            if (j.error) message = j.error;
+          } catch {
+            // body wasn't json — keep default message
+          }
+          toast.error(message);
+          setStatus("failed");
+          return;
+        }
+
+        const json = (await res.json()) as OcrApiResponse;
+
+        if (json.ok) {
+          const d = json.data;
+          setReceiptId(d.receiptId);
+          setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
+          setAmount((d.amount.minor / 100).toFixed(2));
+          setCurrency(d.amount.currency);
+          setOccurredAt(d.occurredAt.slice(0, 10));
+          // We don't infer category from OCR — keep current default but
+          // signal low confidence so the user sees the "review this" cue.
+          setConfidences({
+            merchant: d.confidence,
+            amount: d.confidence,
+            occurred_at: d.confidence,
+            suggested_category: 0.3,
+          });
+          setDirty(false);
+          setStatus("review");
+          return;
+        }
+
+        // Error branches
+        if (json.error.kind === "LOW_CONFIDENCE") {
+          const p = json.error.partial;
+          setReceiptId(p.receiptId);
+          if (p.counterparty?.name) setMerchant(p.counterparty.name);
+          else if (p.source) setMerchant(prettySourceName(p.source));
+          if (p.amount) {
+            setAmount((p.amount.minor / 100).toFixed(2));
+            setCurrency(p.amount.currency);
+          }
+          if (p.occurredAt) setOccurredAt(p.occurredAt.slice(0, 10));
+          const c = p.confidence ?? 0.4;
+          setConfidences({
+            merchant: c,
+            amount: c,
+            occurred_at: c,
+            suggested_category: 0.2,
+          });
+          setDirty(false);
+          toast.warning("Revisa los datos. No estoy del todo seguro.");
+          setStatus("review");
+          return;
+        }
+
+        if (json.error.kind === "INVALID_IMAGE") {
+          toast.error("La imagen no se pudo leer. Intenta con otra foto.");
+          setStatus("failed");
+          return;
+        }
+
+        // MODEL_FAILURE
+        toast.error(
+          json.error.retryable
+            ? "El servicio no respondió. Reintenta en unos segundos."
+            : "No pudimos procesar el ticket. Intenta otra imagen.",
+        );
         setStatus("failed");
-      } else {
-        // Reset form to OCR defaults so a fresh scan always starts clean.
-        setMerchant(MOCK_OCR.merchant);
-        setAmount(MOCK_OCR.amount.toFixed(2));
-        setCurrency(MOCK_OCR.currency);
-        setOccurredAt(MOCK_OCR.occurred_at);
-        setCategoryIcon(MOCK_OCR.suggested_category);
-        setAccountId("bcp");
-        setDirty(false);
-        setStatus("review");
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        console.error("[receipt] ocr_call_failed", err);
+        toast.error("No pude conectarme con el servicio. Intenta de nuevo.");
+        setStatus("failed");
       }
-    }, 2500);
+    })();
+
     return () => {
+      cancelled = true;
+      controller.abort();
       window.clearTimeout(t1);
       window.clearTimeout(t2);
-      window.clearTimeout(t3);
     };
+    // imageFile is captured at loading start; we don't want to retrigger
+    // when it changes mid-flight (e.g. user re-picks during the call).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
   // Reset the discard-confirm whenever a field changes — the warning was
@@ -621,6 +825,8 @@ function ReceiptPageInner() {
       if (imageUrl) URL.revokeObjectURL(imageUrl);
       const next = URL.createObjectURL(file);
       setImageUrl(next);
+      setImageFile(file);
+      setReceiptId(null);
       setStatus("preview");
     },
     [imageUrl],
@@ -708,10 +914,17 @@ function ReceiptPageInner() {
   }, [router]);
 
   const handleAccept = React.useCallback(() => {
+    // The transactions write happens in the next phase. When that lands,
+    // pass `receiptId` as `transactions.receipt_id` so the row links
+    // back to the OCR audit trail in `receipts.linked_transaction_id`.
+    if (receiptId) {
+      // Reserved for the wire-up of step 11+: persist transaction
+      // linked to this receipt before navigating.
+    }
     window.setTimeout(() => {
       router.push("/dashboard");
     }, 800);
-  }, [router]);
+  }, [receiptId, router]);
 
   const handleDiscard = React.useCallback(() => {
     if (dirty && !discardArmed) {
@@ -856,7 +1069,7 @@ function ReceiptPageInner() {
             <FieldRow
               label="Comercio"
               htmlFor="receipt-merchant"
-              score={MOCK_OCR.confidence.merchant}
+              score={confidences.merchant}
             >
               <Input
                 id="receipt-merchant"
@@ -875,7 +1088,7 @@ function ReceiptPageInner() {
             <FieldRow
               label="Monto total"
               htmlFor="receipt-amount"
-              score={MOCK_OCR.confidence.amount}
+              score={confidences.amount}
             >
               <div className="flex items-center gap-2">
                 <span
@@ -933,7 +1146,7 @@ function ReceiptPageInner() {
             <FieldRow
               label="Fecha"
               htmlFor="receipt-date"
-              score={MOCK_OCR.confidence.occurred_at}
+              score={confidences.occurred_at}
             >
               <Input
                 id="receipt-date"
@@ -950,7 +1163,7 @@ function ReceiptPageInner() {
             {/* Categoría — opens drawer */}
             <FieldRow
               label="Categoría sugerida"
-              score={MOCK_OCR.confidence.suggested_category}
+              score={confidences.suggested_category}
             >
               <button
                 type="button"

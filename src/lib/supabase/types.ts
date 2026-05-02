@@ -29,6 +29,13 @@ export type AccountSubtype =
 export type CategoryKind = "expense" | "income";
 export type TransactionSource = "manual" | "ocr";
 export type OcrStatus = "pending" | "processing" | "completed" | "failed";
+export type OcrPipelineSource =
+  | "yape"
+  | "plin"
+  | "bbva"
+  | "bcp"
+  | "unknown";
+export type OcrPipelineModel = "gpt-4o-mini" | "gpt-4o";
 
 export type Database = {
   __InternalSupabase: {
@@ -176,6 +183,11 @@ export type Database = {
           confidence: number | null;
           linked_transaction_id: string | null;
           error_message: string | null;
+          // Added in migration 00022 — the OCR pipeline classifies the
+          // receipt source, picks the model, and stamps a 90-day TTL.
+          source: OcrPipelineSource | null;
+          model_used: OcrPipelineModel | null;
+          expires_at: string;
           created_at: string;
           updated_at: string;
         };
