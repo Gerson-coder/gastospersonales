@@ -119,14 +119,16 @@ const INITIAL_CONFIDENCE: ConfidenceMap = {
 
 /**
  * Pick the user's account that best matches the OCR-classified source.
- *  - "yape"  → first account whose kind is "yape"
- *  - "bbva"  → first account whose kind is "bbva"
- *  - "bcp"   → first account whose kind is "bcp"
- *  - "plin"  → no specific match (Plin renders from many host banks);
- *              fall through to the user's first account
- *  - "unknown" → first account
  *
- * Falls back to the first available account when no match is found.
+ * Matching strategy — tries in order:
+ *   1. By account `kind` (only "yape" / "plin" exist in AccountKind;
+ *      "bbva" / "bcp" don't because those are real banks → kind = "bank").
+ *   2. By case-insensitive `label` substring. This is how a user-named
+ *      "BCP Soles" or "BBVA Continental" account gets matched without
+ *      a dedicated kind. Multiple needles allow brand variants
+ *      (BCP / Crédito, BBVA / Continental).
+ *   3. Fallback to the user's first account.
+ *
  * Returns null when the user has no accounts at all (caller must handle).
  */
 function suggestAccountIdForSource(
@@ -134,11 +136,31 @@ function suggestAccountIdForSource(
   accounts: Account[],
 ): string | null {
   if (accounts.length === 0) return null;
-  const directMatch =
-    source === "yape" || source === "bbva" || source === "bcp"
-      ? accounts.find((a) => a.kind === source)
-      : undefined;
-  return (directMatch ?? accounts[0]).id;
+  const matchByLabel = (...needles: string[]) =>
+    accounts.find((a) =>
+      needles.some((n) => a.label.toLowerCase().includes(n.toLowerCase())),
+    );
+
+  let match: Account | undefined;
+  switch (source) {
+    case "yape":
+      match =
+        accounts.find((a) => a.kind === "yape") ?? matchByLabel("yape");
+      break;
+    case "plin":
+      match =
+        accounts.find((a) => a.kind === "plin") ?? matchByLabel("plin");
+      break;
+    case "bbva":
+      match = matchByLabel("bbva", "continental");
+      break;
+    case "bcp":
+      match = matchByLabel("bcp", "crédito", "credito");
+      break;
+    default:
+      match = undefined;
+  }
+  return (match ?? accounts[0]).id;
 }
 
 /**
@@ -725,6 +747,10 @@ function ReceiptPageInner() {
   // Save submission state: prevents double-tap on the green "Aceptar y
   // guardar" button while the network request is in flight.
   const [isSaving, setIsSaving] = React.useState(false);
+  // After a successful save we surface a small inline "Guardado" banner
+  // (same pattern as /capture) for ~900ms before navigating away. The
+  // banner is friendlier than a toast and matches the rest of the app.
+  const [saved, setSaved] = React.useState(false);
 
   // Loading phase ticks 0 → 1 → 2 every ~800ms while in the loading state.
   const [loadingPhase, setLoadingPhase] = React.useState<LoadingPhase>(0);
@@ -1071,8 +1097,13 @@ function ReceiptPageInner() {
         receiptId: receiptId ?? null,
       });
 
-      toast.success("Movimiento guardado.");
-      router.push("/dashboard");
+      // Show the inline "Guardado" banner, then navigate. 900ms is just
+      // enough for the user to register the confirmation without
+      // feeling stuck on the page.
+      setSaved(true);
+      window.setTimeout(() => {
+        router.push("/dashboard");
+      }, 900);
     } catch (err) {
       const message =
         err instanceof Error
@@ -1382,6 +1413,31 @@ function ReceiptPageInner() {
             </div>
           </div>
         </Card>
+
+        {/* Saved banner — same pattern as /capture: visually-hidden
+            announcement + a calm inline card. Replaces the previous
+            toast.success("Movimiento guardado.") which read jarringly
+            against the rest of the app's quieter confirmations. */}
+        <output
+          role="status"
+          aria-live="polite"
+          className={cn(
+            "mt-4 block transition-opacity duration-300",
+            saved ? "opacity-100" : "pointer-events-none h-0 opacity-0",
+          )}
+        >
+          {saved ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-foreground px-4 py-3 text-background shadow-[var(--shadow-float)]">
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+              >
+                <Check size={18} />
+              </span>
+              <span className="flex-1 text-[13px] font-semibold">Guardado</span>
+            </div>
+          ) : null}
+        </output>
       </div>
 
       {/* Sticky CTA bar — soft gradient backdrop so it floats above the form
