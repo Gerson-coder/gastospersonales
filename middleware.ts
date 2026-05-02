@@ -68,6 +68,8 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  const isApi = pathname.startsWith("/api/");
+
   if (!user && !isPublicPath(pathname)) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
@@ -75,23 +77,32 @@ export async function middleware(request: NextRequest) {
     // Preserve where the user was trying to go so /login can bounce them
     // back after a successful auth. Skip API hits — there is no UX flow to
     // resume for a fetch().
-    if (!pathname.startsWith("/api/")) {
+    if (!isApi) {
       redirectUrl.searchParams.set("next", pathname);
     }
     const redirectResponse = NextResponse.redirect(redirectUrl);
-    redirectResponse.headers.set("Cache-Control", "no-store, max-age=0");
+    if (!isApi) {
+      redirectResponse.headers.set("Cache-Control", "no-store, max-age=0");
+    }
     return redirectResponse;
   }
 
-  // Disable BFCache (back-forward cache) for every middleware-handled
-  // response. Without this, the browser snapshots authenticated pages in
-  // memory and serves them on the back button without re-running middleware
-  // or layouts — so a user who was kicked to /welcome (incomplete profile)
-  // or signed out can press back and see the dashboard from a stale
-  // snapshot. `no-store` makes the page ineligible for BFCache and forces
-  // a fresh fetch every navigation. The matcher already excludes static
-  // assets so they keep their long-lived caching.
-  supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0");
+  // Disable BFCache (back-forward cache) for HTML page responses. Without
+  // this, browsers snapshot authenticated pages in memory and serve them
+  // on the back button without re-running middleware or layouts — a user
+  // kicked to /welcome (incomplete profile) or signed out could press back
+  // and see the dashboard from a stale snapshot. `no-store` makes the page
+  // ineligible for BFCache and forces a fresh fetch every navigation.
+  //
+  // Critically excluded: /api/* responses. iOS Safari (and WKWebView in
+  // standalone PWAs) has a long-standing bug where `no-store` on XHR/fetch
+  // responses can drop Set-Cookie headers from the response — which would
+  // break the auth flow (register → verify-otp → onboarding/name) by
+  // losing the session between calls. API caching isn't a BFCache concern
+  // anyway; browsers don't snapshot fetch results into BFCache.
+  if (!isApi) {
+    supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0");
+  }
 
   return supabaseResponse;
 }
