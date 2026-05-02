@@ -1,17 +1,19 @@
 /**
  * Root redirect — Lumi
  *
- * Client-side gate that decides where a fresh tab should land:
+ * Reads from the SessionProvider (which already validates the JWT via
+ * `getUser()` in its mount effect) instead of running its own
+ * `getSession()` — that one trusts localStorage blindly and would re-send
+ * deleted/incomplete users straight to /dashboard.
  *
- *   - Authenticated session + `profiles.display_name === null` → /welcome
- *     (user verified email but never finished onboarding).
- *   - Authenticated session otherwise → /dashboard.
- *   - No session + first-time visitor (no `lumi_seen_intro` flag) →
- *     /onboarding/welcome (splash → intro → register).
- *   - No session + returning visitor → /login.
+ * Flow:
+ *   - No session + first-time visitor → /onboarding/welcome
+ *   - No session + returning visitor → /login
+ *   - Has session, profile incomplete (no display_name) → /welcome
+ *   - Has session, profile complete → /dashboard
  *
- * The `lumi_seen_intro` flag is UX only — it gates the onboarding splash,
- * not access to protected routes (the middleware handles auth server-side).
+ * The auth-guard middleware + the server-side guard in `(tabs)/layout.tsx`
+ * cover deep links to protected pages independently.
  */
 
 "use client";
@@ -19,7 +21,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "@/lib/use-session";
 
 const SEEN_INTRO_KEY = "lumi_seen_intro";
 
@@ -35,51 +37,30 @@ function hasSeenIntro(): boolean {
 
 export default function Home() {
   const router = useRouter();
+  const { user, profile, hydrated } = useSession();
 
   useEffect(() => {
-    let cancelled = false;
+    // Wait for SessionProvider to finish its initial validation. If the
+    // session is a ghost, SessionProvider triggers `recoverFromStaleSession`
+    // before setting hydrated, which window.location.replaces away — this
+    // effect never sees the post-recovery state.
+    if (!hydrated) return;
 
-    async function decide() {
-      try {
-        const supabase = createClient();
-        const { data } = await supabase.auth.getSession();
-        if (cancelled) return;
-
-        if (!data.session) {
-          const target = hasSeenIntro() ? "/login" : "/onboarding/welcome";
-          router.replace(target);
-          return;
-        }
-
-        let target = "/dashboard";
-        try {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("display_name")
-            .eq("id", data.session.user.id)
-            .maybeSingle();
-          if (profile && profile.display_name === null) {
-            target = "/welcome";
-          }
-        } catch {
-          // Profile read failed — keep the safe default of /dashboard.
-        }
-
-        if (!cancelled) router.replace(target);
-      } catch {
-        // Supabase client failed (misconfig / blocked storage). Send to
-        // the onboarding flow if first-time, /login if returning.
-        if (!cancelled) {
-          router.replace(hasSeenIntro() ? "/login" : "/onboarding/welcome");
-        }
-      }
+    if (!user) {
+      router.replace(hasSeenIntro() ? "/login" : "/onboarding/welcome");
+      return;
     }
 
-    void decide();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    // User exists but profile is missing (orphan auth row) or display_name
+    // is null (mid-onboarding). Send to /welcome so they finish setup
+    // instead of landing on an empty dashboard.
+    if (!profile || !profile.display_name) {
+      router.replace("/welcome");
+      return;
+    }
+
+    router.replace("/dashboard");
+  }, [hydrated, user, profile, router]);
 
   return null;
 }

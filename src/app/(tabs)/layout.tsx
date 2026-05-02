@@ -1,7 +1,10 @@
+import { redirect } from "next/navigation";
+
 import { InstallPrompt } from "@/components/lumi/InstallPrompt";
 import { Sidebar } from "@/components/lumi/Sidebar";
 import { TabBarSlot } from "@/components/lumi/TabBarSlot";
 import { TabsTopBar } from "@/components/lumi/TabsTopBar";
+import { createClient } from "@/lib/supabase/server";
 
 // Layout for the tabbed app surface (post-login).
 // Mobile (< md): bottom TabBar mounted; main reserves pb-24 for it.
@@ -11,7 +14,56 @@ import { TabsTopBar } from "@/components/lumi/TabsTopBar";
 // TabBarSlot hides the bar on routes that own their bottom UI (e.g.
 // /receipt's sticky CTAs). /login is intentionally OUTSIDE this group
 // so it has neither.
-export default function TabsLayout({ children }: { children: React.ReactNode }) {
+//
+// Server-side guard: middleware already redirects anonymous users out, but
+// it can't tell whether the authenticated user has finished onboarding —
+// only that `auth.users.id` exists. Without this layer, a user who signed
+// up but never set their display_name (or whose JWT slipped past the
+// middleware validation as a ghost) renders an empty dashboard. We refetch
+// the user + profile here and bounce to /welcome on incomplete state.
+export default async function TabsLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // No envs in dev/build → middleware already short-circuits. Mirror that
+  // here so `next build` without `.env.local` still produces a valid layout.
+  if (
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <Sidebar />
+        <TabsTopBar />
+        <main className="flex-1 pb-24 md:pb-8 md:pl-64">{children}</main>
+        <TabBarSlot />
+        <InstallPrompt />
+      </div>
+    );
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser();
+
+  if (authErr || !user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!profile || !profile.display_name) {
+    redirect("/welcome");
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       <Sidebar />
