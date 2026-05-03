@@ -1370,6 +1370,23 @@ function CapturePageInner() {
           )}
         </div>
 
+        {/* Merchant picker — subido arriba (estaba debajo de los banners
+            de offline / hydrating, lejos del contexto de la categoria).
+            Aca queda pegado a Categoria, donde semanticamente vive
+            ("comercio dentro de esta categoria"). Hidden en income — los
+            ingresos no tienen comercio (recibis plata, no le pagas a
+            nadie). El componente devuelve null cuando no hay categoria
+            elegida o la categoria no tiene comercios visibles, asi que
+            el 3-tap happy path del flow de captura no se afecta. */}
+        {kind === "expense" && (
+          <MerchantPicker
+            categoryId={categoryId}
+            categoryName={category?.label ?? null}
+            value={merchantId}
+            onChange={setMerchantId}
+          />
+        )}
+
         {/* Saved banner — visually-hidden announcement + visible toast.
             Implemented as <output role="status" aria-live="polite"> per a11y
             spec; lives in the layout flow so it doesn't cover the FAB. */}
@@ -1423,21 +1440,9 @@ function CapturePageInner() {
         ) : null}
 
         {/* Categoría card moved up into the meta strip above so it
-            shares the same gap-2 rhythm as the Cuenta card. */}
-
-        {/* Merchant picker — "¿Dónde? (opcional)". Hidden on income because
-            ingresos don't have a "merchant" (you don't pay to anyone — you
-            receive money). On expense the picker renders nothing when
-            there's no category context or the category has zero visible
-            merchants, so the 3-tap happy path stays untouched. */}
-        {kind === "expense" && (
-          <MerchantPicker
-            categoryId={categoryId}
-            categoryName={category?.label ?? null}
-            value={merchantId}
-            onChange={setMerchantId}
-          />
-        )}
+            shares the same gap-2 rhythm as the Cuenta card.
+            MerchantPicker tambien se subio — ahora vive directamente
+            debajo del meta strip, pegado a Categoria. */}
 
         {/* Inline account picker removed by design — saving now opens the
             account drawer when none is selected ("modal-on-check" flow).
