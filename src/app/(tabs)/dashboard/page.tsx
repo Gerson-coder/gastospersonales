@@ -77,6 +77,7 @@ import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/Categor
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
 import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { ProfileMenu } from "@/components/lumi/ProfileMenu";
+import { TransactionDetailDrawer } from "@/components/lumi/TransactionDetailDrawer";
 import { NotificationsBell } from "@/components/lumi/NotificationsBell";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
@@ -362,7 +363,13 @@ type RecentRowItem = {
   merchantLogoSlug?: string | null;
 };
 
-function TransactionRow({ t }: { t: RecentRowItem }) {
+function TransactionRow({
+  t,
+  onTap,
+}: {
+  t: RecentRowItem;
+  onTap?: () => void;
+}) {
   const Icon = CATEGORY_ICONS[t.iconKey];
   const tint = CATEGORY_TINT[t.iconKey];
   const isIncome = t.kind === "income";
@@ -376,7 +383,25 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
   // chip keeps the visual rhythm of the list. Otherwise the existing
   // category-tinted icon stays.
   return (
-    <div className="flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40">
+    <div
+      className={cn(
+        "flex items-center gap-4 rounded-md px-5 py-4 transition-colors md:py-5 md:hover:bg-muted/40",
+        onTap && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      onClick={onTap}
+      role={onTap ? "button" : undefined}
+      tabIndex={onTap ? 0 : undefined}
+      onKeyDown={
+        onTap
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onTap();
+              }
+            }
+          : undefined
+      }
+    >
       {isIncome && t.accountName ? (
         // Income rows lead with the account NAME as their title — so the
         // icon should be the account's brand logo (BCP, Interbank, etc.),
@@ -434,7 +459,13 @@ function TransactionRow({ t }: { t: RecentRowItem }) {
 // Mobile recent-transaction row — usa MerchantAvatar (iniciales tinted) y
 // añade un badge con el nombre de la cuenta (Tarjeta/Cuenta/Yape/etc.). El
 // monto sigue las mismas reglas de signo que TransactionRow.
-function TransactionRowMobile({ t }: { t: RecentRowItem }) {
+function TransactionRowMobile({
+  t,
+  onTap,
+}: {
+  t: RecentRowItem;
+  onTap?: () => void;
+}) {
   const isIncome = t.kind === "income";
   // Income: title = account name (the user's mental model is "I deposited
   // 270 to BCP Ahorro" — the account is the meaningful label, not the
@@ -445,7 +476,25 @@ function TransactionRowMobile({ t }: { t: RecentRowItem }) {
   // amount on the right column.
   const subtitle = formatTxDate(t.occurredAt);
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5">
+    <div
+      className={cn(
+        "grid grid-cols-[40px_minmax(0,1fr)_88px] items-center gap-2 px-3 py-3.5",
+        onTap && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      onClick={onTap}
+      role={onTap ? "button" : undefined}
+      tabIndex={onTap ? 0 : undefined}
+      onKeyDown={
+        onTap
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onTap();
+              }
+            }
+          : undefined
+      }
+    >
       {/* For income rows the title is the account name, so the icon should
           be the account's brand logo (BCP, Interbank, Yape...) instead of
           the merchant initials of "BCP Sueldo" reading as "BS". For expense
@@ -1385,6 +1434,20 @@ export default function DashboardPage() {
     return window.recentTransactions.map(viewToRecent);
   }, [isDemo, window.recentTransactions]);
 
+  // Side-table for the detail drawer. The recent rows render `RecentRowItem`
+  // (a lossy projection — no note, accountId, etc.), so we keep the
+  // original `TransactionView`s indexed by id and look them up on tap.
+  // Demo mode has no real views, so the drawer simply doesn't open there.
+  const recentViewsById = React.useMemo(() => {
+    if (isDemo) return new Map<string, TransactionView>();
+    const m = new Map<string, TransactionView>();
+    for (const v of window.recentTransactions) m.set(v.id, v);
+    return m;
+  }, [isDemo, window.recentTransactions]);
+
+  // Detail drawer target — null when closed. Tap on a recent row.
+  const [detailTx, setDetailTx] = React.useState<TransactionView | null>(null);
+
   // ── Mobile hero — period selector + saldo actual ──────────────────────
   // El hero muestra: gasto del período + saldo actual (= ingreso − gasto).
   // Sin presupuestos derivados — eso vivía antes y producía números
@@ -1855,7 +1918,17 @@ export default function DashboardPage() {
                       {recent.length > 0 ? (
                         recent.map((t, i) => (
                           <div key={t.id} className={i ? "border-t border-border/60" : ""}>
-                            <TransactionRowMobile t={t} />
+                            <TransactionRowMobile
+                              t={t}
+                              onTap={
+                                recentViewsById.has(t.id)
+                                  ? () =>
+                                      setDetailTx(
+                                        recentViewsById.get(t.id) ?? null,
+                                      )
+                                  : undefined
+                              }
+                            />
                           </div>
                         ))
                       ) : (
@@ -2010,7 +2083,17 @@ export default function DashboardPage() {
                         {recent.length > 0 ? (
                           recent.map((t, i) => (
                             <div key={t.id} className={i ? "border-t border-border" : ""}>
-                              <TransactionRow t={t} />
+                              <TransactionRow
+                                t={t}
+                                onTap={
+                                  recentViewsById.has(t.id)
+                                    ? () =>
+                                        setDetailTx(
+                                          recentViewsById.get(t.id) ?? null,
+                                        )
+                                    : undefined
+                                }
+                              />
                             </div>
                           ))
                         ) : (
@@ -2054,6 +2137,16 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* Detail drawer — short tap on any row in the recent list. The
+          portal mount point is irrelevant for vaul; state lives here. */}
+      <TransactionDetailDrawer
+        open={detailTx !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailTx(null);
+        }}
+        transaction={detailTx}
+      />
 
     </div>
   );

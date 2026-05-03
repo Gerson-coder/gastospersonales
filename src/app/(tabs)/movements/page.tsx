@@ -54,6 +54,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { TransactionActionSheet } from "@/components/lumi/TransactionActionSheet";
+import { TransactionDetailDrawer } from "@/components/lumi/TransactionDetailDrawer";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   archiveTransaction,
@@ -251,9 +252,9 @@ function groupByDay(txns: TransactionView[]): DayGroup[] {
  */
 function useLongPress(
   onLongPress: () => void,
-  opts: { delayMs?: number; movementThreshold?: number } = {},
+  opts: { delayMs?: number; movementThreshold?: number; onTap?: () => void } = {},
 ) {
-  const { delayMs = 500, movementThreshold = 8 } = opts;
+  const { delayMs = 500, movementThreshold = 8, onTap } = opts;
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPos = React.useRef<{ x: number; y: number } | null>(null);
   const triggered = React.useRef(false);
@@ -289,10 +290,22 @@ function useLongPress(
     [cancel, movementThreshold],
   );
 
+  // Quick pointer-up (timer still pending, no movement past threshold) is
+  // treated as a tap. We fire it INSTEAD of cancel-and-do-nothing so the
+  // row can open a detail drawer on press without colliding with the
+  // long-press-opens-action-sheet contract. Long-press already nulls
+  // `timer.current` from inside its setTimeout, so by the time pointerup
+  // arrives after a fired long-press, the tap branch is skipped.
+  const handlePointerUp = React.useCallback(() => {
+    const wasTap = timer.current !== null && !triggered.current;
+    cancel();
+    if (wasTap && onTap) onTap();
+  }, [cancel, onTap]);
+
   return {
     onPointerDown: (e: React.PointerEvent) => start(e.clientX, e.clientY),
     onPointerMove: (e: React.PointerEvent) => move(e.clientX, e.clientY),
-    onPointerUp: cancel,
+    onPointerUp: handlePointerUp,
     onPointerCancel: cancel,
     onPointerLeave: cancel,
     // Right-click → same menu as long-press. Prevent the native context menu.
@@ -307,9 +320,11 @@ function useLongPress(
 function TransactionRow({
   t,
   onLongPress,
+  onTap,
 }: {
   t: TransactionView;
   onLongPress: () => void;
+  onTap: () => void;
 }) {
   const bucket = bucketFromName(t.categoryName);
   const Icon = CATEGORY_ICONS[bucket];
@@ -334,7 +349,7 @@ function TransactionRow({
 
   const ariaLabel = `${titleText}, ${moneyText}, ${subtitle}`;
 
-  const longPressHandlers = useLongPress(onLongPress);
+  const longPressHandlers = useLongPress(onLongPress, { onTap });
 
   return (
     <article
@@ -487,8 +502,11 @@ function MovementsContent() {
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [error, setError] = React.useState<Error | null>(null);
 
-  // Action sheet target — null when closed.
+  // Action sheet target — null when closed. Long-press / right-click.
   const [actionSheetTx, setActionSheetTx] =
+    React.useState<TransactionView | null>(null);
+  // Detail drawer target — null when closed. Tap on a row.
+  const [detailTx, setDetailTx] =
     React.useState<TransactionView | null>(null);
 
   // Bumping `reloadKey` forces the initial-fetch effect to re-run (used by
@@ -754,6 +772,7 @@ function MovementsContent() {
                 group={g}
                 currency={currency}
                 onLongPress={(tx) => setActionSheetTx(tx)}
+                onTap={(tx) => setDetailTx(tx)}
               />
             ))}
 
@@ -803,6 +822,15 @@ function MovementsContent() {
           onArchive={handleArchive}
         />
       ) : null}
+
+      {/* Detail drawer — short tap on any row. Read-only surface. */}
+      <TransactionDetailDrawer
+        open={detailTx !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailTx(null);
+        }}
+        transaction={detailTx}
+      />
     </div>
   );
 }
@@ -905,10 +933,12 @@ function DayGroupSection({
   group,
   currency,
   onLongPress,
+  onTap,
 }: {
   group: DayGroup;
   currency: Currency;
   onLongPress: (tx: TransactionView) => void;
+  onTap: (tx: TransactionView) => void;
 }) {
   const netSign = group.net < 0 ? "– " : "+ ";
   const netText = `${netSign}${formatMoney(Math.abs(group.net), currency)}`;
@@ -938,7 +968,11 @@ function DayGroupSection({
       <Card className="overflow-hidden rounded-2xl border-border p-0">
         {group.items.map((t, i) => (
           <div key={t.id} className={i ? "border-t border-border" : ""}>
-            <TransactionRow t={t} onLongPress={() => onLongPress(t)} />
+            <TransactionRow
+              t={t}
+              onLongPress={() => onLongPress(t)}
+              onTap={() => onTap(t)}
+            />
           </div>
         ))}
       </Card>
