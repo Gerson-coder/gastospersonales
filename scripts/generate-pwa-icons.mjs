@@ -44,23 +44,85 @@ const SOURCE_PATH = join(ROOT, "public", "icons", "kane.svg");
 const ICONS_DIR = join(ROOT, "public", "icons");
 mkdirSync(ICONS_DIR, { recursive: true });
 
-const sourceBuffer = readFileSync(SOURCE_PATH);
+const rawSvgBuffer = readFileSync(SOURCE_PATH);
 
-// Color sólido detrás del icono en el maskable variant. Debe matchear
-// el fondo del SVG/PNG fuente para que el padding del safe-area no se
-// note. El SVG fuente tiene bg verde #015E2C (rich green del nuevo
-// diseño del user).
+// Color sólido detrás del icono en el maskable variant.
 const MASKABLE_BG = { r: 1, g: 94, b: 44, alpha: 1 }; // #015E2C rich green
+
+// El kane.svg viene del trace del icono original del user que tiene
+// CREAM bg + DARK GREEN K (paleta invertida a lo que queremos para
+// el PWA). Recoloreamos pixel-level el raster a:
+//   - Bright green (g >> r,b): preservar (arrow + $ accent)
+//   - Dark/medium green (la K): white
+//   - Cream/light: dark green #015E2C (el bg deseado)
+//   - Mid AA: interpolación lineal
+// Esta función re-rasteriza el SVG a un PNG buffer "recoloreado" que
+// despues alimenta al renderAt / renderMaskable. Sin esto el icono
+// salia con el cream del SVG fuente como bordes en Samsung One UI.
+async function recoloredBuffer(svgBuf, density) {
+  const { data, info } = await sharp(svgBuf, { density })
+    .resize(1024, 1024, { fit: "cover", position: "center" })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const NEW_BG = [1, 94, 44]; // #015E2C — verde target
+  const NEW_K = [255, 255, 255]; // blanco
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i],
+      g = data[i + 1],
+      b = data[i + 2];
+
+    // Bright green MUY saturado (solo el arrow + $ del accent #22C55E
+    // ≈ (34,197,94)). Antes el threshold de g>130 atrapaba tintes
+    // medios del K (#4E8660 etc.) y los preservaba en lugar de
+    // mapearlos a white. Subido a g>170 + diferencia >60 con max(r,b)
+    // para que solo el verde vivo del arrow sobreviva al recolor.
+    const maxRB = Math.max(r, b);
+    if (g > 170 && g > maxRB + 60) continue;
+
+    // Threshold binario sobre lightness. Sharp aplica anti-aliasing
+    // en el downsample 1024 → 192/512/etc., asi que no necesitamos
+    // fade aqui — el final tendra bordes suaves del propio resize.
+    // Antes el fade dejaba la K como un gris-verde tintado en lugar
+    // de white puro porque los shades del K (#0xxx-#2Bxxx) tienen
+    // L≈50-90, no L=0 — la formula de fade no llegaba a t=1 para
+    // ellos.
+    const L = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (L > 150) {
+      // Light (cream bg) → verde
+      data[i] = NEW_BG[0];
+      data[i + 1] = NEW_BG[1];
+      data[i + 2] = NEW_BG[2];
+    } else {
+      // Dark (la K) → white
+      data[i] = NEW_K[0];
+      data[i + 1] = NEW_K[1];
+      data[i + 2] = NEW_K[2];
+    }
+  }
+
+  return await sharp(data, {
+    raw: { width: info.width, height: info.height, channels: info.channels },
+  })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+}
+
+// Pre-recolorear UNA VEZ a 1024x1024, después renderAt/renderMaskable
+// resamplean este PNG a las sizes finales (más rápido que recolorear
+// por cada size, y el resampleo de un PNG ya recoloreado es fiel).
+console.log("Recoloring kane.svg → green bg + white K...");
+const sourceBuffer = await recoloredBuffer(rawSvgBuffer, 144);
+console.log("  done.\n");
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 async function renderAt(buf, size, outPath) {
-  // density alto cuando el source es SVG: sharp/librsvg necesita
-  // density adecuado para rasterizar limpio en sizes chicos sin
-  // perder detalle. 72 * (size/512) * 4 = 4x oversampling, despues
-  // resize a size final con interpolación de cover (mantiene
-  // aspecto, llena el frame).
-  await sharp(buf, { density: Math.ceil((size / 512) * 72 * 4) })
+  // Source ya es un PNG recoloreado a 1024x1024 — solo redimensionar.
+  // Sin density (no aplica a PNG fuente).
+  await sharp(buf)
     .resize(size, size, { fit: "cover", position: "center" })
     .png({ compressionLevel: 9 })
     .toFile(outPath);
@@ -77,9 +139,7 @@ async function renderMaskable(buf, size, outPath) {
   const padding = Math.round(size * 0.1);
   const innerSize = size - padding * 2;
 
-  const innerBuf = await sharp(buf, {
-    density: Math.ceil((innerSize / 512) * 72 * 4),
-  })
+  const innerBuf = await sharp(buf)
     .resize(innerSize, innerSize, { fit: "cover", position: "center" })
     .png()
     .toBuffer();
@@ -104,9 +164,7 @@ async function renderMaskable(buf, size, outPath) {
  * (1 frame). Compatible con todos los browsers actuales.
  */
 async function renderFavicon(buf, outPath) {
-  const pngBuf = await sharp(buf, {
-    density: Math.ceil((32 / 512) * 72 * 4),
-  })
+  const pngBuf = await sharp(buf)
     .resize(32, 32, { fit: "cover", position: "center" })
     .png()
     .toBuffer();
