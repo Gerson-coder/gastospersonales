@@ -1,7 +1,7 @@
 {
-  "name": "Kane — Tu plata, clara.",
+  "name": "Kane — Tu asesor financiero",
   "short_name": "Kane",
-  "description": "Tu plata, clara. Captura gastos con foto, entiende en qué se te va el sueldo, sin complicaciones.",
+  "description": "Tu asesor financiero. Captura gastos con foto, entiende en qué se te va el sueldo, sin complicaciones.",
   "start_url": "/capture",
   "scope": "/",
   "display": "standalone",

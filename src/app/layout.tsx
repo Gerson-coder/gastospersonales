@@ -26,9 +26,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kane — Tu plata, clara.",
+  title: "Kane — Tu asesor financiero",
   description:
-    "Tu plata, clara. Captura gastos con foto, entendé en qué se te va el sueldo, sin complicaciones.",
+    "Tu asesor financiero. Captura gastos con foto, entiende en qué se te va el sueldo, sin complicaciones.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
