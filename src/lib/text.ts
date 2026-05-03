@@ -7,38 +7,40 @@
  */
 
 /**
- * Matches any emoji-like glyph: pictographs (😀, 🍕, 🚗) plus emoji
- * components (skin tones, ZWJ joiners, variation selectors). Kept in
- * one place so the emoji-blocking rule is consistent across forms.
+ * Whitelist regex for name inputs: solo letras Unicode (cubre acentos,
+ * ñ, etc.), digitos, y espacios. Cualquier otra cosa — emojis, ZWJ
+ * joiners, variation selectors, símbolos, control chars, zero-width
+ * spaces — se elimina.
  *
- * `\p{Extended_Pictographic}` covers the actual emoji glyphs.
- * `\p{Emoji_Component}` covers the modifiers / joiners that would
- * otherwise be left as garbage characters when the pictograph is
- * stripped (e.g. removing 👨‍🦰 without touching the ZWJ leaves
- * a stray U+200D).
+ * Por que whitelist en vez de blacklist: la version anterior usaba
+ * `\p{Extended_Pictographic}` que cubría los pictographs visibles pero
+ * dejaba caracteres residuales (zero-width joiners, variation selectors
+ * sueltos) cuando el user pegaba un emoji compuesto — el field
+ * mostraba "espacios en blanco" que ni se podían seleccionar. Con
+ * whitelist, NADA fuera de letras/números/espacio sobrevive.
  *
  * Flags: `g` (replace all matches) + `u` (Unicode property escapes
  * require it).
  */
-const EMOJI_REGEX = /[\p{Extended_Pictographic}\p{Emoji_Component}]/gu;
+const NAME_DISALLOWED_REGEX = /[^\p{L}\p{N} ]/gu;
 
-export type StripEmojisResult = {
-  /** Input without emoji glyphs. */
+export type SanitizeNameResult = {
+  /** Input filtered to letters, digits and spaces. */
   cleaned: string;
-  /** True when at least one emoji was removed. Caller can use this to
-   *  surface a temporary "No se permiten emojis" hint without spamming
-   *  the user on every keystroke. */
+  /** True when at least one disallowed character was removed. Caller
+   *  uses this to surface a transient hint ("Solo letras y números")
+   *  so the user understands why their emoji vanished. */
   stripped: boolean;
 };
 
 /**
- * Remove every emoji-like glyph from `value`. The form layer should
- * pipe `onChange` through this helper instead of accepting raw input
- * — that way the user's draft state never holds an emoji and the
- * round-trip to the DB is always emoji-free without a separate
- * validation pass.
+ * Sanitize a free-form name input: strips anything that is not a
+ * letter, a digit or a space. Run this in the form's `onChange` so the
+ * user's draft state never holds invalid characters — the DB and any
+ * downstream surface (greetings, ProfileMenu, etc.) stay clean
+ * without a second validation pass.
  */
-export function stripEmojis(value: string): StripEmojisResult {
-  const cleaned = value.replace(EMOJI_REGEX, "");
+export function sanitizeNameInput(value: string): SanitizeNameResult {
+  const cleaned = value.replace(NAME_DISALLOWED_REGEX, "");
   return { cleaned, stripped: cleaned !== value };
 }

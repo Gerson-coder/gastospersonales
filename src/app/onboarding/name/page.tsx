@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KaneWordmark } from "@/components/kane/KaneWordmark";
 import { createClient } from "@/lib/supabase/client";
-import { stripEmojis } from "@/lib/text";
+import { sanitizeNameInput } from "@/lib/text";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
@@ -179,7 +179,7 @@ export default function OnboardingNamePage() {
                 placeholder="Tu nombre"
                 value={name}
                 onChange={(e) => {
-                  const { cleaned, stripped } = stripEmojis(e.target.value);
+                  const { cleaned, stripped } = sanitizeNameInput(e.target.value);
                   setName(cleaned);
                   if (submitted) setSubmitted(false);
                   if (stripped) {
@@ -221,7 +221,7 @@ export default function OnboardingNamePage() {
                   aria-live="polite"
                   className="text-[12px] leading-relaxed font-medium text-destructive"
                 >
-                  No se permiten emojis en el nombre.
+                  Solo se permiten letras y números.
                 </p>
               ) : (
                 <p

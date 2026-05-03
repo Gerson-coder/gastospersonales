@@ -46,6 +46,7 @@ import {
   Landmark,
   Loader2,
   Pencil,
+  Plus,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -1938,6 +1939,43 @@ function CapturePageInner() {
                     </li>
                   );
                 })}
+            {/* "Agregar cuenta" — atajo directo al wizard de creación
+                desde el picker. Reduce friccion: el user antes tenia
+                que cerrar el modal, salir de /capture, ir a /more →
+                Cuentas → Agregar. Ahora basta un tap. Solo aparece
+                cuando NO esta cargando (skeleton) — durante el load
+                la lista todavia no es definitiva. */}
+            {!accountsLoading && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountDrawerOpen(false);
+                    router.push("/accounts?create=1");
+                  }}
+                  aria-label="Agregar cuenta"
+                  className={cn(
+                    "flex h-16 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
+                    "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-border text-foreground"
+                  >
+                    <Plus size={16} aria-hidden strokeWidth={2.4} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold">
+                      Agregar cuenta
+                    </span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      Crea una nueva cuenta o método de pago
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )}
           </ul>
         </DrawerContent>
       </Drawer>

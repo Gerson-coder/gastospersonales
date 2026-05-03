@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KaneWordmark } from "@/components/kane/KaneWordmark";
-import { stripEmojis } from "@/lib/text";
+import { sanitizeNameInput } from "@/lib/text";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +96,7 @@ export default function WelcomePage() {
   const showError = submitted && isEmpty;
 
   function handleNameChange(value: string) {
-    const { cleaned, stripped } = stripEmojis(value);
+    const { cleaned, stripped } = sanitizeNameInput(value);
     setName(cleaned);
     if (submitted) setSubmitted(false);
     if (stripped) {
@@ -312,7 +312,7 @@ function NameStep({
               aria-live="polite"
               className="text-[12px] leading-relaxed font-medium text-destructive"
             >
-              No se permiten emojis en el nombre.
+              Solo se permiten letras y números.
             </p>
           ) : (
             <p
