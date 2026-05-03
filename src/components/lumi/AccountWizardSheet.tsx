@@ -354,7 +354,7 @@ export function AccountWizardSheet({
           // sheet flotante — es la pantalla completa). Desktop:
           // centrado modal con rounded.
           className={cn(
-            "flex flex-col px-0 pb-0 pt-2",
+            "flex flex-col px-0 pb-0 pt-0",
             "data-[side=bottom]:!h-[100dvh] data-[side=bottom]:!max-h-[100dvh] data-[side=bottom]:rounded-none",
             "md:max-w-md md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh] md:rounded-2xl",
           )}
@@ -365,7 +365,7 @@ export function AccountWizardSheet({
 
           {/* Header: en step 1 muestra X (cerrar). En step 2 muestra
               flecha back que vuelve a step 1 sin perder estado. */}
-          <header className="flex shrink-0 items-center justify-between px-5 pt-2 pb-1">
+          <header className="flex shrink-0 items-center justify-between px-5 pt-1 pb-0">
             {step === 1 ? (
               <button
                 type="button"
@@ -405,8 +405,11 @@ export function AccountWizardSheet({
 
           {/* Card preview — siempre visible en ambos pasos. La
               continuidad visual ayuda al user a ver cómo va quedando
-              su cuenta mientras refina el subtipo en step 2. */}
-          <div className="shrink-0 px-5 pt-3">
+              su cuenta mientras refina el subtipo en step 2. pt-0
+              después de pedido del user — la card pegada al header
+              hace que sea lo primero que el ojo encuentra al abrir el
+              wizard, sin un colchón de aire arriba. */}
+          <div className="shrink-0 px-5 pt-0">
             <div style={getAccountCardStyle(previewAccount)}>
               <AccountCard
                 bankSlug={accountBrandSlug(previewAccount.label)}
