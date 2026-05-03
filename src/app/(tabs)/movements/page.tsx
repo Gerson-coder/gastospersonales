@@ -22,6 +22,7 @@
 "use client";
 
 import * as React from "react";
+import nextDynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -53,8 +54,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AppHeader } from "@/components/lumi/AppHeader";
-import { TransactionActionSheet } from "@/components/lumi/TransactionActionSheet";
-import { TransactionDetailDrawer } from "@/components/lumi/TransactionDetailDrawer";
+// Lazy-load: ambos drawers solo se montan tras una interaccion del
+// user (long-press abre el ActionSheet, tap abre el DetailDrawer).
+// Sacarlos del initial chunk reduce el JS que se parsea al entrar a
+// /movements. ssr:false porque viven detras de state local.
+const TransactionActionSheet = nextDynamic(
+  () => import("@/components/lumi/TransactionActionSheet"),
+  { ssr: false },
+);
+const TransactionDetailDrawer = nextDynamic(
+  () => import("@/components/lumi/TransactionDetailDrawer"),
+  { ssr: false },
+);
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   archiveTransaction,
@@ -544,31 +555,32 @@ function MovementsContent() {
     };
   }, [currency, reloadKey]);
 
-  // Live-update bridge — /movements does NOT subscribe to Supabase
-  // realtime (per design: realtime lives only in /dashboard to keep
-  // the connection budget tight). Without this listener, navigating
-  // back from /capture after an edit shows stale values because the
-  // App Router caches the /movements component and our local `rows`
-  // state never noticed the update.
+  // Live-update bridge — /movements does NOT subscribe a Supabase
+  // realtime channel (por diseño: realtime vive solo en /dashboard
+  // para no romper el connection budget). Sin este listener, volver
+  // de /capture después de editar mostraba valores viejos.
   //
-  // Strategy: on TX_UPSERTED_EVENT (which now fires from create,
-  // update, archive, AND unarchive) refetch the FIRST page and merge
-  // by id with whatever the user already has. We don't reset the full
-  // list — that would lose the user's pagination + scroll position.
-  // For each row in the fresh first page:
-  //   - if id is already in `rows`, replace (picks up edited values)
-  //   - else add (picks up newly-created rows)
-  // Pagination beyond page 1 stays intact; if a row at position 100
-  // was archived elsewhere we'll still show it stale until reload —
-  // acceptable degradation, edits almost always target recent rows.
-  //
-  // Visibility / pageshow / focus listeners cover the case where
-  // /capture fired the event while /movements was hidden, plus the
-  // mobile-foreground and tab-switch refresh patterns the rest of the
-  // app already uses (see /capture's account refresh effect).
+  // Diseño revisado tras "se siente lento al navegar" del user.
+  // Antes escuchabamos focus + pageshow + visibilitychange + el
+  // evento — eso hacia que cada navegacion gatillara 2-3 fetchs en
+  // serie a Supabase (focus → fetch → visibilitychange → fetch).
+  // Ahora:
+  //   - Solo TX_UPSERTED_EVENT (cambios reales) y visibilitychange
+  //     (volver al tab tras un rato). focus y pageshow se quitan
+  //     porque eran disparos redundantes en la misma navegacion.
+  //   - Coalesce window de 1s via lastRefetchAtRef: dos eventos
+  //     consecutivos dentro de 1s colapsan a un solo fetch. Esto
+  //     ataca el caso "TX_UPSERTED_EVENT + visibilitychange casi
+  //     simultaneos" que pasaba al volver de /capture y aplastaba
+  //     dos queries identicas.
   React.useEffect(() => {
     let cancelled = false;
+    let lastRefetchAt = 0;
+    const COALESCE_MS = 1000;
     async function refresh() {
+      const now = Date.now();
+      if (now - lastRefetchAt < COALESCE_MS) return;
+      lastRefetchAt = now;
       try {
         const result = await listTransactionsByCurrency({ currency, limit: 20 });
         if (cancelled) return;
@@ -584,7 +596,7 @@ function MovementsContent() {
           return merged;
         });
       } catch {
-        // Soft-fail — the next mount fetch / manual reload covers it.
+        // Soft-fail — el siguiente mount fetch / reload manual cubre.
       }
     }
     const handler = () => {
@@ -594,14 +606,10 @@ function MovementsContent() {
       if (document.visibilityState === "visible") void refresh();
     };
     globalThis.addEventListener(TX_UPSERTED_EVENT, handler);
-    globalThis.addEventListener("focus", handler);
-    globalThis.addEventListener("pageshow", handler);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       globalThis.removeEventListener(TX_UPSERTED_EVENT, handler);
-      globalThis.removeEventListener("focus", handler);
-      globalThis.removeEventListener("pageshow", handler);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [currency]);

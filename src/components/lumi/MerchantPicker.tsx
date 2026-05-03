@@ -29,6 +29,7 @@
 "use client";
 
 import * as React from "react";
+import nextDynamic from "next/dynamic";
 import { Plus } from "lucide-react";
 
 import {
@@ -37,8 +38,16 @@ import {
   type Merchant,
 } from "@/lib/data/merchants";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
-import { MerchantsDrawer } from "@/components/lumi/MerchantsDrawer";
 import { cn } from "@/lib/utils";
+
+// Lazy-load del drawer de "Ver todos" — solo se monta cuando el user
+// toca el pill "+ Más" del strip de comercios. Para una mayoria de
+// gastos (los que matchean con uno de los 3 MRU visibles) este chunk
+// nunca se descarga, achicando el JS que se parsea en /capture.
+const MerchantsDrawer = nextDynamic(
+  () => import("@/components/lumi/MerchantsDrawer"),
+  { ssr: false },
+);
 
 export type MerchantPickerProps = {
   /** null when the user hasn't selected a category yet. */

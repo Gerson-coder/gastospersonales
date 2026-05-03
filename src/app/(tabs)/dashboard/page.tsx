@@ -20,6 +20,7 @@
 "use client";
 
 import * as React from "react";
+import nextDynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -77,7 +78,15 @@ import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/Categor
 import { AdvisorCard } from "@/components/lumi/AdvisorCard";
 import { ThemeToggle } from "@/components/lumi/ThemeToggle";
 import { ProfileMenu } from "@/components/lumi/ProfileMenu";
-import { TransactionDetailDrawer } from "@/components/lumi/TransactionDetailDrawer";
+
+// Lazy-load: el drawer de detalle solo aparece tras un tap en una
+// fila del listado "Recientes". Saliendolo del bundle inicial achica
+// el JS que se ejecuta al cargar /dashboard, que ya es la pagina mas
+// pesada de la app.
+const TransactionDetailDrawer = nextDynamic(
+  () => import("@/components/lumi/TransactionDetailDrawer"),
+  { ssr: false },
+);
 import { NotificationsBell } from "@/components/lumi/NotificationsBell";
 import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";

@@ -17,6 +17,7 @@
 "use client";
 
 import * as React from "react";
+import nextDynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -55,8 +56,16 @@ import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
-import { AccountWizardSheet } from "@/components/lumi/AccountWizardSheet";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
+
+// Lazy-load AccountWizardSheet — pesa ~857 lineas + dependencias del
+// AccountCard preview, y solo se necesita al tocar "Agregar cuenta".
+// ssr:false porque el componente es interactivo y vive detras de un
+// click; no se renderiza en el primer paint nunca.
+const AccountWizardSheet = nextDynamic(
+  () => import("@/components/lumi/AccountWizardSheet"),
+  { ssr: false },
+);
 import {
   ACCOUNT_SUBTYPE_LABEL,
   ACCOUNT_SUBTYPE_OPTIONS,

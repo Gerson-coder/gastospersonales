@@ -319,3 +319,5 @@ export function MerchantsDrawer({
     </>
   );
 }
+
+export default MerchantsDrawer;
