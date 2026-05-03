@@ -73,9 +73,13 @@ import {
 import { type Category, listCategories } from "@/lib/data/categories";
 import {
   createTransaction,
-  getAccountBalances,
   type TransactionKind,
 } from "@/lib/data/transactions";
+import {
+  checkExpenseBalance,
+  BALANCE_GUARD_TITLE,
+} from "@/lib/data/balances";
+import { useAccountBalances } from "@/hooks/use-account-balances";
 import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
@@ -757,12 +761,11 @@ function ReceiptPageInner() {
   // first account is the default until OCR routes to a source-matching
   // account via suggestAccountIdForSource.
   const [accountId, setAccountId] = React.useState<string | null>(null);
-  // Per-account balances for the active currency, loaded from
-  // getAccountBalances. Mirrors the saldo guard in /capture: a Yape (or
-  // any) account can't go negative through the OCR flow either. Absent
-  // keys = zero balance.
-  const [balances, setBalances] = React.useState<Record<string, number>>({});
-  const [balancesLoaded, setBalancesLoaded] = React.useState(false);
+  // Per-account balances for the active currency. Same shared hook as
+  // /capture: refetches on currency switch so the OCR flow's saldo
+  // guard always sees the right pool. A Yape (or any) account can't go
+  // negative through this entry point either.
+  const { balances, balancesLoaded } = useAccountBalances(currency);
   // Modal triggered when an OCR-captured amount would overdraft the
   // picked account. Same two-state contract as /capture: "empty"
   // (saldo <= 0) vs "insufficient" (saldo < amount).
@@ -837,27 +840,6 @@ function ReceiptPageInner() {
     // Mount-only load. Subsequent OCR runs don't need a refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Per-account balances. Reloads when currency switches so the saldo
-  // guard always reflects the right pool. Mirrors the /capture pattern.
-  React.useEffect(() => {
-    let cancelled = false;
-    setBalancesLoaded(false);
-    void (async () => {
-      try {
-        const map = await getAccountBalances(currency);
-        if (!cancelled) setBalances(map);
-      } catch {
-        // Soft-fail — guard simply won't trigger; user gets the network
-        // error from createTransaction if they overdraft.
-      } finally {
-        if (!cancelled) setBalancesLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currency]);
 
   // Cleanup blob URL on unmount. We also revoke when picking a new image
   // (see handleFile below) — never leak the previous one.
@@ -1145,23 +1127,21 @@ function ReceiptPageInner() {
       return;
     }
 
-    // Saldo guard — espejo del que usa /capture en handleSave. El bug
-    // que motivo esto: el OCR de Yape llegaba con un monto, el usuario
-    // tocaba "Aceptar y guardar" y el gasto se persistia aunque dejara
-    // la cuenta sobregirada. Solo aplica para gastos; los ingresos no
-    // afectan saldo en negativo.
-    if (transactionKind === "expense" && balancesLoaded && accountId) {
-      const balance = balances[accountId] ?? 0;
-      if (balance <= 0) {
-        setNoBalanceReason("empty");
-        setNoBalanceOpen(true);
-        return;
-      }
-      if (balance < numericAmount) {
-        setNoBalanceReason("insufficient");
-        setNoBalanceOpen(true);
-        return;
-      }
+    // Saldo guard — compartido con /capture via `checkExpenseBalance`.
+    // El bug que motivo esto: el OCR de Yape llegaba con un monto, el
+    // usuario tocaba "Aceptar y guardar" y el gasto se persistia aunque
+    // dejara la cuenta sobregirada.
+    const balanceCheck = checkExpenseBalance({
+      kind: transactionKind,
+      amount: numericAmount,
+      accountId,
+      balances,
+      balancesLoaded,
+    });
+    if (!balanceCheck.ok) {
+      setNoBalanceReason(balanceCheck.reason);
+      setNoBalanceOpen(true);
+      return;
     }
 
     setIsSaving(true);
@@ -1826,7 +1806,7 @@ function ReceiptPageInner() {
         open={noBalanceOpen}
         onOpenChange={setNoBalanceOpen}
         tone="warning"
-        title={noBalanceReason === "empty" ? "Sin saldo" : "Saldo insuficiente"}
+        title={BALANCE_GUARD_TITLE[noBalanceReason]}
         description={
           noBalanceReason === "empty"
             ? "Esta cuenta no tiene saldo para realizar esta operación. Abona saldo desde Cuentas o elige otra cuenta."

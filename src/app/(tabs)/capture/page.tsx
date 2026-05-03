@@ -73,12 +73,16 @@ import {
 } from "@/lib/data/categories";
 import {
   createTransaction,
-  getAccountBalances,
   getTransactionById,
   updateTransaction,
   MAX_TRANSACTION_AMOUNT,
   type TransactionDraft,
 } from "@/lib/data/transactions";
+import {
+  checkExpenseBalance,
+  BALANCE_GUARD_TITLE,
+} from "@/lib/data/balances";
+import { useAccountBalances } from "@/hooks/use-account-balances";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
@@ -453,16 +457,12 @@ function CapturePageInner() {
   const [accountId, setAccountId] = React.useState<AccountId | null>(
     SUPABASE_ENABLED ? null : MOCK_ACCOUNTS[0]?.id ?? null,
   );
-  // Per-account balances for the active currency (minor units, signed).
-  // Loaded once on mount and after every save so the "sin saldo" guard reflects
-  // the current state. Absent keys = zero balance. Demo mode skips this — no
-  // backend to query.
-  const [balances, setBalances] = React.useState<Record<string, number>>({});
-  // Distinguishes "fetch hasn't returned yet" from "every account is zero".
-  // Without this, the picker would flash "S/ 0.00 saldo" on every row during
-  // the first paint after mount and currency switches — visually identical to
-  // a real empty account, so the user can't tell loading from depleted.
-  const [balancesLoaded, setBalancesLoaded] = React.useState(false);
+  // Per-account balances for the active currency. Hook handles refetch on
+  // currency switch + a `reload()` for the inline-abono flow below. Demo
+  // mode (no Supabase) skips fetching and resolves immediately so the
+  // picker doesn't pin on a skeleton.
+  const { balances, balancesLoaded, reload: reloadBalances } =
+    useAccountBalances(currency, { skip: !SUPABASE_ENABLED });
   // Modal shown on the expense flow when the picked account either has no
   // saldo at all (`empty`) or has saldo but less than the typed amount
   // (`insufficient`). Same Drawer, two copies — keeps the dismiss UX
@@ -490,32 +490,6 @@ function CapturePageInner() {
   // the picker callback knows to fire handleSave automatically once the
   // user confirms. False after a normal manual open of the drawer.
   const [pendingSave, setPendingSave] = React.useState(false);
-  React.useEffect(() => {
-    if (!SUPABASE_ENABLED) {
-      // Demo mode has no backend — there's nothing to load and balances
-      // stay at their initial empty map. Mark as loaded immediately so the
-      // picker renders "S/ 0.00 sin saldo" on every account instead of an
-      // infinite skeleton.
-      setBalancesLoaded(true);
-      return;
-    }
-    let cancelled = false;
-    setBalancesLoaded(false);
-    void (async () => {
-      try {
-        const map = await getAccountBalances(currency);
-        if (!cancelled) setBalances(map);
-      } catch {
-        // Soft-fail — guard simply won't trigger; save flow still validates.
-      } finally {
-        if (!cancelled) setBalancesLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currency]);
-
   // Currency-scoped account list — when the user is in USD, we hide PEN
   // accounts (and vice versa) so it's impossible to record a USD movement
   // against a soles account by accident. Drives both the picker drawer and
@@ -886,26 +860,23 @@ function CapturePageInner() {
       setAccountDrawerOpen(true);
       return;
     }
-    // Saldo guard — hard block on overdraft. The user explicitly asked
-    // for the modal to fire on Save instead of an inline warning that
-    // could be ignored (the previous soft-warning approach silently
-    // saved over-balance txs and turned the dashboard's saldo red).
-    // Same modal as the original flow, with the abono path still wired
-    // through the same Drawer.
-    if (kind === "expense") {
-      const balance = balances[accountId] ?? 0;
-      if (balance <= 0) {
-        setPendingSave(false);
-        setNoBalanceReason("empty");
-        setNoBalanceOpen(true);
-        return;
-      }
-      if (balance < amount) {
-        setPendingSave(false);
-        setNoBalanceReason("insufficient");
-        setNoBalanceOpen(true);
-        return;
-      }
+    // Saldo guard — hard block on overdraft. Shared with /receipt via
+    // `checkExpenseBalance`. The user explicitly asked for a modal on
+    // Save instead of an inline warning that could be ignored (the
+    // previous soft-warning approach silently saved over-balance txs
+    // and turned the dashboard's saldo red).
+    const balanceCheck = checkExpenseBalance({
+      kind,
+      amount,
+      accountId,
+      balances,
+      balancesLoaded,
+    });
+    if (!balanceCheck.ok) {
+      setPendingSave(false);
+      setNoBalanceReason(balanceCheck.reason);
+      setNoBalanceOpen(true);
+      return;
     }
 
     // Date logic for the new tx-date chip:
@@ -980,6 +951,7 @@ function CapturePageInner() {
     accountId,
     amount,
     balances,
+    balancesLoaded,
     currency,
     kind,
     merchantId,
@@ -1096,13 +1068,8 @@ function CapturePageInner() {
       });
       // Refresh the balances map so the saldo guard now sees the new
       // total and the picker rows reflect it. Best-effort — if it fails
-      // the next legitimate fetch will catch up.
-      try {
-        const map = await getAccountBalances(currency);
-        setBalances(map);
-      } catch {
-        // Soft-fail
-      }
+      // the next legitimate fetch will catch up. (Hook swallows errors.)
+      await reloadBalances();
       // Replace the old green sonner toast with a proper modal — the
       // user explicitly asked for the new acknowledgement pattern. We
       // close the saldo modal first so the success drawer doesn't stack
@@ -1122,7 +1089,7 @@ function CapturePageInner() {
     } finally {
       setAbonoSubmitting(false);
     }
-  }, [accountId, abonoAmount, currency]);
+  }, [accountId, abonoAmount, currency, reloadBalances]);
 
   // Reset abono state every time the saldo modal closes — opening it again
   // for a different account/amount should always start at the 3-button
@@ -1565,9 +1532,7 @@ function CapturePageInner() {
         >
           <DrawerHeader>
             <DrawerTitle>
-              {noBalanceReason === "empty"
-                ? "Sin saldo"
-                : "Saldo insuficiente"}
+              {BALANCE_GUARD_TITLE[noBalanceReason]}
             </DrawerTitle>
             <DrawerDescription id="capture-no-balance-desc">
               {noBalanceReason === "empty"
