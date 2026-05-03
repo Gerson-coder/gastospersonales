@@ -1,8 +1,8 @@
 /**
- * `useActiveCurrency` — read/write the active currency from `lumi-prefs`.
+ * `useActiveCurrency` — read/write the active currency from `kane-prefs`.
  *
  * Storage shape (shared with `src/app/(tabs)/settings/page.tsx`):
- *   localStorage["lumi-prefs"] = { "currency": "PEN" | "USD", "theme": ... }
+ *   localStorage["kane-prefs"] = { "currency": "PEN" | "USD", "theme": ... }
  *
  * IMPORTANT: this hook MUST preserve unknown keys when writing, so flipping
  * the currency from /dashboard does not clobber `theme` (or any future pref).
@@ -24,7 +24,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import type { Currency } from "@/lib/supabase/types";
 
-const STORAGE_KEY = "lumi-prefs";
+const STORAGE_KEY = "kane-prefs";
 const DEFAULT_CURRENCY: Currency = "PEN";
 
 type LumiPrefs = {
@@ -112,7 +112,7 @@ export function useActiveCurrency(): {
     if (typeof window === "undefined") return;
     try {
       // Read-merge-write so we preserve `theme` and any other key the
-      // settings page (or future code) parks under `lumi-prefs`.
+      // settings page (or future code) parks under `kane-prefs`.
       const prefs = readPrefs();
       const updated: LumiPrefs = { ...prefs, currency: next };
       const serialized = JSON.stringify(updated);

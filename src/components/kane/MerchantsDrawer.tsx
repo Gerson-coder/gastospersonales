@@ -38,9 +38,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
-import { MerchantFormSheet } from "@/components/lumi/MerchantFormSheet";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { MerchantAvatar } from "@/components/kane/MerchantAvatar";
+import { MerchantFormSheet } from "@/components/kane/MerchantFormSheet";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import {
   createMerchant,
   listMerchantsByCategory,

@@ -1,12 +1,12 @@
 /**
- * Goals route — Lumi
+ * Goals route — Kane
  *
  * Personal savings-goals manager. The user defines a goal (name, target,
  * optional deadline, current progress) and tracks progress with manual
- * contributions or withdrawals. Stored in localStorage under `lumi-goals`
- * — no DB migration. Filtered by the active currency from `lumi-prefs`.
+ * contributions or withdrawals. Stored in localStorage under `kane-goals`
+ * — no DB migration. Filtered by the active currency from `kane-prefs`.
  *
- * Mobile-first, calm and motivating tone, mirrors the rest of Lumi.
+ * Mobile-first, calm and motivating tone, mirrors the rest of Kane.
  */
 "use client";
 
@@ -39,7 +39,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 import {
   formatMoney,
   parseMoneyToMinor,
@@ -71,7 +71,7 @@ type Goal = {
   createdAt: string;
 };
 
-const STORAGE_KEY = "lumi-goals";
+const STORAGE_KEY = "kane-goals";
 const NAME_MAX_LENGTH = 32;
 
 type IconChoice = {

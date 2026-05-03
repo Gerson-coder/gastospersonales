@@ -1,6 +1,6 @@
 // TODO: replace inline money formatting with formatMoney from @/lib/money once Batch B lands.
 /**
- * Capture route — Lumi
+ * Capture route — Kane
  *
  * The 95% feature: register an expense in 3 taps.
  *   1. Type the amount on the keypad.
@@ -10,7 +10,7 @@
  * Mobile-first; mounts inside the (tabs) route group so the bottom TabBar
  * sits below it. All copy in es-PE.
  *
- * Source of truth: Lumi UI-kit `CaptureScreen.jsx`. Reviewer fixes applied:
+ * Source of truth: Kane UI-kit `CaptureScreen.jsx`. Reviewer fixes applied:
  *   - onPointerDown/Up/Cancel instead of mouse-only events.
  *   - Drawer (vaul) for both pickers — focus trap, role=dialog, ESC out of
  *     the box. No custom dialog primitives.
@@ -82,13 +82,13 @@ import {
   BALANCE_GUARD_TITLE,
 } from "@/lib/data/balances";
 import { useAccountBalances } from "@/hooks/use-account-balances";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
-import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MerchantPicker } from "@/components/lumi/MerchantPicker";
+import { MerchantPicker } from "@/components/kane/MerchantPicker";
 import { useOnline } from "@/hooks/use-online";
 import { useSession } from "@/lib/use-session";
 import { captureActionBus } from "@/lib/capture-action-bus";
@@ -391,12 +391,12 @@ function CapturePageInner() {
   // Buffer is the raw keypad string; "" means "nothing typed yet" (shows 0).
   const [amountBuffer, setAmountBuffer] = React.useState("");
   // Currency is unified with the rest of the app via `useActiveCurrency`
-  // (persisted in `lumi-prefs`). Edit-mode hydration calls `setCurrency` to
+  // (persisted in `kane-prefs`). Edit-mode hydration calls `setCurrency` to
   // align the global preference with the loaded transaction.
   const { currency, setCurrency } = useActiveCurrency();
   // Seed the dashboard's account-card carousel with the account the user
   // chose here, so when we redirect to /dashboard after save the carousel
-  // lands on that card. Same lumi-prefs JSON that useActiveCurrency uses;
+  // lands on that card. Same kane-prefs JSON that useActiveCurrency uses;
   // useSyncExternalStore on the read side picks up our write synchronously.
   const { setActiveAccountId } = useActiveAccountId();
   const [kind, setKind] = React.useState<Kind>("expense");

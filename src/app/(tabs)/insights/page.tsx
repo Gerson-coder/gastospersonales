@@ -1,5 +1,5 @@
 /**
- * Insights route — Lumi
+ * Insights route — Kane
  *
  * Deeper analytics: cross-month comparison, category breakdown, spending
  * velocity vs previous month, auto-generated observations, top movements.
@@ -10,11 +10,11 @@
  * decision D1 — only Dashboard subscribes to respect the Supabase Pro
  * 200-channel cap). Insights refreshes on mount and on currency change.
  *
- * Source of truth for visuals: Lumi UI-kit `TabScreens.jsx` → `InsightsScreen`.
+ * Source of truth for visuals: Kane UI-kit `TabScreens.jsx` → `InsightsScreen`.
  * Adapted to project conventions:
- *   - All charts hand-rolled SVG (no recharts/chart.js, per Lumi rules).
- *   - All SVG ids/gradient ids are prefixed `lumi-insights-` to avoid
- *     collisions with the Dashboard route's SVGs (`lumi-dashboard-*`).
+ *   - All charts hand-rolled SVG (no recharts/chart.js, per Kane rules).
+ *   - All SVG ids/gradient ids are prefixed `kane-insights-` to avoid
+ *     collisions with the Dashboard route's SVGs (`kane-dashboard-*`).
  */
 
 "use client";
@@ -51,7 +51,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 import { getMoneyDisplaySizeClass, CURRENCY_LABEL } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
@@ -559,11 +559,11 @@ function MonthBars({ months, currency }: { months: MonthBucket[]; currency: Curr
       aria-label="Comparativa mensual de gastos — toca un mes para ver el monto"
     >
       <defs>
-        <linearGradient id="lumi-insights-month-current" x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id="kane-insights-month-current" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="1" />
           <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.55" />
         </linearGradient>
-        <linearGradient id="lumi-insights-month-selected" x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id="kane-insights-month-selected" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="var(--color-foreground)" stopOpacity="0.85" />
           <stop offset="100%" stopColor="var(--color-foreground)" stopOpacity="0.50" />
         </linearGradient>
@@ -590,8 +590,8 @@ function MonthBars({ months, currency }: { months: MonthBucket[]; currency: Curr
         // tell selection apart from the brand-emerald "current month" emphasis.
         const spentFill = isActive
           ? isCurrent
-            ? "url(#lumi-insights-month-current)"
-            : "url(#lumi-insights-month-selected)"
+            ? "url(#kane-insights-month-current)"
+            : "url(#kane-insights-month-selected)"
           : "var(--color-primary)";
         const spentOpacity = isActive ? 1 : 0.55;
         return (
@@ -1209,7 +1209,7 @@ function VelocityChart({
     >
       <defs>
         <linearGradient
-          id="lumi-insights-velocity-grad"
+          id="kane-insights-velocity-grad"
           x1="0"
           x2="0"
           y1="0"
@@ -1239,7 +1239,7 @@ function VelocityChart({
           opacity="0.7"
         />
       )}
-      {areaPath && <path d={areaPath} fill="url(#lumi-insights-velocity-grad)" />}
+      {areaPath && <path d={areaPath} fill="url(#kane-insights-velocity-grad)" />}
       {currPath && (
         <path
           d={currPath}
@@ -1751,7 +1751,7 @@ function projectScopedFigures(
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────
-const PERIOD_STORAGE_KEY = "lumi-pref-insights-period";
+const PERIOD_STORAGE_KEY = "kane-pref-insights-period";
 const DEFAULT_PERIOD: Period = "month";
 
 export default function InsightsPage() {

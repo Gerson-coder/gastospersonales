@@ -40,12 +40,12 @@ async function recoverFromStaleSession(
   });
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem("lumi-prefs");
-      window.localStorage.removeItem("lumi-budgets");
-      window.localStorage.removeItem("lumi-goals");
-      window.localStorage.removeItem("lumi-user-name");
-      window.localStorage.removeItem("lumi_seen_intro");
-      window.localStorage.removeItem("lumi-last-email");
+      window.localStorage.removeItem("kane-prefs");
+      window.localStorage.removeItem("kane-budgets");
+      window.localStorage.removeItem("kane-goals");
+      window.localStorage.removeItem("kane-user-name");
+      window.localStorage.removeItem("kane_seen_intro");
+      window.localStorage.removeItem("kane-last-email");
     } catch {
       // storage disabled
     }

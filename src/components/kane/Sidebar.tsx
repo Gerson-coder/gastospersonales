@@ -1,5 +1,5 @@
 /**
- * Sidebar — desktop navigation rail for Lumi.
+ * Sidebar — desktop navigation rail for Kane.
  *
  * Fixed left rail rendered at `md+` breakpoints. Hidden on mobile,
  * where TabBar takes over.
@@ -33,7 +33,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
-import { UserAvatarCircle } from "@/components/lumi/UserAvatarCircle";
+import { UserAvatarCircle } from "@/components/kane/UserAvatarCircle";
 
 // Chrome-only event interface (not in lib.dom yet).
 interface BeforeInstallPromptEvent extends Event {
@@ -143,11 +143,11 @@ export function Sidebar({ className }: SidebarProps): React.ReactElement {
           aria-hidden="true"
           priority
         />
-        <span className="sr-only">Lumi</span>
+        <span className="sr-only">Kane</span>
         <div className="flex flex-col gap-0.5">
           <span aria-hidden="true" className="inline-flex text-foreground">
             <Image
-              src="/brand/lumi-wordmark.svg"
+              src="/brand/kane-wordmark.svg"
               alt=""
               width={88}
               height={28}
@@ -235,7 +235,7 @@ export function Sidebar({ className }: SidebarProps): React.ReactElement {
               </span>
               <div className="min-w-0">
                 <p className="text-[13px] font-semibold text-foreground">
-                  Instala Lumi
+                  Instala Kane
                 </p>
                 <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                   Llévala contigo a donde quieras. Rápida, ligera y segura.

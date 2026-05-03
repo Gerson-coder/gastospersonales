@@ -1,6 +1,6 @@
 /**
  * /onboarding/intro — second-step welcome screen with primary + secondary
- * CTAs. Either action persists `lumi_seen_intro=1` so the user skips the
+ * CTAs. Either action persists `kane_seen_intro=1` so the user skips the
  * splash + intro on subsequent app opens.
  *
  * The illustration is a CSS-only phone mockup (frame + dashboard + floating
@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-const SEEN_INTRO_KEY = "lumi_seen_intro";
+const SEEN_INTRO_KEY = "kane_seen_intro";
 
 export default function IntroPage() {
   const router = useRouter();

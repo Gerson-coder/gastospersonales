@@ -1,11 +1,11 @@
 /**
- * Budgets route — Lumi
+ * Budgets route — Kane
  *
  * Monthly budgets manager. The user picks an expense category and sets a
  * monthly limit (in PEN or USD); the page shows progress bars based on the
  * actual spend this month from real Supabase transactions.
  *
- * Persistence is intentionally local — `localStorage["lumi-budgets"]` — so we
+ * Persistence is intentionally local — `localStorage["kane-budgets"]` — so we
  * don't need a DB migration. The aggregation reads non-archived transactions
  * for the current month + active currency via the centralized data layer
  * (`listTransactionsWindow`) and only consumes the public `TransactionView`
@@ -21,7 +21,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -55,7 +55,7 @@ const SUPABASE_ENABLED =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
 // ─── Storage ──────────────────────────────────────────────────────────────
-const STORAGE_KEY = "lumi-budgets";
+const STORAGE_KEY = "kane-budgets";
 
 type Budget = {
   id: string;

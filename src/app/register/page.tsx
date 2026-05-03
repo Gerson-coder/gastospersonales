@@ -1,5 +1,5 @@
 /**
- * Register route — Lumi
+ * Register route — Kane
  *
  * New passwordless 2-screen registration flow:
  *
@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import {
   ActionResultDrawer,
   type ActionResultTone,
-} from "@/components/lumi/ActionResultDrawer";
+} from "@/components/kane/ActionResultDrawer";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 

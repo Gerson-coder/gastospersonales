@@ -1,5 +1,5 @@
 /**
- * AccountCard theme — Lumi
+ * AccountCard theme — Kane
  *
  * Maps a bank slug to the gradient + accent colors the AccountCard component
  * paints itself with via CSS custom properties. The component is theme-agnostic
@@ -71,7 +71,7 @@ const THEMES: Record<string, AccountCardTheme> = {
     watermarkTint: "white",
   },
   interbank: {
-    // Interbank green — saturated mid-green like the Lumi primary, but deeper
+    // Interbank green — saturated mid-green like the Kane primary, but deeper
     // at the bottom so the green doesn't compete with our app primary.
     bgFrom: "oklch(0.45 0.16 150)",
     bgTo: "oklch(0.22 0.10 150)",

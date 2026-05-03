@@ -1,5 +1,5 @@
 /**
- * Profile route — Lumi
+ * Profile route — Kane
  *
  * Standalone "Perfil" surface, lifted out of /settings so it can live as its
  * own destination from the ProfileMenu dropdown. Hosts identity (avatar +
@@ -17,14 +17,14 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Camera, Copy, Loader2, Pencil, Trash2 } from "lucide-react";
 
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { removeAvatar, uploadAvatar } from "@/lib/data/avatar";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import {
   Sheet,
   SheetContent,
@@ -424,7 +424,7 @@ export default function ProfilePage() {
             <SheetHeader className="px-0">
               <SheetTitle id="editname-title">Editar nombre</SheetTitle>
               <SheetDescription>
-                Así te llamamos en Lumi. Puedes cambiarlo cuando quieras.
+                Así te llamamos en Kane. Puedes cambiarlo cuando quieras.
               </SheetDescription>
             </SheetHeader>
             <div className="mt-2 px-0 pb-2">

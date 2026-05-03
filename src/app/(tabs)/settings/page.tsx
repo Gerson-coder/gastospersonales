@@ -1,9 +1,9 @@
 // TODO: wire categories to Supabase once Batch C lands.
 /**
- * Settings route — Lumi
+ * Settings route — Kane
  *
  * Mobile-first settings screen. All persisted prefs live in localStorage under
- * the key `lumi-prefs`. Reading localStorage during render is unsafe under SSR
+ * the key `kane-prefs`. Reading localStorage during render is unsafe under SSR
  * (Next.js renders this on the server before hydration), so the page mounts
  * with DEFAULT_PREFS and hydrates from storage in a post-mount effect.
  *
@@ -61,8 +61,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { CategoryFormSheet } from "@/components/kane/CategoryFormSheet";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import {
   archiveAllUserCategories,
   archiveCategory,
@@ -84,7 +84,7 @@ import type { Database } from "@/lib/supabase/types";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
-import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
@@ -125,7 +125,7 @@ type Category = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────
-const PREFS_KEY = "lumi-prefs";
+const PREFS_KEY = "kane-prefs";
 const DEFAULT_PREFS: Prefs = {
   currency: "PEN",
   theme: "system",
@@ -954,7 +954,7 @@ function DataExportCard() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `lumi-export-${today}.json`;
+      a.download = `kane-export-${today}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1212,12 +1212,12 @@ function DangerZoneCard() {
     }
     try {
       if (typeof window !== "undefined") {
-        window.localStorage.removeItem("lumi-prefs");
-        window.localStorage.removeItem("lumi-budgets");
-        window.localStorage.removeItem("lumi-goals");
-        window.localStorage.removeItem("lumi-user-name");
-        window.localStorage.removeItem("lumi_seen_intro");
-        window.localStorage.removeItem("lumi-last-email");
+        window.localStorage.removeItem("kane-prefs");
+        window.localStorage.removeItem("kane-budgets");
+        window.localStorage.removeItem("kane-goals");
+        window.localStorage.removeItem("kane-user-name");
+        window.localStorage.removeItem("kane_seen_intro");
+        window.localStorage.removeItem("kane-last-email");
       }
     } catch {
       // Storage disabled — nothing to clean.

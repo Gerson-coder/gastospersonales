@@ -1,5 +1,5 @@
 /**
- * Accounts data layer — Lumi
+ * Accounts data layer — Kane
  *
  * Thin wrapper around the Supabase `accounts` table for the browser. All
  * functions assume the user is authenticated; RLS in `00002_rls.sql` enforces

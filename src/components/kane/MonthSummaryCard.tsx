@@ -1,5 +1,5 @@
 /**
- * MonthSummaryCard — Lumi shared component
+ * MonthSummaryCard — Kane shared component
  *
  * Lifted from `src/app/(tabs)/movements/page.tsx` so both Dashboard and
  * Movements can render the same vertical "Este mes" hero card.

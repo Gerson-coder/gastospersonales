@@ -13,7 +13,7 @@
  *                                 of stealing a full row.
  *
  * Both variants read/write through `useActiveCurrency`, so flipping in
- * one place propagates everywhere via the lumi-prefs storage event.
+ * one place propagates everywhere via the kane-prefs storage event.
  */
 "use client";
 

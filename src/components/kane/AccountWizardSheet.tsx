@@ -8,10 +8,10 @@
  *   1. Plantilla + nombre + moneda. Si el kind resultante es banco,
  *      el botón dice "Continuar" y avanza al paso 2. Si es Yape /
  *      Plin / Efectivo (donde el subtipo no aplica), el botón dice
- *      "Agregar a Lumi" y guarda directo.
+ *      "Agregar a Kane" y guarda directo.
  *   2. Subtipo del producto (Sueldo / Corriente / Ahorro / Crédito /
  *      Débito / Dólares). Solo se muestra para banco. Botón
- *      "Agregar a Lumi" guarda. Header trae back-arrow para volver
+ *      "Agregar a Kane" guarda. Header trae back-arrow para volver
  *      al paso 1 sin perder lo tipeado.
  *
  * Auto-defaults sensatos al elegir plantilla:
@@ -54,9 +54,9 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { AccountCard } from "@/components/lumi/AccountCard";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { AccountCard } from "@/components/kane/AccountCard";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import {
   accountBrandSlug,
   accountChipBgClass,
@@ -349,7 +349,7 @@ export function AccountWizardSheet({
 
   // Copy del botón primario depende del paso + si necesita paso 2.
   const primaryLabel =
-    step === 1 && needsStep2 ? "Continuar" : "Agregar a Lumi";
+    step === 1 && needsStep2 ? "Continuar" : "Agregar a Kane";
   const headerTitle =
     step === 2 ? "Tipo de producto" : "Agregando cuenta";
 
@@ -738,8 +738,8 @@ export function AccountWizardSheet({
 
           {/* Footer fijo abajo. Copy y action dependen del paso:
                 step 1 + needsStep2 → "Continuar" (advance)
-                step 1 + !needsStep2 → "Agregar a Lumi" (submit)
-                step 2 → "Agregar a Lumi" (submit) */}
+                step 1 + !needsStep2 → "Agregar a Kane" (submit)
+                step 2 → "Agregar a Kane" (submit) */}
           <div className="shrink-0 border-t border-border bg-popover px-5 pb-6 pt-3">
             <button
               type="button"

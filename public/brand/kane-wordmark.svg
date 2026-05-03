@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 64" width="200" height="64">
+  <text x="0" y="48" fill="currentColor" font-family="'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" font-weight="800" font-size="56" letter-spacing="-1.7">lum</text>
+  <text x="119" y="48" fill="currentColor" font-family="'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif" font-weight="800" font-size="56" letter-spacing="-1.7">i</text>
+  <circle cx="131" cy="14" r="6" fill="oklch(0.72 0.18 162)"></circle>
+</svg>

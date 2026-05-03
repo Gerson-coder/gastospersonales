@@ -1,11 +1,11 @@
 /**
- * Movements route — Lumi
+ * Movements route — Kane
  *
  * Mobile-first list of every transaction, grouped by day with sticky day
  * headers. Scales to a centered max-w-3xl column at md+ so the list doesn't
  * stretch on desktop.
  *
- * Source of truth: Lumi UI-kit `MovementsScreen` (TabScreens.jsx, lines 4-86).
+ * Source of truth: Kane UI-kit `MovementsScreen` (TabScreens.jsx, lines 4-86).
  *
  * Wave 5 wires this page to Supabase:
  *   - `listTransactionsByCurrency` for cursor-paginated reads (50/page).
@@ -47,23 +47,23 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { formatTxDate } from "@/lib/format-tx-date";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 // Lazy-load: ambos drawers solo se montan tras una interaccion del
 // user (long-press abre el ActionSheet, tap abre el DetailDrawer).
 // Sacarlos del initial chunk reduce el JS que se parsea al entrar a
 // /movements. ssr:false porque viven detras de state local.
 const TransactionActionSheet = nextDynamic(
-  () => import("@/components/lumi/TransactionActionSheet"),
+  () => import("@/components/kane/TransactionActionSheet"),
   { ssr: false },
 );
 const TransactionDetailDrawer = nextDynamic(
-  () => import("@/components/lumi/TransactionDetailDrawer"),
+  () => import("@/components/kane/TransactionDetailDrawer"),
   { ssr: false },
 );
 import { useActiveCurrency } from "@/hooks/use-active-currency";
@@ -81,7 +81,7 @@ import type { Currency } from "@/lib/supabase/types";
 type Filter = "todo" | "gastos" | "ingresos";
 
 // Local categorization that maps a category NAME (from the joined
-// `categories.name` column) to a stable Lumi category bucket so we can keep
+// `categories.name` column) to a stable Kane category bucket so we can keep
 // the existing icon + tint palette without round-tripping a DB-backed
 // `icon` field. `other` is the fallback for unknown names.
 type CategoryBucket =

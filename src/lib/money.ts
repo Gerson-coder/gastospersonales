@@ -1,5 +1,5 @@
 /**
- * Money utilities for Lumi.
+ * Money utilities for Kane.
  *
  * Internal representation: amount_minor (bigint or number) — the smallest
  * currency unit (centavos for PEN/USD).

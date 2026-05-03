@@ -2,7 +2,7 @@
  * /onboarding/welcome — splash screen.
  *
  * Entry point for new users. Auto-advances to /onboarding/intro after 2.5s
- * or on tap anywhere. Returning users (with `lumi_seen_intro === "1"` in
+ * or on tap anywhere. Returning users (with `kane_seen_intro === "1"` in
  * localStorage) are redirected straight to /login so they don't relive the
  * splash + intro every time.
  */
@@ -16,7 +16,7 @@ import { Sparkles } from "lucide-react";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-const SEEN_INTRO_KEY = "lumi_seen_intro";
+const SEEN_INTRO_KEY = "kane_seen_intro";
 const AUTO_ADVANCE_MS = 2500;
 
 export default function WelcomePage() {

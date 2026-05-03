@@ -1,5 +1,5 @@
 /**
- * Accounts route — Lumi
+ * Accounts route — Kane
  *
  * Focused payment-accounts screen. Wired to Supabase `accounts` via the
  * `@/lib/data/accounts` data layer (Batch C — accounts CRUD). When Supabase
@@ -53,9 +53,9 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { AppHeader } from "@/components/lumi/AppHeader";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { AppHeader } from "@/components/kane/AppHeader";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 
 // Lazy-load AccountWizardSheet — pesa ~857 lineas + dependencias del
@@ -63,7 +63,7 @@ import { accountChipBgClass } from "@/lib/account-brand-slug";
 // ssr:false porque el componente es interactivo y vive detras de un
 // click; no se renderiza en el primer paint nunca.
 const AccountWizardSheet = nextDynamic(
-  () => import("@/components/lumi/AccountWizardSheet"),
+  () => import("@/components/kane/AccountWizardSheet"),
   { ssr: false },
 );
 import {

@@ -1,5 +1,5 @@
 /**
- * Magic-link callback — Lumi
+ * Magic-link callback — Kane
  *
  * Supabase redirects the browser here after the user clicks the email link.
  * We exchange the one-time `code` for a session, write the session cookies

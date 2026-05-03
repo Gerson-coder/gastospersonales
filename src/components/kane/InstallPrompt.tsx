@@ -30,7 +30,7 @@ function isIosDevice(): boolean {
  *
  * Persistent install nudge. The card stays visible on every page until the
  * app is detected as running standalone (PWA installed). There is NO
- * "dismiss" button by design — we want every user to install Lumi.
+ * "dismiss" button by design — we want every user to install Kane.
  *
  * Detection of installed state:
  *   - Android Chrome / Edge / Brave: `display-mode: standalone` media query
@@ -118,7 +118,7 @@ export function InstallPrompt() {
           <Download className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-foreground">Instala Lumi</p>
+          <p className="font-semibold text-foreground">Instala Kane</p>
           <p className="text-sm text-muted-foreground">
             Tenlo a un toque desde tu pantalla principal.
           </p>
@@ -144,7 +144,7 @@ export function InstallPrompt() {
               id="install-ios-title"
               className="text-2xl font-bold text-foreground"
             >
-              Instalar Lumi en iOS
+              Instalar Kane en iOS
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Apple no permite el botón directo. Son 3 pasos en Safari:

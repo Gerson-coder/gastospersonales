@@ -1,5 +1,5 @@
 /**
- * Web Share Target receiver — Lumi
+ * Web Share Target receiver — Kane
  *
  * Registered via `share_target` in /public/manifest.json. When the installed
  * PWA is picked from the native Android share sheet (e.g. user shares a
@@ -18,7 +18,7 @@
  *
  * Limitations / fallbacks (intentional, no special handling):
  *   - iOS does NOT support Web Share Target (as of 2026-04). Users on iOS
- *     simply won't see Lumi in their share sheet. They keep using the
+ *     simply won't see Kane in their share sheet. They keep using the
  *     in-app camera/gallery picker — no degradation.
  *   - Desktop browsers + uninstalled PWAs do not register share targets at
  *     all. The action URL is only ever hit by the OS share intent.
@@ -61,10 +61,10 @@ function bridgeHtml(dataUrl: string, mimeType: string, fileName: string): string
 <script>
 (function(){
   try {
-    sessionStorage.setItem("lumi:share-target:image", ${JSON.stringify(safeDataUrl)});
-    sessionStorage.setItem("lumi:share-target:mime", ${safeMime});
-    sessionStorage.setItem("lumi:share-target:name", ${safeName});
-    sessionStorage.setItem("lumi:share-target:ts", String(Date.now()));
+    sessionStorage.setItem("kane:share-target:image", ${JSON.stringify(safeDataUrl)});
+    sessionStorage.setItem("kane:share-target:mime", ${safeMime});
+    sessionStorage.setItem("kane:share-target:name", ${safeName});
+    sessionStorage.setItem("kane:share-target:ts", String(Date.now()));
   } catch (err) {
     // Quota or privacy-mode: fall through, receipt page handles the empty case.
   }

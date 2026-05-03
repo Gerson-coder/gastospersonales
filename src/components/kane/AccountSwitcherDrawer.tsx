@@ -32,7 +32,7 @@ import {
 import type { Account } from "@/lib/data/accounts";
 import { ACCOUNT_SUBTYPE_LABEL } from "@/lib/data/accounts";
 import { getAccountCardStyle, getAccountBankSlug } from "@/lib/account-card-theme";
-import { AccountCard } from "@/components/lumi/AccountCard";
+import { AccountCard } from "@/components/kane/AccountCard";
 import {
   type AccountStats,
   getStatsFor,

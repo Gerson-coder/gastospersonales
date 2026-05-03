@@ -1,8 +1,8 @@
 {
-  "name": "gastospersonales",
+  "name": "kane",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal finance PWA — track expenses and income with quick mobile capture and AI-assisted receipt OCR",
+  "description": "Kane — Personal finance PWA. Track expenses and income with quick mobile capture and AI-assisted receipt OCR.",
   "author": "Gerson Herrera",
   "license": "UNLICENSED",
   "keywords": [

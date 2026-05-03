@@ -1,5 +1,5 @@
 /**
- * Root redirect — Lumi
+ * Root redirect — Kane
  *
  * Reads from the SessionProvider (which already validates the JWT via
  * `getUser()` in its mount effect) instead of running its own
@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 
 import { useSession } from "@/lib/use-session";
 
-const SEEN_INTRO_KEY = "lumi_seen_intro";
+const SEEN_INTRO_KEY = "kane_seen_intro";
 
 function hasSeenIntro(): boolean {
   try {

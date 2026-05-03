@@ -256,7 +256,7 @@ export function AccountCard({
       style={style}
       data-shine={dataShine}
       className={cn(
-        "lumi-account-card group relative flex flex-col overflow-hidden text-left",
+        "kane-account-card group relative flex flex-col overflow-hidden text-left",
         "rounded-2xl shadow-[0_14px_40px_-14px_rgba(0,0,0,0.55)]",
         "ring-1 ring-white/10",
         // Aspect ratio 1.586:1 (ID-1 credit card standard).
@@ -266,7 +266,7 @@ export function AccountCard({
         // CSS-vars-driven gradient; default fallback to graphite.
         "bg-[linear-gradient(135deg,var(--card-bg-from,oklch(0.32_0.02_250))_0%,var(--card-bg-to,oklch(0.18_0.02_250))_100%)]",
         "text-white",
-        variant === "full" && "lumi-account-card--full",
+        variant === "full" && "kane-account-card--full",
         "transition-transform duration-300 ease-out",
         onClick && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
         className,
@@ -309,7 +309,7 @@ export function AccountCard({
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden"
         >
-          <span className="lumi-account-card__shine absolute -inset-y-4 -left-[40%] w-[40%] -skew-x-12 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.18)_50%,transparent_100%)]" />
+          <span className="kane-account-card__shine absolute -inset-y-4 -left-[40%] w-[40%] -skew-x-12 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.18)_50%,transparent_100%)]" />
         </span>
       )}
 

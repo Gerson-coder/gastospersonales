@@ -1,5 +1,5 @@
 /**
- * Dashboard route — Lumi
+ * Dashboard route — Kane
  *
  * Mobile-first; scales to desktop at md+ (2-col) and lg+ (3-col secondary row).
  * All copy in es-PE.
@@ -11,7 +11,7 @@
  *   - Realtime sync only on this page via `useTransactionsRealtime`,
  *     debounce 250ms (Supabase Pro 200-conn cap — see design #4).
  *   - Currency lever lives in the AppHeader `actionsBefore` slot via
- *     `<CurrencySwitch />`, persisted under `lumi-prefs.currency`.
+ *     `<CurrencySwitch />`, persisted under `kane-prefs.currency`.
  *   - Empty state when the active currency has zero rows in the window.
  *   - Demo mode (no Supabase env) keeps the inline mocks so the screen is
  *     still browseable without a backend — mirror of `accounts/page.tsx`.
@@ -63,33 +63,33 @@ import {
 } from "@/components/ui/sheet";
 import { CURRENCY_LABEL } from "@/lib/money";
 import { formatTxDate, formatLimaDate } from "@/lib/format-tx-date";
-import { AppHeader } from "@/components/lumi/AppHeader";
-import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
-import { DashboardHero, type Period } from "@/components/lumi/DashboardHero";
-import { AccountCardCarousel } from "@/components/lumi/AccountCardCarousel";
+import { AppHeader } from "@/components/kane/AppHeader";
+import { CurrencySwitch } from "@/components/kane/CurrencySwitch";
+import { DashboardHero, type Period } from "@/components/kane/DashboardHero";
+import { AccountCardCarousel } from "@/components/kane/AccountCardCarousel";
 import { useAccountStats } from "@/hooks/use-account-stats";
-import { StatTrendCard } from "@/components/lumi/StatTrendCard";
+import { StatTrendCard } from "@/components/kane/StatTrendCard";
 import {
   MobileTodayCard,
   ExpenseSubline,
   IncomeSubline,
-} from "@/components/lumi/MobileTodayCard";
-import { CategoryDonut, type CategoryDonutItem } from "@/components/lumi/CategoryDonut";
-import { AdvisorCard } from "@/components/lumi/AdvisorCard";
-import { ThemeToggle } from "@/components/lumi/ThemeToggle";
-import { ProfileMenu } from "@/components/lumi/ProfileMenu";
+} from "@/components/kane/MobileTodayCard";
+import { CategoryDonut, type CategoryDonutItem } from "@/components/kane/CategoryDonut";
+import { AdvisorCard } from "@/components/kane/AdvisorCard";
+import { ThemeToggle } from "@/components/kane/ThemeToggle";
+import { ProfileMenu } from "@/components/kane/ProfileMenu";
 
 // Lazy-load: el drawer de detalle solo aparece tras un tap en una
 // fila del listado "Recientes". Saliendolo del bundle inicial achica
 // el JS que se ejecuta al cargar /dashboard, que ya es la pagina mas
 // pesada de la app.
 const TransactionDetailDrawer = nextDynamic(
-  () => import("@/components/lumi/TransactionDetailDrawer"),
+  () => import("@/components/kane/TransactionDetailDrawer"),
   { ssr: false },
 );
-import { NotificationsBell } from "@/components/lumi/NotificationsBell";
-import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { NotificationsBell } from "@/components/kane/NotificationsBell";
+import { MerchantAvatar } from "@/components/kane/MerchantAvatar";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -245,7 +245,7 @@ const CATEGORY_LABEL: Record<CategoryId, string> = {
   other: "Otros",
 };
 
-// Subtle, unified tint palette — same hue family as Lumi (warm + emerald accents),
+// Subtle, unified tint palette — same hue family as Kane (warm + emerald accents),
 // high lightness + low chroma so nothing screams. NOT a rainbow.
 const CATEGORY_TINT: Record<CategoryId, { bg: string; text: string }> = {
   food: { bg: "bg-[oklch(0.92_0.04_30)]", text: "text-[oklch(0.45_0.10_30)]" },
@@ -808,8 +808,8 @@ type DashGoal = {
   icon: string;
 };
 
-const BUDGETS_STORAGE_KEY = "lumi-budgets";
-const GOALS_STORAGE_KEY = "lumi-goals";
+const BUDGETS_STORAGE_KEY = "kane-budgets";
+const GOALS_STORAGE_KEY = "kane-goals";
 
 function safeReadStorage<T>(key: string, isShape: (v: unknown) => v is T): T[] {
   if (typeof window === "undefined") return [];
@@ -1386,7 +1386,7 @@ export default function DashboardPage() {
 
   // ── Mobile carousel — accounts of the active currency ─────────────────
   // We feed the carousel the MRU-sorted, currency-scoped list. The first
-  // card the user lands on is decided by `lumi-prefs:activeAccountId` (per
+  // card the user lands on is decided by `kane-prefs:activeAccountId` (per
   // AccountCardCarousel). Stats are computed once over the full window via
   // useAccountStats and looked up per-card.
   const carouselAccounts = React.useMemo(

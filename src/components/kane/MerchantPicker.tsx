@@ -37,7 +37,7 @@ import {
   listMRUMerchants,
   type Merchant,
 } from "@/lib/data/merchants";
-import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
+import { MerchantAvatar } from "@/components/kane/MerchantAvatar";
 import { cn } from "@/lib/utils";
 
 // Lazy-load del drawer de "Ver todos" — solo se monta cuando el user
@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 // gastos (los que matchean con uno de los 3 MRU visibles) este chunk
 // nunca se descarga, achicando el JS que se parsea en /capture.
 const MerchantsDrawer = nextDynamic(
-  () => import("@/components/lumi/MerchantsDrawer"),
+  () => import("@/components/kane/MerchantsDrawer"),
   { ssr: false },
 );
 

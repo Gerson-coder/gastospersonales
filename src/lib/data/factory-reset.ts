@@ -1,14 +1,14 @@
 /**
- * Factory reset — Lumi
+ * Factory reset — Kane
  *
  * Single entry point for the "Restablecer todo de fábrica" flow in /settings.
  * Soft-archives every piece of user-owned data (transactions, merchants,
  * accounts, categories) and clears local-only stores that don't belong on
- * the server (lumi-budgets, lumi-goals).
+ * the server (kane-budgets, kane-goals).
  *
  * Profile (display_name, avatar_url) is INTENTIONALLY untouched — the user
  * is not signing out, just wiping their financial state. Theme + currency
- * persisted under `lumi-prefs` are preserved so the app keeps its look on
+ * persisted under `kane-prefs` are preserved so the app keeps its look on
  * the next render.
  *
  * Order of archival is deliberate: transactions first so any in-flight
@@ -46,8 +46,8 @@ export async function factoryReset(): Promise<FactoryResetCounts> {
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.removeItem("lumi-budgets");
-      window.localStorage.removeItem("lumi-goals");
+      window.localStorage.removeItem("kane-budgets");
+      window.localStorage.removeItem("kane-goals");
     } catch {
       // Storage disabled (private mode / quota) — nothing actionable here.
     }

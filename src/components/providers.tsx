@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { useServiceWorkerUpdate } from "@/hooks/use-service-worker-update";
 import { SessionProvider } from "@/lib/use-session";
+import { migrateLegacyStorage } from "@/lib/storage-migration";
 
 /**
  * Suppresses a known upstream noise from vaul (the lib that powers shadcn
@@ -48,6 +49,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // skipWaiting + clientsClaim in sw.ts this fires on every deploy, so
   // users always end up on fresh code instead of the old stale shell.
   useServiceWorkerUpdate();
+  // One-shot migracion del rebrand: copia claves de localStorage del
+  // formato `lumi-*` legacy al `kane-*` actual y borra las viejas.
+  // Idempotente — corridas siguientes son no-ops porque las claves
+  // legacy ya no estan. Sin esto, los users que venian de la version
+  // anterior pierden currency / theme / metas / presupuestos al
+  // actualizar.
+  React.useEffect(() => {
+    migrateLegacyStorage();
+  }, []);
   return (
     <ThemeProvider
       attribute="class"

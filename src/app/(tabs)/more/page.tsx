@@ -1,5 +1,5 @@
 /**
- * More route — Lumi
+ * More route — Kane
  *
  * Mobile menu surface for everything that doesn't fit in the bottom TabBar.
  * Mirrors the desktop Sidebar's secondary navigation: Categorías, Presupuestos,
@@ -27,7 +27,7 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { AppHeader } from "@/components/lumi/AppHeader";
+import { AppHeader } from "@/components/kane/AppHeader";
 
 type MoreItem = {
   href: string;
@@ -112,7 +112,7 @@ export default function MorePage(): React.ReactElement {
     <main className="relative min-h-dvh bg-background pb-32 text-foreground md:hidden">
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6">
         <AppHeader
-          eyebrow="Lumi"
+          eyebrow="Kane"
           title="Más"
           titleStyle="page"
           className="px-0 pt-0"
@@ -137,7 +137,7 @@ export default function MorePage(): React.ReactElement {
         ))}
 
         <p className="px-1 pt-2 text-[11px] text-muted-foreground">
-          Lumi · controla tu dinero
+          Kane · controla tu dinero
         </p>
       </div>
     </main>

@@ -1,5 +1,5 @@
 /**
- * Receipt OCR review route — Lumi (Phase B: design-only, no backend)
+ * Receipt OCR review route — Kane (Phase B: design-only, no backend)
  *
  * Mock OCR: simulates a snap → wait → review → confirm flow with hardcoded
  * results. The real wiring (image upload, OpenAI vision call, Supabase
@@ -80,7 +80,7 @@ import {
   BALANCE_GUARD_TITLE,
 } from "@/lib/data/balances";
 import { useAccountBalances } from "@/hooks/use-account-balances";
-import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -445,7 +445,7 @@ function LoadingState({
           className="pointer-events-none absolute inset-x-0 top-0 h-full motion-reduce:hidden"
         >
           <div
-            className="absolute inset-x-0 h-12 animate-lumi-scan"
+            className="absolute inset-x-0 h-12 animate-kane-scan"
             style={{
               background:
                 "linear-gradient(180deg, transparent 0%, oklch(0.78 0.16 162 / 0.18) 45%, oklch(0.78 0.16 162 / 0.55) 50%, oklch(0.78 0.16 162 / 0.18) 55%, transparent 100%)",
@@ -609,10 +609,10 @@ function FieldRow({
 // sessionStorage keys used by /share-target route handler when the OS
 // share sheet hands us an image. Kept in sync with that route.
 const SHARE_KEYS = {
-  image: "lumi:share-target:image",
-  mime: "lumi:share-target:mime",
-  name: "lumi:share-target:name",
-  ts: "lumi:share-target:ts",
+  image: "kane:share-target:image",
+  mime: "kane:share-target:mime",
+  name: "kane:share-target:name",
+  ts: "kane:share-target:ts",
 } as const;
 
 // Convert a data URL (data:image/png;base64,...) into a Blob → File pair so

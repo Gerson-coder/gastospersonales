@@ -9,7 +9,7 @@
  *
  * Composition:
  *   - The carousel renders the FULL variant of AccountCard.
- *   - Active index is mirrored to `lumi-prefs.activeAccountId` so the next
+ *   - Active index is mirrored to `kane-prefs.activeAccountId` so the next
  *     mount lands on the same account the user was last looking at.
  *   - "Cambiar cuenta" opens AccountSwitcherDrawer with mini cards. Tapping
  *     a mini card calls `scrollTo(index)` and closes the drawer.
@@ -33,8 +33,8 @@ import { ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/lib/data/accounts";
 import { getAccountCardStyle, getAccountBankSlug } from "@/lib/account-card-theme";
-import { AccountCard } from "@/components/lumi/AccountCard";
-import { AccountSwitcherDrawer } from "@/components/lumi/AccountSwitcherDrawer";
+import { AccountCard } from "@/components/kane/AccountCard";
+import { AccountSwitcherDrawer } from "@/components/kane/AccountSwitcherDrawer";
 import {
   type AccountStats,
   getStatsFor,
@@ -72,7 +72,7 @@ export function AccountCardCarousel({
   className,
   onActiveAccountChange,
 }: AccountCardCarouselProps) {
-  // Active account id is owned by the lumi-prefs hook so external writers
+  // Active account id is owned by the kane-prefs hook so external writers
   // (e.g. /capture finishing a save) can drive the carousel's position
   // declaratively. The hook reads from localStorage via useSyncExternalStore,
   // so a write in /capture before `router.push("/dashboard")` already shows
@@ -224,12 +224,12 @@ export function AccountCardCarousel({
                   onToggleHide={() => setHideAmounts((h) => !h)}
                   variant="full"
                   // Subtle scale-pulse on the active card — kicks in on snap
-                  // via the `lumi-account-card--snap` modifier toggled by
+                  // via the `kane-account-card--snap` modifier toggled by
                   // `data-active`. Inactive cards stay at scale 1 so when
                   // they enter the viewport they don't bounce.
                   className={cn(
                     "w-full",
-                    isActive && "lumi-account-card--snap",
+                    isActive && "kane-account-card--snap",
                   )}
                   style={getAccountCardStyle(account)}
                   data-shine={isActive ? "true" : undefined}

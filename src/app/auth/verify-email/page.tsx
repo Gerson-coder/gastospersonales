@@ -21,7 +21,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
 const RESEND_COOLDOWN_SECONDS = 45;
@@ -186,7 +186,7 @@ function VerifyEmailInner() {
         typeof window !== "undefined"
       ) {
         try {
-          window.localStorage.setItem("lumi-last-email", emailParam);
+          window.localStorage.setItem("kane-last-email", emailParam);
         } catch {
           // storage disabled
         }

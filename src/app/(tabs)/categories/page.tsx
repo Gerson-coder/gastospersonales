@@ -1,5 +1,5 @@
 /**
- * Categories route — Lumi
+ * Categories route — Kane
  *
  * Lists the user's own categories alongside the system seed catalogue, split
  * by kind (gasto / ingreso). Users can create, edit and archive their own
@@ -17,9 +17,9 @@ import * as React from "react";
 import { toast } from "sonner";
 import { ChevronRight, Lock, Plus } from "lucide-react";
 
-import { AppHeader } from "@/components/lumi/AppHeader";
-import { CategoryFormSheet } from "@/components/lumi/CategoryFormSheet";
-import { SavingOverlay } from "@/components/lumi/SavingOverlay";
+import { AppHeader } from "@/components/kane/AppHeader";
+import { CategoryFormSheet } from "@/components/kane/CategoryFormSheet";
+import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {

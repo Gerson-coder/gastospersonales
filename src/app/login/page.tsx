@@ -33,7 +33,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ActionResultDrawer } from "@/components/lumi/ActionResultDrawer";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +42,7 @@ const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // Persist the last successfully-authed email per device. Lets a returning
 // user skip the email step entirely on the next /login. Cleared on account
 // deletion (settings/page.tsx) and on explicit "Cambiar correo" tap.
-const LAST_EMAIL_KEY = "lumi-last-email";
+const LAST_EMAIL_KEY = "kane-last-email";
 
 function readLastEmail(): string {
   try {

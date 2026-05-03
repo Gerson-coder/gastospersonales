@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
 
-// Security headers applied to every response. Tuned for the Lumi stack:
+// Security headers applied to every response. Tuned for the Kane stack:
 // Supabase (REST + Realtime WSS + Storage), Resend (email assets), and
 // the OpenAI vision API for receipt OCR (server-side fetch only, so no
 // connect-src entry needed for it).

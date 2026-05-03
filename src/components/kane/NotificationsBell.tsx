@@ -9,7 +9,7 @@
  *   2. Big single charge (≥ 25% of monthly average expense).
  *   3. Income received in the last 7 days.
  *
- * Read-state lives in localStorage under `lumi-notifs-read-at` so a
+ * Read-state lives in localStorage under `kane-notifs-read-at` so a
  * notification dismissed in one session stays read in the next. No
  * per-notification id tracking — we just stamp "I read up to T" and
  * any signal older than T renders without the unread indicator.
@@ -29,7 +29,7 @@ import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { CURRENCY_LABEL, formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-const READ_KEY = "lumi-notifs-read-at";
+const READ_KEY = "kane-notifs-read-at";
 
 type NotifIcon = React.ComponentType<{
   size?: number;

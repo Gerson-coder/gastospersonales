@@ -10,7 +10,7 @@
 /* ============================================================
    @theme inline — shadcn alias indirection (preserved)
    Tokens reference raw --vars defined in :root/.dark below.
-   Lumi-only --color-* tokens (no shadcn equivalent) are
+   Kane-only --color-* tokens (no shadcn equivalent) are
    defined directly on :root/.dark and Tailwind v4 picks them
    up automatically as utilities (bg-success, bg-warning, etc.).
    ============================================================ */
@@ -53,7 +53,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* Radii — Lumi explicit ladder (overrides shadcn calc()-based scale) */
+  /* Radii — Kane explicit ladder (overrides shadcn calc()-based scale) */
   --radius-xs:   0.375rem;  /* 6px  — chips, badges */
   --radius-sm:   0.5rem;    /* 8px  — small inputs */
   --radius-md:   0.75rem;   /* 12px — buttons, default inputs */
@@ -66,7 +66,7 @@
 
 /* ============================================================
    :root — LIGHT MODE
-   Raw shadcn-aliased vars + Lumi-only --color-* tokens.
+   Raw shadcn-aliased vars + Kane-only --color-* tokens.
    WCAG AA fixes applied (B1, B2, B3 from auditor, culori-verified):
      - --primary darkened 0.72 → 0.53 (auditor said 0.58 → still failed at 3.83:1; bumped to 0.53 → 4.71:1)
      - --destructive darkened 0.62 → 0.52 (6.02:1)
@@ -83,7 +83,7 @@
   --popover-foreground:        oklch(0.18 0.005 95);
   --primary:                   oklch(0.53 0.17 162);    /* B1 fix: AA 4.71:1 (culori-verified) */
   --primary-foreground:        oklch(0.99 0.005 95);
-  --secondary:                 oklch(0.96 0.005 95);    /* maps to Lumi muted */
+  --secondary:                 oklch(0.96 0.005 95);    /* maps to Kane muted */
   --secondary-foreground:      oklch(0.18 0.005 95);
   --muted:                     oklch(0.96 0.005 95);
   --muted-foreground:          oklch(0.45 0.005 95);    /* B3 fix: AA 7.23:1 on bg, 6.62:1 on muted */
@@ -98,7 +98,7 @@
   --chart-3:                   oklch(0.66 0.17 250);
   --chart-4:                   oklch(0.70 0.18 320);
   --chart-5:                   oklch(0.78 0.15 75);
-  --radius:                    0.75rem;                  /* Lumi: 12px (was 0.625rem) */
+  --radius:                    0.75rem;                  /* Kane: 12px (was 0.625rem) */
 
   /* Sidebar — warm-tinted to align with new palette */
   --sidebar:                   oklch(0.99 0.003 95);
@@ -110,7 +110,7 @@
   --sidebar-border:            oklch(0.92 0.005 95);
   --sidebar-ring:              oklch(0.53 0.17 162);
 
-  /* === Lumi-only tokens (Tailwind v4 picks --color-* up directly) === */
+  /* === Kane-only tokens (Tailwind v4 picks --color-* up directly) === */
   --color-primary-soft:            oklch(0.95 0.04 162);
   --color-primary-soft-foreground: oklch(0.40 0.16 162);
   --color-subtle:                  oklch(0.93 0.005 95);
@@ -165,7 +165,7 @@
 
 /* ============================================================
    .dark — DARK MODE
-   Lumi dark palette is purpose-built (warm near-black + brighter
+   Kane dark palette is purpose-built (warm near-black + brighter
    emerald). Auditor confirmed dark-mode contrast ratios pass AA
    without modification, so values stay as designed.
    ============================================================ */
@@ -204,7 +204,7 @@
   --sidebar-border:            oklch(0.26 0.005 95);
   --sidebar-ring:              oklch(0.78 0.16 162);
 
-  /* Lumi-only dark */
+  /* Kane-only dark */
   --color-primary-soft:            oklch(0.28 0.07 162);
   --color-primary-soft-foreground: oklch(0.85 0.14 162);
   --color-subtle:                  oklch(0.24 0.005 95);
@@ -229,7 +229,7 @@
 }
 
 /* ============================================================
-   @layer base — extend shadcn defaults with Lumi body styles
+   @layer base — extend shadcn defaults with Kane body styles
    ============================================================ */
 @layer base {
   * {
@@ -254,8 +254,8 @@
 }
 
 /* ============================================================
-   @layer components — Lumi typography role classes
-   NOTE: .btn / .input / .card / .fab from Lumi UI-kit are
+   @layer components — Kane typography role classes
+   NOTE: .btn / .input / .card / .fab from Kane UI-kit are
    intentionally NOT migrated — they collide with shadcn/ui
    components and would shadow them.
    ============================================================ */
@@ -352,20 +352,20 @@
 }
 
 /* ============================================================
-   Lumi shimmer — used by <Skeleton /> placeholders.
+   Kane shimmer — used by <Skeleton /> placeholders.
    Single ~1.4s left→right sweep so a row of skeletons reads as
    one calm motion rather than a strobe. The global
    prefers-reduced-motion rule above clamps duration to 0.01ms.
    ============================================================ */
-@keyframes lumi-shimmer {
+@keyframes kane-shimmer {
   100% { transform: translateX(100%); }
 }
 @theme inline {
-  --animate-lumi-shimmer: lumi-shimmer 1.4s ease-in-out infinite;
+  --animate-kane-shimmer: kane-shimmer 1.4s ease-in-out infinite;
 }
 
 /* ============================================================
-   Lumi scan-line — used by the Receipt OCR "loading" state.
+   Kane scan-line — used by the Receipt OCR "loading" state.
    A thin gradient line sweeps top→bottom over the receipt
    image, mimicking a flatbed scanner pass. ~1.8s linear so
    the motion reads as deliberate, not anxious. The global
@@ -373,16 +373,16 @@
    0.01ms; the consumer also pairs this with motion-reduce:hidden
    so the line disappears entirely for opted-out users.
    ============================================================ */
-@keyframes lumi-scan {
+@keyframes kane-scan {
   0%   { transform: translateY(-100%); }
   100% { transform: translateY(100%); }
 }
 @theme inline {
-  --animate-lumi-scan: lumi-scan 1.8s linear infinite;
+  --animate-kane-scan: kane-scan 1.8s linear infinite;
 }
 
 /* ============================================================
-   Lumi toast — Sonner notifications styling.
+   Kane toast — Sonner notifications styling.
    Three layers of polish on top of Sonner's defaults:
      1. Drop-in: slides down from -10px while scaling 0.94 -> 1 with
         a subtle elastic overshoot (smooth-out-back curve). Replaces
@@ -397,17 +397,17 @@
    The icon also bounces in (back-out curve, 320ms) for a touch of
    character on success / info / warning / error variants.
    ============================================================ */
-@keyframes lumi-toast-enter {
+@keyframes kane-toast-enter {
   0%   { transform: translateY(-10px) scale(0.94); opacity: 0; }
   60%  { transform: translateY(2px)   scale(1.015); opacity: 1; }
   100% { transform: translateY(0)     scale(1);     opacity: 1; }
 }
-@keyframes lumi-toast-icon-pop {
+@keyframes kane-toast-icon-pop {
   0%   { transform: scale(0.4) rotate(-6deg); opacity: 0; }
   55%  { transform: scale(1.18) rotate(2deg); opacity: 1; }
   100% { transform: scale(1) rotate(0deg);    opacity: 1; }
 }
-@keyframes lumi-toast-progress {
+@keyframes kane-toast-progress {
   from { transform: scaleX(1); }
   to   { transform: scaleX(0); }
 }
@@ -419,7 +419,7 @@
   box-shadow: var(--shadow-float, 0 4px 8px rgba(0,0,0,0.08), 0 16px 32px rgba(0,0,0,0.14)) !important;
   border-radius: var(--radius-lg, 1rem) !important;
   border-left-width: 3px !important;
-  animation: lumi-toast-enter 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: kane-toast-enter 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Per-variant left stripe colour. Sonner sets data-type on the toast root. */
@@ -438,15 +438,15 @@
   pointer-events: none;
   background: radial-gradient(
     160px 80px at 0% 0%,
-    var(--lumi-toast-halo, transparent),
+    var(--kane-toast-halo, transparent),
     transparent 70%
   );
   opacity: 0.55;
 }
-.cn-toast[data-type="success"] { --lumi-toast-halo: oklch(0.53 0.17 162 / 0.18); }
-.cn-toast[data-type="info"]    { --lumi-toast-halo: oklch(0.66 0.17 250 / 0.16); }
-.cn-toast[data-type="warning"] { --lumi-toast-halo: oklch(0.78 0.15 75  / 0.20); }
-.cn-toast[data-type="error"]   { --lumi-toast-halo: oklch(0.52 0.22 25  / 0.18); }
+.cn-toast[data-type="success"] { --kane-toast-halo: oklch(0.53 0.17 162 / 0.18); }
+.cn-toast[data-type="info"]    { --kane-toast-halo: oklch(0.66 0.17 250 / 0.16); }
+.cn-toast[data-type="warning"] { --kane-toast-halo: oklch(0.78 0.15 75  / 0.20); }
+.cn-toast[data-type="error"]   { --kane-toast-halo: oklch(0.52 0.22 25  / 0.18); }
 
 /* 2px progress bar at the bottom that drains over the toast lifetime.
    Sonner exposes the duration on the toast container — falls back to
@@ -458,9 +458,9 @@
   bottom: 0;
   height: 2px;
   width: 100%;
-  background: var(--lumi-toast-halo, oklch(0.53 0.17 162 / 0.6));
+  background: var(--kane-toast-halo, oklch(0.53 0.17 162 / 0.6));
   transform-origin: left center;
-  animation: lumi-toast-progress var(--lumi-toast-duration, 2500ms) linear forwards;
+  animation: kane-toast-progress var(--kane-toast-duration, 2500ms) linear forwards;
   border-bottom-left-radius: inherit;
   border-bottom-right-radius: inherit;
 }
@@ -471,7 +471,7 @@
 
 /* Bounce the icon in. Skip for `loading` so the spinner doesn't fight. */
 .cn-toast [data-icon] {
-  animation: lumi-toast-icon-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: kane-toast-icon-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .cn-toast[data-type="loading"] [data-icon] {
   animation: none;
@@ -491,24 +491,24 @@
    carousel re-triggers it via the data-attribute below to give swipe
    feedback. The shine is a child element with a static base position;
    we slide it across with a CSS animation, then reset to the start. */
-@keyframes lumi-account-card-shine {
+@keyframes kane-account-card-shine {
   0%   { transform: translateX(0%) skewX(-12deg); opacity: 0; }
   10%  { opacity: 1; }
   60%  { opacity: 1; }
   100% { transform: translateX(700%) skewX(-12deg); opacity: 0; }
 }
 
-.lumi-account-card__shine {
-  animation: lumi-account-card-shine 1400ms ease-out 200ms 1;
+.kane-account-card__shine {
+  animation: kane-account-card-shine 1400ms ease-out 200ms 1;
 }
 
 /* Re-trigger on demand — parent toggles `data-shine="true"` to replay. */
-.lumi-account-card[data-shine="true"] .lumi-account-card__shine {
-  animation: lumi-account-card-shine 1100ms ease-out;
+.kane-account-card[data-shine="true"] .kane-account-card__shine {
+  animation: kane-account-card-shine 1100ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lumi-account-card__shine {
+  .kane-account-card__shine {
     animation: none;
     opacity: 0;
   }
@@ -518,18 +518,18 @@
    the active card feel like it "settled" instead of teleported. Inactive
    cards stay at scale 1 so they don't bounce when they enter the viewport
    on swipe. */
-@keyframes lumi-account-card-pulse {
+@keyframes kane-account-card-pulse {
   0%   { transform: scale(0.96); }
   55%  { transform: scale(1.015); }
   100% { transform: scale(1); }
 }
 
-.lumi-account-card--snap {
-  animation: lumi-account-card-pulse 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
+.kane-account-card--snap {
+  animation: kane-account-card-pulse 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lumi-account-card--snap {
+  .kane-account-card--snap {
     animation: none;
   }
 }

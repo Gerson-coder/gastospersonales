@@ -32,7 +32,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { MerchantAvatar } from "@/components/lumi/MerchantAvatar";
+import { MerchantAvatar } from "@/components/kane/MerchantAvatar";
 import { cn } from "@/lib/utils";
 
 type CreateProps = {
@@ -166,7 +166,7 @@ export function MerchantFormSheet(props: Props) {
           </div>
 
           <p className="mt-3 text-[12px] leading-snug text-muted-foreground">
-            Este comercio viene incluido con Lumi. No se puede editar ni
+            Este comercio viene incluido con Kane. No se puede editar ni
             archivar — pero puedes crear los tuyos para personalizar tus listas.
           </p>
 

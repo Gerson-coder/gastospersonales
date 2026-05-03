@@ -26,13 +26,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lumi — Tu plata, clara.",
+  title: "Kane — Tu plata, clara.",
   description:
     "Tu plata, clara. Captura gastos con foto, entendé en qué se te va el sueldo, sin complicaciones.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Lumi",
+    title: "Kane",
     statusBarStyle: "default",
   },
   icons: {

@@ -13,8 +13,8 @@ import { Resend } from "resend";
  * For testing without a verified domain, we use Resend's official
  * `onboarding@resend.dev` sender — that one is allowed to send only to
  * the email associated with the Resend account, perfect for the project
- * owner to dogfood. Once the domain (e.g. `lumi.app`) is verified, set
- * RESEND_FROM_ADDRESS=`Lumi <no-reply@lumi.app>` and we send to anyone.
+ * owner to dogfood. Once the domain (e.g. `kane.app`) is verified, set
+ * RESEND_FROM_ADDRESS=`Kane <no-reply@kane.app>` and we send to anyone.
  */
 
 import type { OtpPurpose } from "./otp";
@@ -35,14 +35,14 @@ function getClient(): Resend | null {
  */
 function getFromAddress(): string {
   return (
-    process.env.RESEND_FROM_ADDRESS ?? "Lumi <onboarding@resend.dev>"
+    process.env.RESEND_FROM_ADDRESS ?? "Kane <onboarding@resend.dev>"
   );
 }
 
 const SUBJECT_BY_PURPOSE: Record<OtpPurpose, string> = {
   email_verification: "Tu código de verificación",
   new_device: "Inicio de sesión desde un dispositivo nuevo",
-  pin_reset: "Recupera tu PIN de Lumi",
+  pin_reset: "Recupera tu PIN de Kane",
 };
 
 const HEADLINE_BY_PURPOSE: Record<OtpPurpose, string> = {
@@ -163,7 +163,7 @@ export async function sendNewDeviceLoginEmail(params: {
         ipAddress: ipAddress ?? null,
         formattedDate,
       }),
-      text: `Detectamos un nuevo inicio de sesión en tu cuenta de Lumi.\n\nDispositivo: ${deviceName}\nFecha: ${formattedDate}${ipAddress ? `\nIP: ${ipAddress}` : ""}\n\nSi fuiste tú, no necesitas hacer nada. Si no reconoces este acceso, cambia tu PIN desde la app y revisa la lista de dispositivos confiables en Configuración.`,
+      text: `Detectamos un nuevo inicio de sesión en tu cuenta de Kane.\n\nDispositivo: ${deviceName}\nFecha: ${formattedDate}${ipAddress ? `\nIP: ${ipAddress}` : ""}\n\nSi fuiste tú, no necesitas hacer nada. Si no reconoces este acceso, cambia tu PIN desde la app y revisa la lista de dispositivos confiables en Configuración.`,
     });
     if (result.error) {
       const errName = result.error.name ?? "unknown";
@@ -213,7 +213,7 @@ function renderNewDeviceHtml(params: {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.06);">
       <tr>
         <td style="padding:32px 28px;">
-          <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#16a34a;margin-bottom:24px;">Lumi</div>
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#16a34a;margin-bottom:24px;">Kane</div>
           <h1 style="font-size:22px;font-weight:700;line-height:1.3;margin:0 0 12px 0;color:#0f172a;">Nuevo inicio de sesión</h1>
           <p style="font-size:15px;line-height:1.55;margin:0 0 24px 0;color:#475569;">Detectamos un inicio de sesión en tu cuenta desde un dispositivo nuevo. Si fuiste tú, no necesitas hacer nada.</p>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f5f9;border-radius:12px;margin-bottom:24px;">
@@ -229,7 +229,7 @@ function renderNewDeviceHtml(params: {
         </td>
       </tr>
     </table>
-    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:18px;">Lumi · controla tu dinero</p>
+    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:18px;">Kane · controla tu dinero</p>
   </div>
 </body>
 </html>`;
@@ -265,7 +265,7 @@ function renderOtpHtml(params: {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,0.06);">
       <tr>
         <td style="padding:32px 28px;">
-          <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#16a34a;margin-bottom:24px;">Lumi</div>
+          <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#16a34a;margin-bottom:24px;">Kane</div>
           <h1 style="font-size:22px;font-weight:700;line-height:1.3;margin:0 0 12px 0;color:#0f172a;">${headline}</h1>
           <p style="font-size:15px;line-height:1.55;margin:0 0 28px 0;color:#475569;">${body}</p>
           <div style="text-align:center;background:#f1f5f9;border-radius:12px;padding:24px 16px;margin-bottom:24px;">
@@ -277,7 +277,7 @@ function renderOtpHtml(params: {
         </td>
       </tr>
     </table>
-    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:18px;">Lumi · controla tu dinero</p>
+    <p style="text-align:center;font-size:11px;color:#94a3b8;margin-top:18px;">Kane · controla tu dinero</p>
   </div>
 </body>
 </html>`;

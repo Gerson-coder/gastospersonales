@@ -183,7 +183,7 @@ export function CategoryFormSheet(props: Props) {
           </div>
 
           <p className="mt-3 text-[12px] leading-snug text-muted-foreground">
-            Esta categoría viene incluida con Lumi. No se puede editar ni
+            Esta categoría viene incluida con Kane. No se puede editar ni
             archivar — pero puedes crear las tuyas para personalizar tus listas.
           </p>
 

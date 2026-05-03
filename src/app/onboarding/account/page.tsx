@@ -15,7 +15,7 @@ import { ChevronRight, Landmark, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { createAccount } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
 

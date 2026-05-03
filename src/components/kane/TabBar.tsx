@@ -1,12 +1,12 @@
 /**
- * TabBar — bottom navigation for Lumi.
+ * TabBar — bottom navigation for Kane.
  *
- * Mobile-first fixed bottom bar mirroring the Lumi UI-kit:
+ * Mobile-first fixed bottom bar mirroring the Kane UI-kit:
  *   [ Inicio ] [ Movs ]  ((+))  [ Análisis ] [ Cuentas ]
  *
  * The center "Capturar" tab is visually elevated (FAB cutout) and
  * pushed slightly above the bar surface, matching the design system
- * preview in `Lumi Design System/ui_kits/lumi-app/TabBar.jsx`.
+ * preview in `Kane Design System/ui_kits/kane-app/TabBar.jsx`.
  *
  * This is a SHARED layout component — it does NOT decide where to
  * mount itself. The layout that renders it is responsible for hiding
@@ -49,7 +49,7 @@ export interface TabBarProps {
   className?: string;
 }
 
-// Default Lumi tab structure — order matches the source TabBar.jsx + index.html.
+// Default Kane tab structure — order matches the source TabBar.jsx + index.html.
 export const DEFAULT_ITEMS: TabBarItem[] = [
   { href: "/dashboard",   label: "Resumen",       icon: Home      },
   { href: "/movements",   label: "Movimientos",  icon: ArrowLeftRight },

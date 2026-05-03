@@ -1,9 +1,9 @@
 /**
  * `useActiveAccountId` — read/write the dashboard's active account id from
- * `lumi-prefs.activeAccountId`.
+ * `kane-prefs.activeAccountId`.
  *
  * Storage shape (shared with useActiveCurrency):
- *   localStorage["lumi-prefs"] = {
+ *   localStorage["kane-prefs"] = {
  *     "currency": "PEN" | "USD",
  *     "activeAccountId": "uuid-of-the-account" | null,
  *     "theme": ...,
@@ -33,7 +33,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-const STORAGE_KEY = "lumi-prefs";
+const STORAGE_KEY = "kane-prefs";
 const FIELD = "activeAccountId";
 
 type LumiPrefs = {

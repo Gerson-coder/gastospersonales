@@ -1,5 +1,5 @@
 /**
- * Reset password — Lumi
+ * Reset password — Kane
  *
  * Destination of the password-reset email. Supabase issues a recovery token
  * and redirects the browser here. By the time this page mounts, the

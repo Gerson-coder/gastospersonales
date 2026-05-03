@@ -21,8 +21,8 @@ import { usePathname } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { ThemeToggle } from "@/components/lumi/ThemeToggle";
-import { ProfileMenu } from "@/components/lumi/ProfileMenu";
+import { ThemeToggle } from "@/components/kane/ThemeToggle";
+import { ProfileMenu } from "@/components/kane/ProfileMenu";
 
 export function TabsTopBar() {
   // /capture pulls the eye toward the amount + keypad; the persistent action

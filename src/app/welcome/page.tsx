@@ -1,5 +1,5 @@
 /**
- * Welcome route — Lumi
+ * Welcome route — Kane
  *
  * One-time onboarding shown after a user verifies their magic-link and
  * `profiles.display_name` is still NULL (the state the `handle_new_user`
@@ -146,8 +146,8 @@ export default function WelcomePage() {
             final step where the only sensible action is "Empezar". */}
         <div className="mb-10 flex items-center justify-between md:mb-8">
           <Image
-            src="/brand/lumi-wordmark.svg"
-            alt="Lumi"
+            src="/brand/kane-wordmark.svg"
+            alt="Kane"
             width={96}
             height={30}
             priority
@@ -328,7 +328,7 @@ function OrientationStep({ displayName, onContinue }: OrientationStepProps) {
         Hola, {displayName}
       </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-        Antes de arrancar, así está armada Lumi.
+        Antes de arrancar, así está armada Kane.
       </p>
 
       <ul className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-3">

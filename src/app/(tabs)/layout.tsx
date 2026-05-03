@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 
-import { InstallPrompt } from "@/components/lumi/InstallPrompt";
-import { Sidebar } from "@/components/lumi/Sidebar";
-import { TabBarSlot } from "@/components/lumi/TabBarSlot";
-import { TabsTopBar } from "@/components/lumi/TabsTopBar";
+import { InstallPrompt } from "@/components/kane/InstallPrompt";
+import { Sidebar } from "@/components/kane/Sidebar";
+import { TabBarSlot } from "@/components/kane/TabBarSlot";
+import { TabsTopBar } from "@/components/kane/TabsTopBar";
 import { createClient } from "@/lib/supabase/server";
 
 // Layout for the tabbed app surface (post-login).

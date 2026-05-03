@@ -33,7 +33,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { formatMoney } from "@/lib/money";
 import { formatLimaTime } from "@/lib/format-tx-date";
@@ -62,7 +62,7 @@ export type TransactionDetailDrawerProps = {
 };
 
 // es-PE long-date formatter — "sábado, 2 de mayo de 2026". Pinned to
-// America/Lima for the same reason every other Lumi date helper is
+// America/Lima for the same reason every other Kane date helper is
 // (see `format-tx-date.ts`): timestamps cross the UTC day boundary
 // at 19:00 Lima and a naive parser would shift the displayed day.
 // Allocated once at module scope; Intl formatters are not free.

@@ -25,8 +25,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { AppHeader } from "@/components/lumi/AppHeader";
-import { AdvisorCard } from "@/components/lumi/AdvisorCard";
+import { AppHeader } from "@/components/kane/AppHeader";
+import { AdvisorCard } from "@/components/kane/AdvisorCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -1,5 +1,5 @@
 /**
- * Export user data — Lumi
+ * Export user data — Kane
  *
  * Bundles every piece of user-owned data (accounts, categories, merchants,
  * transactions) plus relevant local-only stores into a single JSON Blob.
@@ -63,9 +63,9 @@ export async function exportUserData(): Promise<Blob> {
       typeof window === "undefined"
         ? {}
         : {
-            "lumi-budgets": safeRead("lumi-budgets"),
-            "lumi-goals": safeRead("lumi-goals"),
-            "lumi-prefs": safeRead("lumi-prefs"),
+            "kane-budgets": safeRead("kane-budgets"),
+            "kane-goals": safeRead("kane-goals"),
+            "kane-prefs": safeRead("kane-prefs"),
           },
   };
 
@@ -90,9 +90,9 @@ export function exportLocalOnly(): Blob {
       typeof window === "undefined"
         ? {}
         : {
-            "lumi-budgets": safeRead("lumi-budgets"),
-            "lumi-goals": safeRead("lumi-goals"),
-            "lumi-prefs": safeRead("lumi-prefs"),
+            "kane-budgets": safeRead("kane-budgets"),
+            "kane-goals": safeRead("kane-goals"),
+            "kane-prefs": safeRead("kane-prefs"),
           },
   };
   return new Blob([JSON.stringify(payload, null, 2)], {

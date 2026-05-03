@@ -11,7 +11,7 @@
  *   - Inline-abono confirmation (saldo modal) — the user explicitly
  *     asked to replace the green sonner toast with this pattern.
  *
- * Tone defaults to `success` (Lumi green, low chroma at hue 162). Pass
+ * Tone defaults to `success` (Kane green, low chroma at hue 162). Pass
  * `tone="info"` for neutral acknowledgements and `tone="warning"` for
  * potentially-incomplete results (e.g. "Borramos 3 cuentas pero 1
  * quedó archivada por restricción de FK").

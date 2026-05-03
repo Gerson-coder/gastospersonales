@@ -16,7 +16,7 @@ import {
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
-import { UserAvatarCircle } from "@/components/lumi/UserAvatarCircle";
+import { UserAvatarCircle } from "@/components/kane/UserAvatarCircle";
 import { cn } from "@/lib/utils";
 
 const SUPABASE_ENABLED =

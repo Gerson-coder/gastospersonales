@@ -8,8 +8,8 @@ import { useSession } from "@/lib/use-session";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
-const STORAGE_KEY = "lumi-user-name";
-const AVATAR_STORAGE_KEY = "lumi-user-avatar-url";
+const STORAGE_KEY = "kane-user-name";
+const AVATAR_STORAGE_KEY = "kane-user-avatar-url";
 
 const SUPABASE_ENABLED =
   typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
@@ -25,7 +25,7 @@ const SUPABASE_ENABLED =
  *     value of `profiles.display_name`. `setName` UPDATEs the row and updates
  *     local state so the UI is reactive immediately. `clearName` only wipes
  *     the localStorage cache — sign-out tears down the actual session.
- *   - Demo / pre-auth: name lives in `localStorage["lumi-user-name"]`. This
+ *   - Demo / pre-auth: name lives in `localStorage["kane-user-name"]`. This
  *     keeps the unauthenticated onboarding flow (and the no-env preview
  *     deploy) working without a backend.
  *

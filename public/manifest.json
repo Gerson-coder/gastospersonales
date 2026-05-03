@@ -1,7 +1,7 @@
 {
-  "name": "Lumi — Tu plata, clara.",
-  "short_name": "Lumi",
-  "description": "Tu plata, clara. Captura gastos con foto, entendé en qué se te va el sueldo, sin complicaciones.",
+  "name": "Kane — Tu plata, clara.",
+  "short_name": "Kane",
+  "description": "Tu plata, clara. Captura gastos con foto, entiende en qué se te va el sueldo, sin complicaciones.",
   "start_url": "/capture",
   "scope": "/",
   "display": "standalone",

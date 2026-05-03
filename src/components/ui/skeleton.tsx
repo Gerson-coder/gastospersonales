@@ -1,7 +1,7 @@
 /**
- * Skeleton — Lumi loading placeholder primitive.
+ * Skeleton — Kane loading placeholder primitive.
  *
- * Uses a subtle left→right shimmer (`animate-lumi-shimmer` defined in
+ * Uses a subtle left→right shimmer (`animate-kane-shimmer` defined in
  * `globals.css`) over a `bg-muted` base. Falls back to no animation under
  * `prefers-reduced-motion: reduce` (the global rule in globals.css clamps
  * animation-duration to 0.01ms).
@@ -25,8 +25,8 @@ export function Skeleton({
       aria-hidden="true"
       className={cn(
         "relative isolate overflow-hidden rounded-md bg-muted",
-        // Inline gradient sweep — see `@keyframes lumi-shimmer` in globals.css.
-        "before:absolute before:inset-0 before:-translate-x-full before:bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.35),transparent)] before:animate-lumi-shimmer dark:before:bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.07),transparent)]",
+        // Inline gradient sweep — see `@keyframes kane-shimmer` in globals.css.
+        "before:absolute before:inset-0 before:-translate-x-full before:bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.35),transparent)] before:animate-kane-shimmer dark:before:bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.07),transparent)]",
         className,
       )}
       {...props}
