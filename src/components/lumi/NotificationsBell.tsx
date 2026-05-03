@@ -221,17 +221,39 @@ export function NotificationsBell({ className }: { className?: string }) {
     if (next && unreadCount > 0) markAllRead();
   }
 
-  // Layer 3 — close on page scroll while open. We attach the listener only
-  // when the menu is open so the rest of the page pays nothing for it.
+  // Layer 3 — close on user-driven page motion while open. Two listeners
+  // because slow swipes vs fast swipes hit different code paths in Base UI:
+  //
+  //   - `touchmove` (document): fires al primer pixel del dedo en mobile.
+  //     Esto cubre el scroll LENTO, donde Base UI's drag-threshold logic
+  //     dispara su outside-press dismiss antes que el evento `scroll`
+  //     bubble a window (iOS difiere scroll events para deltas pequenos).
+  //     Adelantarnos al touchmove cierra antes que Base UI tenga oportunidad
+  //     de generar el ciclo close→reopen→close.
+  //
+  //   - `scroll` (window): cubre desktop wheel scroll, programmatic scrolls
+  //     y cualquier camino que no pase por touchmove.
+  //
+  // Filtro `closest('[data-slot="dropdown-menu-content"]')`: si el touch
+  // empieza dentro del propio menu (e.g. el user esta haciendo scroll en
+  // la lista interna de notificaciones cuando hay muchas), NO cerramos —
+  // dejamos que el overflow-y-auto del <ul> haga su trabajo.
   React.useEffect(() => {
     if (!open) return;
-    const onScroll = () => {
+    const close = () => {
       lastCloseAtRef.current = Date.now();
       setOpen(false);
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
+    const onTouchMove = (e: TouchEvent) => {
+      const target = e.target as Element | null;
+      if (target?.closest('[data-slot="dropdown-menu-content"]')) return;
+      close();
+    };
+    window.addEventListener("scroll", close, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", close);
+      document.removeEventListener("touchmove", onTouchMove);
     };
   }, [open]);
 
