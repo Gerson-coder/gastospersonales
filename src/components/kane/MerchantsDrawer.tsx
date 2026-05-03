@@ -55,6 +55,13 @@ export type MerchantsDrawerProps = {
   categoryName: string;
   selectedMerchantId: string | null;
   onSelect: (merchantId: string | null) => void;
+  /** Notifica al parent cuando se crea un comercio nuevo desde
+   *  el form inline. El parent debe agregarlo a su propia lista
+   *  local (e.g. el `all` del MerchantPicker) para que el chip del
+   *  comercio aparezca en el strip al cerrarse el drawer. Sin esto
+   *  el merchant se selecciona pero no se muestra hasta el proximo
+   *  cambio de categoría. */
+  onMerchantCreated?: (merchant: Merchant) => void;
 };
 
 /**
@@ -72,6 +79,7 @@ export function MerchantsDrawer({
   categoryName,
   selectedMerchantId,
   onSelect,
+  onMerchantCreated,
 }: MerchantsDrawerProps) {
   const [merchants, setMerchants] = React.useState<Merchant[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -136,12 +144,16 @@ export function MerchantsDrawer({
           name,
           categoryId,
         });
-        // Optimistic prepend so the new row is visible if the user reopens
-        // without a re-fetch. We dedupe by id in case of any race.
+        // Optimistic prepend so the new row es visible si el user
+        // reopens sin re-fetch. Dedupe por id en caso de cualquier race.
         setMerchants((prev) => {
           const seen = prev.some((m) => m.id === created.id);
           return seen ? prev : [created, ...prev];
         });
+        // Notificar al parent ANTES del onSelect para que el strip del
+        // MerchantPicker tenga el comercio nuevo en su `all` cuando
+        // recompute `visible` por el setPinnedId que dispara onSelect.
+        onMerchantCreated?.(created);
         setFormOpen(false);
         // Auto-select + close the drawer — saves the user a third tap.
         onSelect(created.id);
@@ -156,7 +168,7 @@ export function MerchantsDrawer({
         setSubmitting(false);
       }
     },
-    [categoryId, onOpenChange, onSelect],
+    [categoryId, onOpenChange, onSelect, onMerchantCreated],
   );
 
   const isEmpty = !loading && merchants.length === 0;

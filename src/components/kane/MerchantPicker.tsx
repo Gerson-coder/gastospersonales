@@ -263,6 +263,17 @@ export function MerchantPicker({
         categoryName={categoryName}
         selectedMerchantId={value}
         onSelect={handleSelect}
+        // Mantener `all` sincronizado al crear un comercio desde el
+        // drawer — sin esto, el `visible` memo no encuentra el id en
+        // `all` cuando handleSelect dispara setPinnedId, y el chip
+        // del comercio recién creado nunca aparece en el strip.
+        // Prepend para que sea el primero (deduplicado por si hubo
+        // race con un fetch concurrente).
+        onMerchantCreated={(created) =>
+          setAll((prev) =>
+            prev.some((m) => m.id === created.id) ? prev : [created, ...prev],
+          )
+        }
       />
     </>
   );
