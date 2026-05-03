@@ -98,23 +98,26 @@ type WizardPreset = {
 };
 
 const PRESETS: WizardPreset[] = [
-  { id: "cash", label: "Efectivo", kind: "cash", fallbackIcon: Banknote },
   { id: "bcp", label: "BCP", kind: "bank" },
   { id: "yape", label: "Yape", kind: "yape", currency: "PEN" },
   { id: "interbank", label: "Interbank", kind: "bank" },
   { id: "bbva", label: "BBVA", kind: "bank" },
   { id: "scotiabank", label: "Scotiabank", kind: "bank" },
   { id: "plin", label: "Plin", kind: "plin", currency: "PEN" },
-  // Catch-all para bancos / billeteras / cajas que no están en
-  // nuestra lista (Caja Huancayo, Caja Arequipa, Mibanco, BanBif,
-  // Pichincha, Falabella, Ripley, Tunki, etc.). Cuando el user elige
-  // "Otro", la UI muestra un mini-picker para que decida si es
-  // efectivo o banco, y el campo de nombre queda editable para tipear
-  // la marca/etiqueta libremente. La card preview cae al gradiente
-  // neutral porque accountBrandSlug no encuentra el slug — apenas
-  // agreguemos un theme nuevo a account-card-theme.ts el render lo
-  // toma automáticamente.
-  { id: "other", label: "Otro", kind: "cash", fallbackIcon: Pencil },
+  // Catch-all para cualquier cuenta que no esté en los presets de
+  // marca: Caja Huancayo, Caja Arequipa, Mibanco, BanBif, Pichincha,
+  // Falabella, Ripley, Tunki, o simplemente "Mi colchón" / "Caja
+  // chica" para efectivo. Cuando el user elige "Mi cuenta", la UI
+  // muestra un mini-picker para decidir si es efectivo o banco, y el
+  // campo de nombre queda editable. La card preview cae al gradiente
+  // neutral porque accountBrandSlug no encuentra el slug — si más
+  // adelante registramos un theme para esa marca el render lo toma
+  // automáticamente.
+  //
+  // Antes había también un preset "Efectivo" separado, pero quedaba
+  // redundante con "Mi cuenta" + kind=cash. Lo sacamos por feedback
+  // del user para evitar dos caminos hacia el mismo flujo.
+  { id: "other", label: "Mi cuenta", kind: "cash", fallbackIcon: Pencil },
 ];
 
 // Cuántas plantillas se muestran inline antes del "Más" affordance.
@@ -273,7 +276,15 @@ export function AccountWizardSheet({
   function handleLabelChange(next: string) {
     if (nameLocked) return;
     setLabel(next.slice(0, LABEL_MAX_LENGTH));
-    if (selectedPresetId && selectedPresetId !== "cash") {
+    // Si el user tipea libre sobre una plantilla de marca (BCP, Yape,
+    // etc.), despineamos el preset porque ya no se compromete con esa
+    // marca literal. EXCEPCIÓN: "Mi cuenta" (id "other") existe
+    // específicamente para tipear libre — no debe despinearse al
+    // teclear, sino quedarse activo para que el mini-picker de
+    // efectivo/banco siga visible. Bug previo: tipear el nombre en
+    // Mi cuenta hacía desaparecer el kind picker, dejando al user
+    // sin manera de elegir efectivo/banco una vez empezado a tipear.
+    if (selectedPresetId && selectedPresetId !== "other") {
       setSelectedPresetId(null);
     }
   }
