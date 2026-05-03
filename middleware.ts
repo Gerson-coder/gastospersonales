@@ -14,6 +14,26 @@ const PUBLIC_PATHS = new Set<string>([
   "/auth/reset-password",
 ]);
 
+// Routes that an AUTHENTICATED user with email NOT YET verified is still
+// allowed to reach. Anything outside this set forces a redirect to
+// /auth/verify-email so an attacker (or a user with a stale cache /
+// bookmark / SW navigation) cannot bypass OTP by deep-linking into a
+// post-verify page like /onboarding/name.
+//
+// Reported bug: a user whose inbox was full never received the OTP, but
+// when they reopened the app they landed on the "captura tu nombre"
+// screen — the middleware was only checking `user`, not whether the
+// email had been verified. This set closes that hole.
+const VERIFY_EXEMPT_PATHS = new Set<string>([
+  "/",
+  "/login",
+  "/register",
+  "/onboarding/welcome",
+  "/onboarding/intro",
+  "/auth/verify-email",
+  "/auth/reset-password",
+]);
+
 // API namespaces whose routes do their own auth checks (signup, OTP issuance,
 // device fingerprint lookup, etc.). They must reach the server even without
 // a session cookie.
@@ -21,6 +41,15 @@ const PUBLIC_API_PREFIXES = ["/api/auth/"] as const;
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  for (const prefix of PUBLIC_API_PREFIXES) {
+    if (pathname.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+function isVerifyExempt(pathname: string): boolean {
+  if (VERIFY_EXEMPT_PATHS.has(pathname)) return true;
+  // /api/auth/* still need to run for verify-email and resend-otp.
   for (const prefix of PUBLIC_API_PREFIXES) {
     if (pathname.startsWith(prefix)) return true;
   }
@@ -85,6 +114,39 @@ export async function middleware(request: NextRequest) {
       redirectResponse.headers.set("Cache-Control", "no-store, max-age=0");
     }
     return redirectResponse;
+  }
+
+  // Email-verification gate. A user has a session right after /register
+  // (so middleware would normally let them through), but `email_verified_at`
+  // stays NULL until they enter the OTP. Without this gate, anyone with a
+  // valid session cookie could deep-link straight into /onboarding/name,
+  // /auth/set-pin, /dashboard, etc. — bypassing the OTP entirely. We pay
+  // one extra `profiles` query per protected request to close that hole;
+  // the row is keyed by primary key (user.id) so it's a hash-index lookup,
+  // typically <10ms.
+  if (user && !isVerifyExempt(pathname)) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("email_verified_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profile || !profile.email_verified_at) {
+      if (isApi) {
+        // API caller — return JSON 403 instead of an HTML redirect so the
+        // client-side fetch sees the failure cleanly.
+        return NextResponse.json(
+          { error: "email_not_verified" },
+          { status: 403 },
+        );
+      }
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/auth/verify-email";
+      redirectUrl.search = "?purpose=email_verification";
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      redirectResponse.headers.set("Cache-Control", "no-store, max-age=0");
+      return redirectResponse;
+    }
   }
 
   // Disable BFCache (back-forward cache) for HTML page responses. Without

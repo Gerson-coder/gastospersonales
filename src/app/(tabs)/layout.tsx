@@ -56,11 +56,18 @@ export default async function TabsLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, email_verified_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !profile.display_name) {
+  // Email-verification gate (defense-in-depth — middleware also blocks
+  // this, but layouts double-check in case a request slips past
+  // middleware via cache, BFCache snapshot, or a future routing change).
+  if (!profile || !profile.email_verified_at) {
+    redirect("/auth/verify-email?purpose=email_verification");
+  }
+
+  if (!profile.display_name) {
     redirect("/welcome");
   }
 

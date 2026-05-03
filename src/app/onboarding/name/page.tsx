@@ -59,15 +59,29 @@ export default function OnboardingNamePage() {
     };
   }, []);
 
-  // Auth guard — si la sesion resolvio sin user, mandar al login.
-  // Esto cubre el caso donde alguien llega a esta URL directamente sin
-  // haber pasado por verify-email.
+  // Auth + email-verification guard. Sin user → /login. Con user pero
+  // email no verificado → /auth/verify-email. Esto cubre dos casos:
+  //   1. Llegar a esta URL directamente sin haber pasado por verify-email
+  //      (bookmark, deep-link, SW cache).
+  //   2. Bug reportado por el user: el hermano nunca recibio OTP (correo
+  //      lleno) pero al volver a la app aparecio en /onboarding/name.
+  //      Sin esta defensa client-side adicional, una respuesta cacheada
+  //      del SW podria saltar el middleware y mostrar esta pantalla.
   React.useEffect(() => {
     if (!session.hydrated) return;
     if (!session.user) {
       router.replace("/login");
+      return;
     }
-  }, [session.hydrated, session.user, router]);
+    if (!session.profile?.email_verified_at) {
+      router.replace("/auth/verify-email?purpose=email_verification");
+    }
+  }, [
+    session.hydrated,
+    session.user,
+    session.profile?.email_verified_at,
+    router,
+  ]);
 
   const trimmed = name.trim();
   const isEmpty = trimmed.length === 0;

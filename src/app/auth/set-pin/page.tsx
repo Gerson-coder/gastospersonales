@@ -20,6 +20,7 @@ import { Delete, KeyRound, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
+import { useSession } from "@/lib/use-session";
 import { cn } from "@/lib/utils";
 
 const PIN_LENGTH = 4;
@@ -42,6 +43,7 @@ type Stage = "create" | "confirm";
 
 export default function SetPinPage() {
   const router = useRouter();
+  const session = useSession();
   const [stage, setStage] = React.useState<Stage>("create");
   const [pin, setPin] = React.useState("");
   const [confirmPin, setConfirmPin] = React.useState("");
@@ -51,6 +53,25 @@ export default function SetPinPage() {
   // PIN setup es paso clave del onboarding; el drawer da un acknowledgement
   // claro antes del push a /onboarding/account.
   const [successOpen, setSuccessOpen] = React.useState(false);
+
+  // Auth + email-verification guard. Defense-in-depth: middleware ya
+  // bloquea esto, pero un cache stale o BFCache podria saltarlo. Si la
+  // session no tiene email verificado, mandamos al verify-email.
+  React.useEffect(() => {
+    if (!session.hydrated) return;
+    if (!session.user) {
+      router.replace("/login");
+      return;
+    }
+    if (!session.profile?.email_verified_at) {
+      router.replace("/auth/verify-email?purpose=email_verification");
+    }
+  }, [
+    session.hydrated,
+    session.user,
+    session.profile?.email_verified_at,
+    router,
+  ]);
 
   const activeValue = stage === "create" ? pin : confirmPin;
   const setActiveValue = stage === "create" ? setPin : setConfirmPin;

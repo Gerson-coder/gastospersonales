@@ -54,7 +54,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sesión expirada." }, { status: 401 });
   }
 
+  // Email-verification gate (defense-in-depth — middleware also blocks
+  // this, but a stale SW or direct API hit could bypass middleware).
+  // Without verifying the email, an attacker who registered with a typo
+  // or abandoned the OTP step could still set a PIN and move further
+  // into the onboarding wizard.
   const admin = createAdminClient();
+  const { data: profile, error: profileErr } = await admin
+    .from("profiles")
+    .select("email_verified_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileErr) {
+    console.error(
+      `[set-pin] profile_check_failed user=${user.id} message=${profileErr.message}`,
+    );
+    return NextResponse.json(
+      { error: "No pudimos verificar tu cuenta." },
+      { status: 500 },
+    );
+  }
+  if (!profile || !profile.email_verified_at) {
+    return NextResponse.json(
+      { error: "Verifica tu correo antes de configurar el PIN." },
+      { status: 403 },
+    );
+  }
 
   const pinHash = await hashPin(pin);
 
