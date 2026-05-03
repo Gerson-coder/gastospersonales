@@ -251,6 +251,19 @@ export function AccountWizardSheet({
     if (next !== "bank") setSubtype(null);
   }
 
+  // Salida de "Otro" — limpia el preset seleccionado y vuelve al
+  // estado inicial para que el strip de plantillas reaparezca y el
+  // user pueda elegir otra. Reseteamos kind/label/subtype porque
+  // "Cambiar plantilla" implica empezar de cero (cualquier preset
+  // que elija después va a sobrescribirlos igual).
+  function exitOtherPreset() {
+    setSelectedPresetId(null);
+    setKind("cash");
+    setLabel("");
+    setSubtype(null);
+    setShowError(false);
+  }
+
   function handleLabelChange(next: string) {
     if (nameLocked) return;
     setLabel(next.slice(0, LABEL_MAX_LENGTH));
@@ -413,15 +426,32 @@ export function AccountWizardSheet({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {step === 1 ? (
               <>
-                {/* Plantillas — solo 3 visibles + pill "Más". Mismo
-                    patrón que el strip de comercios en /capture. Los
-                    users nuevos no saben que pueden scrollear
-                    horizontal, así que el affordance "Más" hace
-                    descubrible la lista completa via drawer. */}
-                <section className="px-5 pt-5">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                    Plantillas
-                  </p>
+                {/* Cuando "Otro" está activo el strip de plantillas
+                    se oculta — la decisión "elijo banco/efectivo
+                    custom" ya está tomada y los chips serían ruido.
+                    En su lugar mostramos un breadcrumb minimal con
+                    salida "Cambiar plantilla" para volver al strip
+                    sin tener que cerrar y reabrir el wizard. */}
+                {isOtherPreset ? (
+                  <section className="flex items-center justify-between px-5 pt-5">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      Cuenta personalizada
+                    </span>
+                    <button
+                      type="button"
+                      onClick={exitOtherPreset}
+                      className="text-[12px] font-semibold text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
+                    >
+                      Cambiar plantilla
+                    </button>
+                  </section>
+                ) : (
+                  // Plantillas — solo 3 visibles + pill "Más". Mismo
+                  // patrón que el strip de comercios en /capture.
+                  <section className="px-5 pt-5">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      Plantillas
+                    </p>
                   <div className="flex gap-2">
                     {visiblePresets.map((preset) => {
                       const active = selectedPresetId === preset.id;
@@ -487,7 +517,8 @@ export function AccountWizardSheet({
                       </span>
                     </button>
                   </div>
-                </section>
+                  </section>
+                )}
 
                 {/* Nombre + moneda. Subtipo NO va acá — es el paso 2. */}
                 <div className="flex flex-col gap-4 px-5 pt-5 pb-5">
