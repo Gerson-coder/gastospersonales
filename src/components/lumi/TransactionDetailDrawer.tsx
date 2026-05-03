@@ -133,9 +133,21 @@ export function TransactionDetailDrawer({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent
         aria-describedby="tx-detail-desc"
-        className="bg-background"
+        // Override the default bottom-direction `max-h-[80vh]` from
+        // `ui/drawer.tsx`: the user's amount + 4–5 detail rows + 3
+        // footer buttons were clipping on shorter phones (iPhone SE,
+        // small Androids). 95dvh leaves a small peek of the page
+        // behind so the user still feels the modal sits ON the page;
+        // dvh (dynamic viewport height) accounts for the iOS/Android
+        // URL bar collapse so we never lose pixels under the chrome.
+        // Desktop keeps the centered-modal layout — 90vh is plenty.
+        className={cn(
+          "bg-background",
+          "data-[vaul-drawer-direction=bottom]:!max-h-[95dvh] data-[vaul-drawer-direction=bottom]:h-[95dvh]",
+          "md:data-[vaul-drawer-direction=bottom]:!max-h-[90vh] md:data-[vaul-drawer-direction=bottom]:!h-auto",
+        )}
       >
-        <DrawerHeader className="text-center">
+        <DrawerHeader className="shrink-0 text-center">
           {/* Avatar — account brand for income (matches the row's
               icon language) or merchant logo for expense, falling
               back to a neutral chip when neither is available. */}
@@ -193,7 +205,15 @@ export function TransactionDetailDrawer({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="px-4 pb-2">
+        {/* Body — flex-1 + overflow-y-auto so on phones where the
+            content overflows 95dvh the user can scroll through every
+            field while header + footer stay locked. min-h-0 is the
+            classic flex-child fix that lets overflow actually trigger
+            (without it the parent's flex layout grows past the cap and
+            no scroll appears). overscroll-contain stops the inner
+            scroll from chaining to the page when the user reaches an
+            edge — same trick we used for the category drawer. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2">
           <div className="divide-y divide-border rounded-2xl border border-border bg-card px-3">
             <DetailRow
               Icon={Wallet}
@@ -236,7 +256,7 @@ export function TransactionDetailDrawer({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 px-4 pb-6 pt-3">
+        <div className="flex shrink-0 flex-col gap-2 px-4 pb-6 pt-3">
           {onEdit ? (
             <button
               type="button"
