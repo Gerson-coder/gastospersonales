@@ -29,7 +29,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import {
   listMerchantsByCategory,
@@ -52,30 +52,6 @@ export type MerchantPickerProps = {
 };
 
 const MRU_LIMIT = 3;
-
-/**
- * Localized "where" label for the picker section, derived from the active
- * category name. Falls back to a generic "Lugares (opcional)" when no
- * mapping matches — keeps the section header friendly without forcing the
- * user to mentally translate "merchants" into context.
- */
-function getMerchantSectionLabel(categoryName: string | null): string {
-  if (!categoryName) return "Lugares (opcional)";
-  // Strip diacritics via NFD + Unicode "Mark" category. Using the Unicode
-  // property escape keeps the regex source ASCII (no embedded combining
-  // chars), which avoids subtle transcription bugs in tooling.
-  const normalized = categoryName
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  const map: Record<string, string> = {
-    comida: "Restaurantes (opcional)",
-    salud: "Hospitales (opcional)",
-    educacion: "Universidades (opcional)",
-    servicios: "Proveedores (opcional)",
-  };
-  return map[normalized] ?? "Lugares (opcional)";
-}
 
 export function MerchantPicker({
   categoryId,
@@ -187,40 +163,15 @@ export function MerchantPicker({
 
   return (
     <>
+      {/* Header verbose ("Restaurantes (opcional)" / "Universidades
+          (opcional)" / etc.) removido por feedback del user: los chips
+          de abajo ya muestran logos + nombres, el header agregaba ruido
+          sin info. El aria-label de la section sigue dando contexto a
+          screen readers. */}
       <section
         className="mt-3 px-4"
         aria-label="Comercio (opcional)"
       >
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            {(() => {
-              const label = getMerchantSectionLabel(categoryName);
-              // Split off the "(opcional)" suffix — it now reads in the
-              // muted header style, so we keep the parenthetical inline.
-              const m = label.match(/^(.*?)\s*\(opcional\)$/);
-              if (!m) return label;
-              return (
-                <>
-                  {m[1]}{" "}
-                  <span className="font-medium normal-case tracking-normal">
-                    (opcional)
-                  </span>
-                </>
-              );
-            })()}
-          </span>
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            aria-haspopup="dialog"
-            aria-expanded={drawerOpen}
-            className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-primary transition-colors hover:text-primary/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Ver todos
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
         <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visible.map((m) => {
             const selected = value === m.id;
@@ -251,6 +202,25 @@ export function MerchantPicker({
               </button>
             );
           })}
+          {/* "Más" pill — afordancia para abrir el drawer completo
+              cuando los 3 MRU no alcanzan. Reemplaza al ex-link "Ver
+              todos" que vivia en una segunda fila junto al header
+              eliminado: poniendolo inline al final del strip ahorra
+              una row vertical y mantiene el lenguaje de chips uniforme.
+              Tambien cubre el edge case de "MRU vacio pero la categoria
+              tiene comercios" — antes el strip quedaba vacio y solo se
+              veia el link, ahora siempre hay al menos esta pill. */}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
+            aria-label="Ver todos los comercios"
+            className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full border border-dashed border-border bg-transparent px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Plus size={14} aria-hidden="true" />
+            Más
+          </button>
         </div>
       </section>
 
