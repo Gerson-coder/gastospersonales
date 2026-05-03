@@ -50,7 +50,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CURRENCY_LABEL } from "@/lib/money";
-import { CurrencySwitch } from "@/components/lumi/CurrencySwitch";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { formatLimaDate } from "@/lib/format-tx-date";
 import { useActiveAccountId } from "@/hooks/use-active-account-id";
@@ -1181,21 +1180,18 @@ function CapturePageInner() {
           </div>
         </header>
 
-        {/* Amount display — eyebrow ("Cuánto gastaste / entró") removed; the
-            kind toggle in the header now plays the title role. The compact
-            currency chip floats absolutely to the left of the amount so the
-            digits stay visually centred regardless of which currency is
-            active (S/ vs $ have different glyph widths — using a flex row
-            would shift the amount sideways on every toggle). */}
+        {/* Amount display — el monto ya viene con el simbolo (S/ o $)
+            via displayAmount, asi que no necesitamos un chip aparte
+            para indicar la moneda. El switch de moneda vive en el
+            dashboard (AppHeader actionsBefore); /capture hereda la
+            currency activa via useActiveCurrency. Antes habia un chip
+            CurrencySwitch flotante absolute aqui que se solapaba con
+            el numero cuando el monto era grande — lo sacamos por user
+            feedback. */}
         <section
-          className="relative px-6 pt-6 text-center md:px-8 md:pt-6"
+          className="px-6 pt-6 text-center md:px-8 md:pt-6"
           aria-live="polite"
         >
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 md:pl-8">
-            <span className="pointer-events-auto">
-              <CurrencySwitch variant="compact" />
-            </span>
-          </div>
           <div
             className={cn(
               "font-semibold tabular-nums leading-none tracking-tight",
