@@ -127,12 +127,12 @@ const ACCOUNT_KIND_ICON: Record<
 // schema still accepts `card` so legacy rows render unchanged.
 const KIND_OPTIONS: AccountKind[] = ["cash", "bank"];
 
-// Account name char cap. 12 chars covers brand labels (BCP, Interbank,
-// BBVA, Yape, Plin, Banco Nación, Crédito) and short custom names
-// without ever overflowing the row in /accounts or the chip in
-// /dashboard on a 320px phone. Differentiation happens via subtype
-// rather than long descriptive labels.
-const LABEL_MAX_LENGTH = 12;
+// Account name char cap. Subido a 20 (era 12) por feedback del user —
+// nombres como "Caja Huancayo" (13), "Mibanco Crédito" (15) y
+// similares no cabian en 12. Las superficies que rendean labels
+// (/accounts row, /dashboard chip, AccountCard) ya tienen truncate
+// para no romper layout en mobile angosto.
+const LABEL_MAX_LENGTH = 20;
 
 // Account names that are auto-locked when the corresponding kind is picked.
 // Mirrored in the DB as plain text — defensive trim/match in handleSubmit.

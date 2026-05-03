@@ -73,7 +73,13 @@ import {
 } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
 
-const LABEL_MAX_LENGTH = 12;
+// Subido a 20 (era 12) por feedback del user — nombres como
+// "Caja Huancayo" (13), "Mibanco Crédito" (15), "Banco Pichincha" (15)
+// no entraban en 12. Las superficies que rendean labels de cuenta
+// (/accounts row, /dashboard chip, AccountCard) ya truncan via
+// className truncate, asi que un label largo se corta visualmente sin
+// romper layout.
+const LABEL_MAX_LENGTH = 20;
 
 const LOCKED_KIND_NAMES: Partial<Record<AccountKind, string>> = {
   yape: "Yape",
