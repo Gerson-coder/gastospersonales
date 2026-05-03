@@ -301,7 +301,11 @@ function KeypadButton({
       onPointerCancel={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
       className={cn(
-        "flex h-14 items-center justify-center rounded-2xl border-0 text-2xl font-medium tabular-nums text-foreground",
+        // h-12 (48px) en lugar de h-14 (56px). 48px es el minimo tap
+        // target de Apple HIG y a la vez ahorra 32px de altura total
+        // (4 filas) — clave para que la fila inferior ". 0 borrar" no
+        // quede clippeada en iPhone SE / Android cortos.
+        "flex h-12 items-center justify-center rounded-2xl border-0 text-xl font-medium tabular-nums text-foreground",
         "transition-colors duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "active:bg-muted",
@@ -1505,11 +1509,15 @@ function CapturePageInner() {
 
         {/* Save hint — wayfinding for the mobile flow: with the in-page
             "Guardar gasto" button gone on touch, point the user to the
-            central ✓ FAB in the bottom TabBar. Mobile-only because the
-            desktop button above already carries the canonical action. */}
+            central ✓ FAB in the bottom TabBar. Mobile-only porque el
+            boton desktop arriba ya carga la accion canonica. mt-3
+            en lugar de mt-6: en mobile el chevron + label ya estan
+            cerca del save FAB del TabBar, mas distancia solo come
+            espacio vertical y empuja el keypad fuera de viewports
+            cortos. */}
         <div
           aria-hidden="true"
-          className="mt-6 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
+          className="mt-3 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
         >
           <span className="text-[12px] font-medium">Guardar</span>
           <ChevronDown
