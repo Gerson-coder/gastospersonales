@@ -31,6 +31,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   ArrowLeft,
@@ -71,6 +72,7 @@ import {
   type AccountSubtype,
   type Currency,
 } from "@/lib/data/accounts";
+import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import { cn } from "@/lib/utils";
 
 // Subido a 20 (era 12) por feedback del user — nombres como
@@ -151,6 +153,13 @@ export function AccountWizardSheet({
   existingAccounts,
   reload,
 }: AccountWizardSheetProps) {
+  const router = useRouter();
+  // Set la cuenta recién creada como activa antes de navegar al
+  // dashboard. Sin esto, el carousel del dashboard arranca en la
+  // primera cuenta de la lista (created_at ASC), que NO es la
+  // recién creada — el user vería su cuenta antigua aunque acabe
+  // de agregar otra.
+  const { setActiveAccountId } = useActiveAccountId();
   const [label, setLabel] = React.useState("");
   const [kind, setKind] = React.useState<AccountKind>("cash");
   const [currency, setCurrency] = React.useState<Currency>("PEN");
@@ -330,14 +339,22 @@ export function AccountWizardSheet({
 
     setSubmitting(true);
     try {
-      await createAccount({
+      const created = await createAccount({
         label: finalLabel,
         kind,
         currency,
         subtype: finalSubtype,
       });
+      // Set the brand-new account as active so the dashboard carousel
+      // lands on it instead of defaulting to the oldest account.
+      setActiveAccountId(created.id);
       await reload();
       onOpenChange(false);
+      // Navegar al dashboard para reflejar la nueva cuenta. El
+      // dashboard ya escucha ACCOUNT_UPSERTED_EVENT (emitido dentro
+      // de createAccount) + refetcha en focus, así que la lista
+      // estará al día cuando llegue.
+      router.push("/dashboard");
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "No pudimos crear la cuenta.";
