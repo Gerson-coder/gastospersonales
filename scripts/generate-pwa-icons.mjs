@@ -36,7 +36,11 @@ try {
   sharp = require(join(ROOT, "node_modules", "sharp"));
 }
 
-const SOURCE_PATH = join(ROOT, "public", "brand", "kane-icon.png");
+// Source es ahora un SVG vector (1254x1254) en /public/icons/kane.svg —
+// el user lo proveyó traceado desde su diseño final. sharp + librsvg
+// rasterizan a cualquier size sin perder calidad. Si el SVG cambia,
+// solo correr este script para regenerar los PNG variants.
+const SOURCE_PATH = join(ROOT, "public", "icons", "kane.svg");
 const ICONS_DIR = join(ROOT, "public", "icons");
 mkdirSync(ICONS_DIR, { recursive: true });
 
@@ -44,13 +48,19 @@ const sourceBuffer = readFileSync(SOURCE_PATH);
 
 // Color sólido detrás del icono en el maskable variant. Debe matchear
 // el fondo del SVG/PNG fuente para que el padding del safe-area no se
-// note. Hoy el icono tiene bg verde oscuro #0A2E22.
-const MASKABLE_BG = { r: 10, g: 46, b: 34, alpha: 1 }; // #0A2E22 dark green
+// note. El SVG fuente tiene bg verde #015E2C (rich green del nuevo
+// diseño del user).
+const MASKABLE_BG = { r: 1, g: 94, b: 44, alpha: 1 }; // #015E2C rich green
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 async function renderAt(buf, size, outPath) {
-  await sharp(buf)
+  // density alto cuando el source es SVG: sharp/librsvg necesita
+  // density adecuado para rasterizar limpio en sizes chicos sin
+  // perder detalle. 72 * (size/512) * 4 = 4x oversampling, despues
+  // resize a size final con interpolación de cover (mantiene
+  // aspecto, llena el frame).
+  await sharp(buf, { density: Math.ceil((size / 512) * 72 * 4) })
     .resize(size, size, { fit: "cover", position: "center" })
     .png({ compressionLevel: 9 })
     .toFile(outPath);
@@ -67,7 +77,9 @@ async function renderMaskable(buf, size, outPath) {
   const padding = Math.round(size * 0.1);
   const innerSize = size - padding * 2;
 
-  const innerBuf = await sharp(buf)
+  const innerBuf = await sharp(buf, {
+    density: Math.ceil((innerSize / 512) * 72 * 4),
+  })
     .resize(innerSize, innerSize, { fit: "cover", position: "center" })
     .png()
     .toBuffer();
@@ -92,7 +104,9 @@ async function renderMaskable(buf, size, outPath) {
  * (1 frame). Compatible con todos los browsers actuales.
  */
 async function renderFavicon(buf, outPath) {
-  const pngBuf = await sharp(buf)
+  const pngBuf = await sharp(buf, {
+    density: Math.ceil((32 / 512) * 72 * 4),
+  })
     .resize(32, 32, { fit: "cover", position: "center" })
     .png()
     .toBuffer();
@@ -121,7 +135,7 @@ async function renderFavicon(buf, outPath) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 
-console.log("Generating PWA icons from kane-icon.png...\n");
+console.log("Generating PWA icons from kane.svg...\n");
 
 try {
   await renderAt(sourceBuffer, 16, join(ICONS_DIR, "favicon-16.png"));
