@@ -631,15 +631,13 @@ function EmptyDashboardCard({
   onSwitchCurrency: () => void;
 }) {
   // Two distinct first-time states share this card:
-  //   1. Brand-new user with zero accounts (since migration 00024 we no
-  //      longer auto-seed Efectivo on signup) or a single account. Their
-  //      next concrete step is creating the wallet/bank where their money
-  //      lives — without it the dashboard is structurally empty. Primary
-  //      CTA opens the account-create drawer via /accounts?create=1.
-  //   2. Returning user who has multiple accounts but no transactions
-  //      in the active currency window. They've already onboarded —
-  //      what they're missing is movements. Primary CTA stays /capture.
-  const needsAccount = accountsCount <= 1;
+  //   1. Brand-new user con CERO cuentas (post-migration 00024 ya no
+  //      auto-seed de Efectivo). Su siguiente paso concreto es crear la
+  //      wallet/banco donde vive su dinero. Primary CTA: Crear cuenta.
+  //   2. User con AL MENOS UNA cuenta pero sin movimientos en la moneda
+  //      activa. Ya hizo onboarding — le falta abonar saldo y/o
+  //      registrar gastos. Mostramos los dos CTAs lado a lado.
+  const needsAccount = accountsCount === 0;
   // "Stuck on inactive currency" — render only when the user has
   // accounts in the OTHER currency. If they have zero accounts in
   // either currency they're brand-new, the switch button would be
@@ -647,21 +645,22 @@ function EmptyDashboardCard({
   const canSwitchBack = otherCurrencyAccountsCount > 0;
   const title = needsAccount
     ? "Crea tu cuenta de saldo"
-    : "Registra tu primer gasto";
+    : "Empieza a registrar movimientos";
   const body = needsAccount
     ? "Antes de empezar, agrega la cuenta donde tienes tu dinero (BCP, Interbank, Yape, Plin…). Así podrás registrar gastos contra el saldo correcto."
     : canSwitchBack
       ? `No tienes movimientos en ${CURRENCY_LABEL[currency].toLowerCase()}. Puedes registrar uno o volver a ${CURRENCY_LABEL[otherCurrency].toLowerCase()}, donde sí tienes cuentas.`
-      : "Apenas tengamos un movimiento empezamos a armar tu historial: evolución, categorías y últimas transacciones.";
+      : "Abona el saldo inicial de tu cuenta o registra tu primer gasto. Apenas tengamos un movimiento empezamos a armar tu historial.";
+  // Primary / secondary depende del estado:
+  //   - Sin cuentas → único CTA "Crear cuenta" (no tiene sentido ofrecer
+  //     "Registrar gasto" sin cuenta donde descontarlo)
+  //   - Con cuenta(s) sin movimientos → "Registrar gasto" + "Abonar saldo"
+  //     (el segundo manda a /capture?kind=income, que arranca el form en
+  //     modo Ingreso para abonar el saldo inicial sin fricción).
   const primaryHref = needsAccount ? "/accounts?create=1" : "/capture";
-  const primaryLabel = needsAccount ? "Crear cuenta" : "Empezar";
-  // Secondary CTA solo aparece para usuarios que YA tienen cuentas pero
-  // estan en estado "sin movimientos" — para el user brand-new (sin
-  // cuentas) ofrecer "Registrar gasto" no tiene sentido: no hay donde
-  // descontar el saldo, y al tocarlo cae en /capture bloqueado por el
-  // balance guard. Mejor un solo CTA inequívoco: Crear cuenta.
-  const secondaryHref = needsAccount ? null : "/receipt";
-  const secondaryLabel = needsAccount ? null : "Escanear ticket";
+  const primaryLabel = needsAccount ? "Crear cuenta" : "Registrar gasto";
+  const secondaryHref = needsAccount ? null : "/capture?kind=income";
+  const secondaryLabel = needsAccount ? null : "Abonar saldo";
 
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
@@ -1869,20 +1868,20 @@ export default function DashboardPage() {
             {/* Mobile hero — verde con presupuesto derivado + period selector + CTA.
                 CurrencySwitch va en una fila separada arriba en mobile para no
                 competir con los CTAs del hero. */}
-            {!isEmpty && (
+            {carouselAccounts.length > 0 && (
               <div className="mx-4 mt-4 flex justify-end md:hidden">
                 <CurrencySwitch />
               </div>
             )}
             {/* Mobile saldo header — wallet-style card carousel. Replaces
-                the legacy DashboardHero block on mobile. Each card is a
-                single account in the active currency; swiping left/right
-                snaps the carousel and re-scopes the entire dashboard
-                (insight banner, Gastos / Ingresos cards, recent tx) via
-                `selectedAccountId`. The chip strip above is hidden on
-                mobile because the carousel itself IS the picker.
-                Desktop keeps the chip-strip + DashboardHero stack below. */}
-            {!isEmpty && carouselAccounts.length > 0 && (
+                the legacy DashboardHero block on mobile. Each card es
+                una cuenta de la moneda activa; swipear left/right
+                snapea el carousel y re-scopea el resto del dashboard.
+                Renderiza siempre que el user tenga cuentas en la moneda
+                activa, AUNQUE no haya movimientos todavia — asi el user
+                que recien creo su primera cuenta ve la tarjeta con
+                saldo 0 y puede tocar "Abonar saldo" para empezar. */}
+            {carouselAccounts.length > 0 && (
               <div className="mt-4 md:hidden">
                 <AccountCardCarousel
                   accounts={carouselAccounts}

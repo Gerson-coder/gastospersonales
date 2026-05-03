@@ -371,6 +371,11 @@ function CapturePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
+  // ?kind=income arranca el form en modo "Ingreso" (típicamente el botón
+  // "Abonar saldo" desde el dashboard empty state). Sin el param, default
+  // es "expense" — la mayoría de las captures son gastos.
+  const initialKindParam = searchParams.get("kind");
+  const initialKind: Kind = initialKindParam === "income" ? "income" : "expense";
   const { user } = useSession();
   const online = useOnline();
 
@@ -399,7 +404,7 @@ function CapturePageInner() {
   // lands on that card. Same kane-prefs JSON that useActiveCurrency uses;
   // useSyncExternalStore on the read side picks up our write synchronously.
   const { setActiveAccountId } = useActiveAccountId();
-  const [kind, setKind] = React.useState<Kind>("expense");
+  const [kind, setKind] = React.useState<Kind>(initialKind);
   // Categories — same demo-vs-live split as accounts. In live mode we start
   // with an empty list + skeleton chips; in demo we seed from the inline mocks
   // so the keypad screen renders immediately without env vars.
