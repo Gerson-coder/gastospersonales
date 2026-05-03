@@ -33,6 +33,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
+import { KaneWordmark } from "@/components/kane/KaneWordmark";
 import { UserAvatarCircle } from "@/components/kane/UserAvatarCircle";
 
 // Chrome-only event interface (not in lib.dom yet).
@@ -146,14 +147,11 @@ export function Sidebar({ className }: SidebarProps): React.ReactElement {
         <span className="sr-only">Kane</span>
         <div className="flex flex-col gap-0.5">
           <span aria-hidden="true" className="inline-flex text-foreground">
-            <Image
-              src="/brand/kane-wordmark.svg"
-              alt=""
+            <KaneWordmark
               width={88}
               height={28}
               className="h-7 w-auto"
-              aria-hidden="true"
-              priority
+              decorative
             />
           </span>
           <p className="text-[11px] text-muted-foreground leading-none mt-0.5">

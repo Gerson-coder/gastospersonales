@@ -19,7 +19,6 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +26,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KaneWordmark } from "@/components/kane/KaneWordmark";
 import { createClient } from "@/lib/supabase/client";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
@@ -108,14 +108,7 @@ export default function OnboardingNamePage() {
             onboarding y saltarla dejaría display_name NULL, lo que
             forzaria un loop en /welcome despues. */}
         <div className="mb-10 flex items-center justify-between md:mb-8">
-          <Image
-            src="/brand/kane-wordmark.svg"
-            alt="Kane"
-            width={96}
-            height={30}
-            priority
-            className="text-foreground"
-          />
+          <KaneWordmark width={96} height={30} className="text-foreground" />
         </div>
 
         <section

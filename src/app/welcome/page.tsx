@@ -24,13 +24,13 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { BarChart3, Loader2, Sparkles, Tag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KaneWordmark } from "@/components/kane/KaneWordmark";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
 
@@ -145,14 +145,7 @@ export default function WelcomePage() {
         {/* Header row: brand mark + Saltar link. The link is hidden on the
             final step where the only sensible action is "Empezar". */}
         <div className="mb-10 flex items-center justify-between md:mb-8">
-          <Image
-            src="/brand/kane-wordmark.svg"
-            alt="Kane"
-            width={96}
-            height={30}
-            priority
-            className="text-foreground"
-          />
+          <KaneWordmark width={96} height={30} className="text-foreground" />
           {step !== TOTAL_STEPS[TOTAL_STEPS.length - 1] ? (
             <button
               type="button"

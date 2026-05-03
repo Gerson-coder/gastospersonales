@@ -665,14 +665,19 @@ function EmptyDashboardCard({
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
       <div className="mx-auto flex flex-col items-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
-          {needsAccount ? (
+        {/* Icon-tile solo en el caso "Crear cuenta" — el user pidió
+            quitar el Sparkles de la variante "Empieza a registrar
+            movimientos" para que la card sea mas compacta y el copy
+            respire mejor. */}
+        {needsAccount ? (
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
             <Wallet size={22} aria-hidden="true" strokeWidth={2.2} />
-          ) : (
-            <Sparkles size={22} aria-hidden="true" strokeWidth={2.2} />
-          )}
-        </span>
-        <h2 className="mt-5 text-[18px] font-bold tracking-tight md:text-[20px]">
+          </span>
+        ) : null}
+        <h2 className={cn(
+          "text-[18px] font-bold tracking-tight md:text-[20px]",
+          needsAccount ? "mt-5" : "mt-0",
+        )}>
           {title}
         </h2>
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
