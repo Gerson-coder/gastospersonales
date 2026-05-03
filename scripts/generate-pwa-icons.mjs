@@ -144,7 +144,13 @@ try {
   await renderAt(sourceBuffer, 512, join(ICONS_DIR, "icon-512.png"));
   await renderMaskable(sourceBuffer, 512, join(ICONS_DIR, "icon-512-maskable.png"));
   await renderAt(sourceBuffer, 180, join(ICONS_DIR, "apple-touch-icon.png"));
+  // Next.js 13+ App Router convencion: `src/app/favicon.ico` toma
+  // precedencia sobre `public/favicon.ico` (genera automaticamente el
+  // <link rel="icon"> en el <head>). Escribimos a los dos lugares
+  // para que no haya ambiguedad y cualquiera que estuviera cacheado
+  // se sobreescriba.
   await renderFavicon(sourceBuffer, join(ROOT, "public", "favicon.ico"));
+  await renderFavicon(sourceBuffer, join(ROOT, "src", "app", "favicon.ico"));
 
   console.log("\nAll icons generated successfully.");
 } catch (err) {
