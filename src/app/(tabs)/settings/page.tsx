@@ -175,6 +175,11 @@ export default function SettingsPage() {
 
   // Sheet state
   const [signOutOpen, setSignOutOpen] = React.useState(false);
+  // Drawer de exito post-signOut (reemplaza al toast verde "Sesion cerrada"
+  // que existia en ProfileMenu — acá no había feedback explícito antes,
+  // ahora es consistente con el menu dropdown). El push se difiere al
+  // onClose para que el usuario vea la confirmacion antes del salto.
+  const [signOutSuccessOpen, setSignOutSuccessOpen] = React.useState(false);
 
   // Refs for focus management on open
   const signOutConfirmRef = React.useRef<HTMLButtonElement | null>(null);
@@ -301,7 +306,14 @@ export default function SettingsPage() {
     }
     clearName();
     setSignOutOpen(false);
-    router.push("/login");
+    setSignOutSuccessOpen(true);
+  }
+
+  function handleSignOutSuccessOpenChange(open: boolean) {
+    setSignOutSuccessOpen(open);
+    if (!open) {
+      router.push("/login");
+    }
   }
 
   return (
@@ -507,7 +519,12 @@ export default function SettingsPage() {
           className="rounded-t-2xl md:max-w-md"
         >
           <SheetHeader>
-            <SheetTitle id="signout-title">¿Cerrar sesión?</SheetTitle>
+            <SheetTitle
+              id="signout-title"
+              className="font-sans not-italic font-semibold"
+            >
+              ¿Cerrar sesión?
+            </SheetTitle>
             <SheetDescription id="signout-desc">
               Vamos a borrar tu nombre y volverás al inicio. Tus preferencias quedan
               guardadas.
@@ -535,6 +552,14 @@ export default function SettingsPage() {
         </SheetContent>
       </Sheet>
 
+      <ActionResultDrawer
+        open={signOutSuccessOpen}
+        onOpenChange={handleSignOutSuccessOpenChange}
+        title="Sesión cerrada"
+        description="Volverás al inicio. Tus preferencias quedan guardadas."
+        closeLabel="Continuar"
+        tone="success"
+      />
     </main>
   );
 }
@@ -1411,7 +1436,7 @@ function DangerZoneCard() {
           <SheetHeader>
             <SheetTitle
               id="reset-cats-title"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-sans not-italic font-semibold"
             >
               <AlertTriangle
                 size={18}
@@ -1460,7 +1485,7 @@ function DangerZoneCard() {
           <SheetHeader>
             <SheetTitle
               id="reset-accounts-title"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-sans not-italic font-semibold"
             >
               <AlertTriangle
                 size={18}
@@ -1526,7 +1551,7 @@ function DangerZoneCard() {
           <SheetHeader>
             <SheetTitle
               id="factory-title"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-sans not-italic font-semibold"
             >
               <AlertTriangle
                 size={18}
@@ -1598,7 +1623,7 @@ function DangerZoneCard() {
           <SheetHeader>
             <SheetTitle
               id="delete-account-title"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-sans not-italic font-semibold"
             >
               <AlertTriangle
                 size={18}

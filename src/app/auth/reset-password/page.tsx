@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -121,6 +122,11 @@ function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // Replaces the legacy `toast.success("Contraseña actualizada.")` —
+  // contraseña reset es accion puntual e importante; el drawer da un
+  // acknowledgement claro antes de redirigir al dashboard. El push se
+  // difiere al onClose para que el usuario controle cuando avanzar.
+  const [successOpen, setSuccessOpen] = React.useState(false);
 
   // On mount, check whether Supabase landed us with a recovery session.
   // The client auto-parses the URL fragment (#access_token=...&type=recovery)
@@ -168,13 +174,19 @@ function ResetPasswordForm() {
         toast.error(error.message || "No pudimos cambiar la contraseña.");
         return;
       }
-      toast.success("Contraseña actualizada.");
-      router.push("/dashboard");
-      router.refresh();
+      setSuccessOpen(true);
     } catch {
       toast.error("No pudimos cambiar la contraseña.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function handleSuccessOpenChange(open: boolean) {
+    setSuccessOpen(open);
+    if (!open) {
+      router.push("/dashboard");
+      router.refresh();
     }
   }
 
@@ -293,6 +305,15 @@ function ResetPasswordForm() {
           )}
         </Button>
       </form>
+
+      <ActionResultDrawer
+        open={successOpen}
+        onOpenChange={handleSuccessOpenChange}
+        title="Contraseña actualizada"
+        description="Ya puedes ingresar con tu contraseña nueva."
+        closeLabel="Continuar"
+        tone="success"
+      />
     </>
   );
 }

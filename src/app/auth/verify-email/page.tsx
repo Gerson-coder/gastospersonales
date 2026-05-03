@@ -120,6 +120,11 @@ function VerifyEmailInner() {
   const [resendCountdown, setResendCountdown] = React.useState(0);
   const [successOpen, setSuccessOpen] = React.useState(false);
   const [hasPin, setHasPin] = React.useState(false);
+  // Reemplaza el legacy `toast.success("Te enviamos un código nuevo.")`.
+  // El usuario explicitamente pide reenviar; un drawer modal hace el
+  // acknowledgement mas claro que el toast efimero — facil perderlo si
+  // estaba mirando el correo.
+  const [resendSuccessOpen, setResendSuccessOpen] = React.useState(false);
 
   const code = digits.join("");
 
@@ -248,7 +253,7 @@ function VerifyEmailInner() {
       if (data.devMode) {
         toast.info("Modo dev: revisa la consola del servidor.");
       } else {
-        toast.success("Te enviamos un código nuevo.");
+        setResendSuccessOpen(true);
       }
       setResendCountdown(RESEND_COOLDOWN_SECONDS);
     } catch {
@@ -337,6 +342,15 @@ function VerifyEmailInner() {
         title={SUCCESS_TITLE_BY_PURPOSE[purpose]}
         description={SUCCESS_DESC_BY_PURPOSE[purpose]}
         closeLabel="Continuar"
+      />
+
+      <ActionResultDrawer
+        open={resendSuccessOpen}
+        onOpenChange={setResendSuccessOpen}
+        tone="info"
+        title="Código reenviado"
+        description="Te enviamos un código nuevo a tu correo. Puede demorar unos segundos."
+        closeLabel="Listo"
       />
     </main>
   );

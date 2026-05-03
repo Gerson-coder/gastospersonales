@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogOut, Settings as SettingsIcon, User, Wallet } from "lucide-react";
-import { toast } from "sonner";
 
 import {
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
@@ -40,6 +40,12 @@ export function ProfileMenu({ className }: { className?: string }) {
   const displayName = nameHydrated ? (name ?? "Sin nombre") : " ";
   const email = sessionHydrated ? (user?.email ?? null) : null;
 
+  // Reemplaza el legacy `toast.success("Sesión cerrada")` — cerrar sesion
+  // es accion explicita; el drawer da un acknowledgement claro antes del
+  // push a /login. El push se difiere al onClose para que el usuario vea
+  // la confirmacion antes del salto.
+  const [signOutSuccessOpen, setSignOutSuccessOpen] = React.useState(false);
+
   async function handleSignOut() {
     if (SUPABASE_ENABLED) {
       try {
@@ -50,11 +56,18 @@ export function ProfileMenu({ className }: { className?: string }) {
       }
     }
     clearName();
-    toast.success("Sesión cerrada");
-    router.push("/login");
+    setSignOutSuccessOpen(true);
+  }
+
+  function handleSignOutSuccessOpenChange(open: boolean) {
+    setSignOutSuccessOpen(open);
+    if (!open) {
+      router.push("/login");
+    }
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Abrir perfil"
@@ -127,5 +140,15 @@ export function ProfileMenu({ className }: { className?: string }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+
+    <ActionResultDrawer
+      open={signOutSuccessOpen}
+      onOpenChange={handleSignOutSuccessOpenChange}
+      title="Sesión cerrada"
+      description="Volverás al inicio. Tus preferencias quedan guardadas."
+      closeLabel="Continuar"
+      tone="success"
+    />
+    </>
   );
 }

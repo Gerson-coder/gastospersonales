@@ -17,9 +17,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Delete, KeyRound, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { cn } from "@/lib/utils";
 
 const PIN_LENGTH = 4;
@@ -47,6 +47,10 @@ export default function SetPinPage() {
   const [confirmPin, setConfirmPin] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  // Reemplaza el legacy `toast.success("Listo. Ya puedes ingresar...")`.
+  // PIN setup es paso clave del onboarding; el drawer da un acknowledgement
+  // claro antes del push a /onboarding/account.
+  const [successOpen, setSuccessOpen] = React.useState(false);
 
   const activeValue = stage === "create" ? pin : confirmPin;
   const setActiveValue = stage === "create" ? setPin : setConfirmPin;
@@ -112,13 +116,19 @@ export default function SetPinPage() {
         setConfirmPin("");
         return;
       }
-      toast.success("Listo. Ya puedes ingresar con tu PIN.");
-      router.push("/onboarding/account");
+      setSuccessOpen(true);
     } catch (err) {
       console.error("[set-pin] submit:", err);
       setErrorMsg("Error de red. Intenta otra vez.");
       setSubmitting(false);
       setConfirmPin("");
+    }
+  }
+
+  function handleSuccessOpenChange(open: boolean) {
+    setSuccessOpen(open);
+    if (!open) {
+      router.push("/onboarding/account");
     }
   }
 
@@ -202,6 +212,15 @@ export default function SetPinPage() {
           </div>
         </section>
       </div>
+
+      <ActionResultDrawer
+        open={successOpen}
+        onOpenChange={handleSuccessOpenChange}
+        title="PIN configurado"
+        description="Ya puedes ingresar con tu PIN en este dispositivo."
+        closeLabel="Continuar"
+        tone="success"
+      />
     </main>
   );
 }

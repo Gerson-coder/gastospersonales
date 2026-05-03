@@ -80,7 +80,10 @@ import {
   type AccountSubtype,
   type Currency,
 } from "@/lib/data/accounts";
-import { CURRENCY_LABEL } from "@/lib/money";
+import { CURRENCY_LABEL, formatMoney } from "@/lib/money";
+import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { useAccountBalances } from "@/hooks/use-account-balances";
+import { TX_UPSERTED_EVENT } from "@/lib/data/transactions";
 
 // ─── Demo mode flag ───────────────────────────────────────────────────────
 // Mirrors `useSession` and `/login`: when env vars are absent we skip the
@@ -212,6 +215,44 @@ function AccountsPageInner() {
   const [editing, setEditing] = React.useState<Account | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
 
+  // Saldo total — sumamos los balances (major units) de todas las cuentas
+  // de la moneda activa. `getAccountBalances` ya filtra por currency a
+  // nivel de query, asi que solo nos queda agregar. PEN y USD se muestran
+  // por separado siguiendo la moneda activa del header (consistente con
+  // /dashboard, /movements e /insights).
+  const { currency: activeCurrency } = useActiveCurrency();
+  const {
+    balances,
+    balancesLoaded,
+    reload: reloadBalances,
+  } = useAccountBalances(activeCurrency, { skip: !SUPABASE_ENABLED });
+  // Refrescar saldos cuando una transaccion se crea/edita/archiva en otra
+  // pantalla (capture, dashboard) — el hook por si solo solo refetcha al
+  // cambiar de moneda. Sin esto el saldo total se quedaria desactualizado
+  // hasta el siguiente toggle de PEN/USD.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    const handler = () => {
+      void reloadBalances();
+    };
+    window.addEventListener(TX_UPSERTED_EVENT, handler);
+    return () => window.removeEventListener(TX_UPSERTED_EVENT, handler);
+  }, [reloadBalances]);
+
+  const totalBalance = React.useMemo(() => {
+    // Solo cuentas en la moneda activa — sumar PEN + USD seria invalido.
+    const ids = new Set(
+      accounts.filter((a) => a.currency === activeCurrency).map((a) => a.id),
+    );
+    let total = 0;
+    for (const id of ids) total += balances[id] ?? 0;
+    return total;
+  }, [accounts, balances, activeCurrency]);
+
+  const hasAccountsInCurrency = accounts.some(
+    (a) => a.currency === activeCurrency,
+  );
+
   // Deep-link from /dashboard's empty state: when a brand-new user (only
   // the auto-Efectivo) lands on the dashboard, the empty card primary CTA
   // sends them here with `?create=1` so they go straight to creating
@@ -301,18 +342,46 @@ function AccountsPageInner() {
           className="px-0 pt-0"
         />
 
-        {/* Balances placeholder — the previous "Saldo total" lived here. The
-            DB has no balance column; balances will be derived from
-            `transactions` once that wiring lands. Until then, a calm hint. */}
-        <section aria-labelledby="accounts-balances-placeholder" className="mt-2">
+        {/* Saldo total — suma de los balances de todas las cuentas en la
+            moneda activa. Mostramos el monto en major units a traves de
+            `formatMoney(...*100)` (la helper espera minor units). Mientras
+            balancesLoaded sea false dejamos un skeleton para no parpadear
+            con un "S/ 0.00" engañoso. Cuando el usuario aun no tiene
+            cuentas en la moneda activa mantenemos el hint original. */}
+        <section aria-labelledby="accounts-balances" className="mt-2">
           <h2
-            id="accounts-balances-placeholder"
+            id="accounts-balances"
             className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
           >
             Saldo total
           </h2>
-          <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
-            Tus saldos aparecen acá cuando registres movimientos.
+          <Card className="rounded-2xl border-border p-5">
+            {loading || (SUPABASE_ENABLED && !balancesLoaded) ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-40" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            ) : !hasAccountsInCurrency ? (
+              <p className="text-sm text-muted-foreground">
+                No tienes cuentas en {CURRENCY_LABEL[activeCurrency]} todavía.
+              </p>
+            ) : (
+              <div className="flex items-baseline justify-between gap-3">
+                <span
+                  className={cn(
+                    "tabular-nums font-semibold tracking-tight",
+                    totalBalance < 0 ? "text-destructive" : "text-foreground",
+                  )}
+                  style={{ fontSize: "clamp(1.5rem, 7vw, 2rem)" }}
+                  aria-live="polite"
+                >
+                  {formatMoney(totalBalance * 100, activeCurrency)}
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  {CURRENCY_LABEL[activeCurrency]}
+                </span>
+              </div>
+            )}
           </Card>
         </section>
 
