@@ -28,9 +28,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KaneWordmark } from "@/components/kane/KaneWordmark";
 import { createClient } from "@/lib/supabase/client";
+import { stripEmojis } from "@/lib/text";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
+
+const EMOJI_HINT_DURATION_MS = 2500;
 
 const MIN_LENGTH = 2;
 const MAX_LENGTH = 20;
@@ -43,6 +46,18 @@ export default function OnboardingNamePage() {
   const [name, setName] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
+  // Emoji-blocked feedback. Cuando el user pega o tipea un emoji lo
+  // strippeamos silently — pero si no avisamos, parece bug. El flag se
+  // prende ~2.5s para mostrar un hint claro y luego se apaga.
+  const [emojiBlocked, setEmojiBlocked] = React.useState(false);
+  const emojiTimeoutRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (emojiTimeoutRef.current !== null) {
+        window.clearTimeout(emojiTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Auth guard — si la sesion resolvio sin user, mandar al login.
   // Esto cubre el caso donde alguien llega a esta URL directamente sin
@@ -150,13 +165,28 @@ export default function OnboardingNamePage() {
                 placeholder="Tu nombre"
                 value={name}
                 onChange={(e) => {
-                  setName(e.target.value);
+                  const { cleaned, stripped } = stripEmojis(e.target.value);
+                  setName(cleaned);
                   if (submitted) setSubmitted(false);
+                  if (stripped) {
+                    setEmojiBlocked(true);
+                    if (emojiTimeoutRef.current !== null) {
+                      window.clearTimeout(emojiTimeoutRef.current);
+                    }
+                    emojiTimeoutRef.current = window.setTimeout(() => {
+                      setEmojiBlocked(false);
+                      emojiTimeoutRef.current = null;
+                    }, EMOJI_HINT_DURATION_MS);
+                  }
                 }}
                 disabled={isSaving}
-                aria-invalid={showError ? true : undefined}
+                aria-invalid={showError || emojiBlocked ? true : undefined}
                 aria-describedby={
-                  showError ? "onboarding-name-error" : "onboarding-name-hint"
+                  showError
+                    ? "onboarding-name-error"
+                    : emojiBlocked
+                      ? "onboarding-name-emoji"
+                      : "onboarding-name-hint"
                 }
                 className="h-12 rounded-xl px-4 text-base"
               />
@@ -169,6 +199,15 @@ export default function OnboardingNamePage() {
                   {isEmpty
                     ? "Necesito un nombre para continuar."
                     : `Ingresa al menos ${MIN_LENGTH} caracteres.`}
+                </p>
+              ) : emojiBlocked ? (
+                <p
+                  id="onboarding-name-emoji"
+                  role="alert"
+                  aria-live="polite"
+                  className="text-[12px] leading-relaxed font-medium text-destructive"
+                >
+                  No se permiten emojis en el nombre.
                 </p>
               ) : (
                 <p

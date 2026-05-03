@@ -31,8 +31,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KaneWordmark } from "@/components/kane/KaneWordmark";
+import { stripEmojis } from "@/lib/text";
 import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
+
+const EMOJI_HINT_DURATION_MS = 2500;
 
 // Demo mode (no Supabase) skips the orientation cards: someone running
 // `npm run dev` against a stub backend doesn't need the welcome tour.
@@ -77,10 +80,36 @@ export default function WelcomePage() {
   const [name, setName] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
+  // Emoji-blocked feedback (mismo patron que /onboarding/name).
+  const [emojiBlocked, setEmojiBlocked] = React.useState(false);
+  const emojiTimeoutRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (emojiTimeoutRef.current !== null) {
+        window.clearTimeout(emojiTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const trimmed = name.trim();
   const isEmpty = trimmed.length === 0;
   const showError = submitted && isEmpty;
+
+  function handleNameChange(value: string) {
+    const { cleaned, stripped } = stripEmojis(value);
+    setName(cleaned);
+    if (submitted) setSubmitted(false);
+    if (stripped) {
+      setEmojiBlocked(true);
+      if (emojiTimeoutRef.current !== null) {
+        window.clearTimeout(emojiTimeoutRef.current);
+      }
+      emojiTimeoutRef.current = window.setTimeout(() => {
+        setEmojiBlocked(false);
+        emojiTimeoutRef.current = null;
+      }, EMOJI_HINT_DURATION_MS);
+    }
+  }
 
   /**
    * Persist the typed name (if any) and return whether the save succeeded.
@@ -167,10 +196,8 @@ export default function WelcomePage() {
           {step === 0 ? (
             <NameStep
               name={name}
-              onChange={(value) => {
-                setName(value);
-                if (submitted) setSubmitted(false);
-              }}
+              emojiBlocked={emojiBlocked}
+              onChange={handleNameChange}
               onSubmit={handleStepOneSubmit}
               showError={showError}
               isSaving={isSaving}
@@ -210,6 +237,7 @@ type NameStepProps = {
   showError: boolean;
   isSaving: boolean;
   isEmpty: boolean;
+  emojiBlocked: boolean;
 };
 
 function NameStep({
@@ -219,6 +247,7 @@ function NameStep({
   showError,
   isSaving,
   isEmpty,
+  emojiBlocked,
 }: NameStepProps) {
   return (
     <>
@@ -258,9 +287,13 @@ function NameStep({
             value={name}
             onChange={(e) => onChange(e.target.value)}
             disabled={isSaving}
-            aria-invalid={showError ? true : undefined}
+            aria-invalid={showError || emojiBlocked ? true : undefined}
             aria-describedby={
-              showError ? "welcome-name-error" : "welcome-name-hint"
+              showError
+                ? "welcome-name-error"
+                : emojiBlocked
+                  ? "welcome-name-emoji"
+                  : "welcome-name-hint"
             }
             className="h-12 rounded-xl px-4 text-base"
           />
@@ -271,6 +304,15 @@ function NameStep({
               className="text-[13px] font-medium text-destructive"
             >
               Necesito un nombre para continuar.
+            </p>
+          ) : emojiBlocked ? (
+            <p
+              id="welcome-name-emoji"
+              role="alert"
+              aria-live="polite"
+              className="text-[12px] leading-relaxed font-medium text-destructive"
+            >
+              No se permiten emojis en el nombre.
             </p>
           ) : (
             <p
