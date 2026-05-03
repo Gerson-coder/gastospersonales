@@ -253,12 +253,13 @@ function AccountsPageInner() {
     (a) => a.currency === activeCurrency,
   );
 
-  // Deep-link from /dashboard's empty state: when a brand-new user (only
-  // the auto-Efectivo) lands on the dashboard, the empty card primary CTA
-  // sends them here with `?create=1` so they go straight to creating
-  // their main wallet/bank instead of having to find the Agregar button.
-  // We open the create drawer once on mount, then strip the query so a
-  // refresh doesn't reopen it indefinitely.
+  // Deep-link from /dashboard's empty state: when a brand-new user (zero
+  // accounts since migration 00024) or a one-account user lands on the
+  // dashboard, the empty card primary CTA sends them here with
+  // `?create=1` so they go straight to creating their main wallet/bank
+  // instead of having to find the Agregar button. We open the create
+  // drawer once on mount, then strip the query so a refresh doesn't
+  // reopen it indefinitely.
   const router = useRouter();
   const searchParams = useSearchParams();
   const createParamConsumed = React.useRef(false);
@@ -327,9 +328,15 @@ function AccountsPageInner() {
     setCreateOpen(true);
   }
 
-  // Show the diversification hint only when the user has exactly one account
-  // (the auto-seeded Efectivo). Two or more = they've already set things up.
+  // Show the diversification hint only when the user has exactly one
+  // account. Two or more = they've already set things up. The copy below
+  // adapts to whether the lone account is cash (suggest a bank/tarjeta)
+  // or a bank/wallet (suggest cash for everyday gastos sin tarjeta).
   const showDiversifyHint = !loading && accounts.length === 1;
+  const diversifyHintText =
+    accounts.length === 1 && accounts[0].kind === "cash"
+      ? "Te conviene tener al menos una tarjeta o banco también."
+      : "Te conviene tener una cuenta de efectivo para los gastos del día a día.";
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
@@ -459,7 +466,7 @@ function AccountsPageInner() {
           {showDiversifyHint ? (
             <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-3.5">
               <p className="text-[13px] leading-snug text-foreground">
-                Te conviene tener al menos una tarjeta o banco también.
+                {diversifyHintText}
               </p>
               <button
                 type="button"

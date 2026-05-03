@@ -631,12 +631,11 @@ function EmptyDashboardCard({
   onSwitchCurrency: () => void;
 }) {
   // Two distinct first-time states share this card:
-  //   1. Brand-new user who only has the auto-seeded Efectivo (or zero
-  //      accounts if the signup trigger failed). Their next concrete
-  //      step is connecting a real wallet/bank — without it, every
-  //      expense lands on cash and the dashboard is structurally
-  //      uninformative. Primary CTA opens the account-create drawer
-  //      directly via /accounts?create=1.
+  //   1. Brand-new user with zero accounts (since migration 00024 we no
+  //      longer auto-seed Efectivo on signup) or a single account. Their
+  //      next concrete step is creating the wallet/bank where their money
+  //      lives — without it the dashboard is structurally empty. Primary
+  //      CTA opens the account-create drawer via /accounts?create=1.
   //   2. Returning user who has multiple accounts but no transactions
   //      in the active currency window. They've already onboarded —
   //      what they're missing is movements. Primary CTA stays /capture.
@@ -1892,9 +1891,9 @@ export default function DashboardPage() {
               <EmptyDashboardCard
                 currency={currency}
                 // Once accounts hydrate we know whether the user is brand-
-                // new (only auto-Efectivo / zero) or returning. Until then
-                // assume "returning" so we don't flash the wrong CTA on
-                // the first paint of every mount.
+                // new (zero accounts) or returning. Until then assume
+                // "returning" so we don't flash the wrong CTA on the
+                // first paint of every mount.
                 accountsCount={accountsHydrated ? accounts.length : 99}
                 otherCurrency={otherCurrency}
                 otherCurrencyAccountsCount={

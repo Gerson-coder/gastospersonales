@@ -1,10 +1,13 @@
 /**
- * /onboarding/account — optional first-bank picker.
+ * /onboarding/account — first-account picker.
  *
- * The handle_new_user trigger already seeded an "Efectivo" account, so any
- * choice here is purely additive. BBVA / BCP / Interbank create a new bank
- * account in PEN; "Otro banco" hands off to /accounts (where the create
- * sheet lets the user name it freely); "Omitir por ahora" skips the step.
+ * Since migration 00024 we no longer auto-seed an "Efectivo" account on
+ * signup, so this step is the user's first chance to set up where their
+ * money actually lives. BBVA / BCP / Interbank create a new bank account
+ * in PEN; "Otro banco" hands off to /accounts (where the create sheet
+ * lets the user name it freely); "Omitir por ahora" skips the step
+ * entirely — the dashboard's empty state will prompt them to create one
+ * later.
  */
 
 "use client";
@@ -79,8 +82,8 @@ export default function OnboardingAccountPage() {
               Agrega tu cuenta
             </h1>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-              Selecciona tu banco para empezar a gestionar tus finanzas. Ya
-              creamos tu cuenta de Efectivo; puedes agregar más después.
+              Selecciona tu banco para empezar a gestionar tus finanzas.
+              Puedes agregar más cuentas después desde Ajustes.
             </p>
           </header>
 

@@ -123,7 +123,8 @@ export function accountDisplayLabel(account: Account): string {
 // ─── Public API ──────────────────────────────────────────────────────────
 /**
  * List the current user's active (non-archived) accounts. Ordered by
- * `created_at` ascending so the auto-created "Efectivo" stays first.
+ * `created_at` ascending so the user's first-created account stays at
+ * the top of the list (stable order across reloads).
  */
 export async function listAccounts(): Promise<Account[]> {
   const supabase = createClient();
@@ -250,7 +251,8 @@ function friendlyAccountError(err: { code?: string; message: string }): Error {
 /**
  * Soft-delete an account by setting `archived_at = now()`. Refuses to archive
  * the user's last active account so the app always has somewhere to record
- * movements (the auto-created "Efectivo" is the floor).
+ * movements — once the user is down to a single account they have to create
+ * a replacement before archiving the current one.
  */
 export async function archiveAccount(id: string): Promise<void> {
   const supabase = createClient();
@@ -263,7 +265,7 @@ export async function archiveAccount(id: string): Promise<void> {
 
   if (countErr) throw new Error(countErr.message);
   if ((count ?? 0) <= 1) {
-    throw new Error("Necesitás al menos una cuenta activa.");
+    throw new Error("Necesitas al menos una cuenta activa.");
   }
 
   const { error } = await supabase
