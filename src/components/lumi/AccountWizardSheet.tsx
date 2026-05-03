@@ -1,32 +1,37 @@
 /**
- * AccountWizardSheet — flujo de creación de cuenta con preview live.
+ * AccountWizardSheet — flujo de creación de cuenta con preview live
+ * y wizard de 2 pasos.
  *
- * Reemplaza al `AccountFormSheet` solo en modo CREATE. Edit sigue
- * usando el form viejo (menos riesgo, menos UI nueva).
+ * Solo modo CREATE. Edit sigue usando el AccountFormSheet viejo.
  *
- * Diseño:
- *   - Header "Agregando cuenta" + X
- *   - Card preview live (reusa `AccountCard` + `getAccountCardStyle`)
- *   - Plantillas: Efectivo + BCP + Interbank + BBVA + Yape + Plin +
- *     Scotiabank en una fila scrollable horizontal
- *   - Form inline: nombre + moneda + subtipo (solo banco)
- *   - Botón "Agregar a Lumi"
+ * Pasos:
+ *   1. Plantilla + nombre + moneda. Si el kind resultante es banco,
+ *      el botón dice "Continuar" y avanza al paso 2. Si es Yape /
+ *      Plin / Efectivo (donde el subtipo no aplica), el botón dice
+ *      "Agregar a Lumi" y guarda directo.
+ *   2. Subtipo del producto (Sueldo / Corriente / Ahorro / Crédito /
+ *      Débito / Dólares). Solo se muestra para banco. Botón
+ *      "Agregar a Lumi" guarda. Header trae back-arrow para volver
+ *      al paso 1 sin perder lo tipeado.
  *
- * Auto-defaults sensatos al elegir una plantilla:
- *   - Yape / Plin → kind correspondiente, name lock, currency=PEN
- *     (no soportan dólares en Perú)
- *   - Banco → kind=bank, label=brand, currency=PEN inicial
- *   - Efectivo → kind=cash, label=Efectivo
+ * Auto-defaults sensatos al elegir plantilla:
+ *   - Yape / Plin → kind correspondiente, name LOCKED, currency=PEN
+ *   - Banco → kind=bank, label=brand, name LOCKED (consistencia del
+ *     slug; cuentas múltiples del mismo banco se diferencian por
+ *     subtipo en el paso 2)
+ *   - Efectivo → kind=cash, label="Efectivo" pero EDITABLE (los
+ *     users renombran a "Mi colchón" / "Caja" / etc.)
  *
- * El nombre de las plantillas Yape/Plin queda LOCKED (mismo patrón
- * que el form viejo via LOCKED_KIND_NAMES) para que dos accounts no
- * deriven en "Yape" vs "yape" vs "YAPE" por typing libre.
+ * Layout: SheetContent toma 100dvh en mobile (full screen, sin
+ * rounded-t porque ya no es un sheet flotante visible). Card preview
+ * + header + footer son shrink-0 anclados; el form scrollea en el
+ * medio. Desktop sigue centrado a 90vh con rounding (modal feel).
  */
 
 "use client";
 
 import * as React from "react";
-import { X, Banknote, Wallet } from "lucide-react";
+import { X, ArrowLeft, Banknote, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -60,13 +65,8 @@ import {
 } from "@/lib/data/accounts";
 import { cn } from "@/lib/utils";
 
-// Char cap igual al del form viejo — mantiene consistencia con la
-// UI de chips en /dashboard y la fila de /accounts.
 const LABEL_MAX_LENGTH = 12;
 
-// Yape / Plin tienen nombres canónicos. El form viejo usa el mismo
-// truco para evitar variantes "Yape"/"yape"/"YAPE" en el catálogo
-// del user.
 const LOCKED_KIND_NAMES: Partial<Record<AccountKind, string>> = {
   yape: "Yape",
   plin: "Plin",
@@ -93,13 +93,12 @@ const PRESETS: WizardPreset[] = [
   { id: "plin", label: "Plin", kind: "plin", currency: "PEN" },
 ];
 
+type Step = 1 | 2;
+
 export type AccountWizardSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Lista actual de cuentas — usada para detectar duplicados antes
-   *  de hacer el round-trip a Supabase. */
   existingAccounts: Account[];
-  /** Refrescar el listado en el parent tras un create exitoso. */
   reload: () => Promise<void>;
 };
 
@@ -116,14 +115,12 @@ export function AccountWizardSheet({
   const [selectedPresetId, setSelectedPresetId] = React.useState<string | null>(
     null,
   );
+  const [step, setStep] = React.useState<Step>(1);
   const [submitting, setSubmitting] = React.useState(false);
   const [dupOpen, setDupOpen] = React.useState(false);
-  // Surface validation only after the user toca Save una vez —
-  // mismo patrón que el form viejo, evita rojo prematuro.
   const [showError, setShowError] = React.useState(false);
 
-  // Re-seed cada vez que el sheet abre. Sin esto, un cancelar +
-  // reabrir mantenía el último draft → sorpresa.
+  // Re-seed cada vez que el sheet abre.
   React.useEffect(() => {
     if (!open) return;
     setLabel("");
@@ -131,31 +128,27 @@ export function AccountWizardSheet({
     setCurrency("PEN");
     setSubtype(null);
     setSelectedPresetId(null);
+    setStep(1);
     setShowError(false);
   }, [open]);
 
   const lockedKindName = LOCKED_KIND_NAMES[kind];
-  // Lookup del preset activo para decidir locks. Banco preset bloquea
-  // el nombre porque la consistencia del slug (BCP, Interbank, BBVA,
-  // Scotiabank) depende del label exacto — si el user tipea "bcp"
-  // minúscula o "BCP Sueldo" ad-hoc se rompe el theming de la card y
-  // el matching del watermark. Diferentes cuentas en el mismo banco
-  // se diferencian via el subtipo (Sueldo / Ahorro / Crédito) más
-  // abajo. Efectivo NO bloquea — "Efectivo" no es una marca con
-  // theme registrado, y los users renombran a "Mi colchón" / "Caja"
-  // / lo que sea.
   const selectedPreset = React.useMemo(
     () => PRESETS.find((p) => p.id === selectedPresetId) ?? null,
     [selectedPresetId],
   );
+  // Lock del nombre: kind-based (Yape/Plin) o por preset bancario.
+  // Banco bloquea para preservar la consistencia del slug — cuentas
+  // múltiples del mismo banco se diferencian via subtipo (paso 2),
+  // no via label libre.
   const nameLocked =
     lockedKindName !== undefined || selectedPreset?.kind === "bank";
   const currencyLocked = kind === "yape" || kind === "plin";
 
-  // Account "ficticio" para el preview. Usa el label efectivo (lock
-  // si aplica, sino lo tipeado, sino "Mi cuenta" para que la card
-  // nunca se vea con un hueco). saldo=0 + hideAmounts=true porque
-  // todavía no hay nada que mostrar — solo la skin.
+  // El paso 2 solo tiene sentido para banco — es el subtipo. Para
+  // Yape/Plin/Efectivo el paso 1 termina en submit directo.
+  const needsStep2 = kind === "bank";
+
   const previewAccount: Account = React.useMemo(
     () => ({
       id: "__preview",
@@ -167,15 +160,20 @@ export function AccountWizardSheet({
     [lockedKindName, label, kind, currency, subtype],
   );
 
+  // Si el user vuelve al paso 1 y cambia kind a algo que ya no
+  // necesita paso 2, no hace falta forzarlo de vuelta — el render
+  // del paso 2 solo ocurre si needsStep2 es true. Pero si está EN
+  // paso 2 y de alguna forma llegamos a kind != bank, baja a paso 1.
+  React.useEffect(() => {
+    if (step === 2 && !needsStep2) setStep(1);
+  }, [step, needsStep2]);
+
   function applyPreset(preset: WizardPreset) {
     setSelectedPresetId(preset.id);
     setKind(preset.kind);
-    // Yape/Plin → name canónico via LOCKED_KIND_NAMES;
-    // banco/efectivo → label del preset como starter.
     const locked = LOCKED_KIND_NAMES[preset.kind];
     setLabel(locked ?? preset.label);
     if (preset.currency) setCurrency(preset.currency);
-    // Subtype solo aplica a banco — limpio si elegimos otra cosa.
     if (preset.kind !== "bank") setSubtype(null);
     setShowError(false);
   }
@@ -183,26 +181,37 @@ export function AccountWizardSheet({
   function handleLabelChange(next: string) {
     if (nameLocked) return;
     setLabel(next.slice(0, LABEL_MAX_LENGTH));
-    // Si el user tipea libre, despinea la plantilla activa — está
-    // editando el nombre, no se compromete con BCP/etc.
     if (selectedPresetId && selectedPresetId !== "cash") {
       setSelectedPresetId(null);
     }
   }
 
-  async function handleSubmit() {
+  function handlePrimaryAction() {
     if (submitting) return;
-    const trimmed = label.trim();
-    if (trimmed.length === 0) {
-      setShowError(true);
+    if (step === 1) {
+      // Validación de nombre antes de avanzar / guardar.
+      const trimmed = label.trim();
+      if (!nameLocked && trimmed.length === 0) {
+        setShowError(true);
+        return;
+      }
+      if (needsStep2) {
+        setStep(2);
+        return;
+      }
+      void persist();
       return;
     }
+    // step === 2 → guardar.
+    void persist();
+  }
 
+  async function persist() {
+    if (submitting) return;
+    const trimmed = label.trim();
     const finalLabel = lockedKindName ?? trimmed;
     const finalSubtype = kind === "bank" ? subtype : null;
 
-    // Duplicate guard — mismo (label, kind, subtype, currency)
-    // ya existe.
     const norm = (s: string) => s.trim().toLowerCase();
     const isDuplicate = existingAccounts.some(
       (a) =>
@@ -235,6 +244,12 @@ export function AccountWizardSheet({
     }
   }
 
+  // Copy del botón primario depende del paso + si necesita paso 2.
+  const primaryLabel =
+    step === 1 && needsStep2 ? "Continuar" : "Agregar a Lumi";
+  const headerTitle =
+    step === 2 ? "Tipo de producto" : "Agregando cuenta";
+
   return (
     <>
       <SavingOverlay open={submitting} label="Creando cuenta…" />
@@ -248,47 +263,63 @@ export function AccountWizardSheet({
         <SheetContent
           side="bottom"
           aria-labelledby="account-wizard-title"
-          // showCloseButton=false — el default de shadcn pinta una X
-          // en top-right, pero el header de abajo tiene la suya
-          // mejor posicionada y con label en español. Sin esto se
-          // veían dos botones de cerrar.
           showCloseButton={false}
-          // Layout flex column con header + card + footer fijos y
-          // scroll en el medio. Antes el SheetContent crecía sin
-          // limite cuando aparecia el subtype picker (al elegir
-          // banco) y el browser auto-scrolleaba la card preview
-          // fuera de vista. Ahora la card siempre queda visible.
-          //
-          // h-[95dvh] mobile + max-h-[95dvh] override el default;
-          // desktop sigue centrado a 85vh por el data-attr default.
+          // Mobile: full-screen 100dvh, sin rounded-t (ya no es un
+          // sheet flotante — es la pantalla completa). Desktop:
+          // centrado modal con rounded.
           className={cn(
-            "flex flex-col rounded-t-3xl px-0 pb-0 pt-2",
-            "data-[side=bottom]:!h-[95dvh] data-[side=bottom]:!max-h-[95dvh]",
-            "md:max-w-md md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh]",
+            "flex flex-col px-0 pb-0 pt-2",
+            "data-[side=bottom]:!h-[100dvh] data-[side=bottom]:!max-h-[100dvh] data-[side=bottom]:rounded-none",
+            "md:max-w-md md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh] md:rounded-2xl",
           )}
         >
           <SheetTitle id="account-wizard-title" className="sr-only">
-            Agregando cuenta
+            {headerTitle}
           </SheetTitle>
 
-          {/* Header: shrink-0 — anclado arriba siempre. */}
+          {/* Header: en step 1 muestra X (cerrar). En step 2 muestra
+              flecha back que vuelve a step 1 sin perder estado. */}
           <header className="flex shrink-0 items-center justify-between px-5 pt-2 pb-1">
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              aria-label="Cerrar"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <X size={18} aria-hidden />
-            </button>
+            {step === 1 ? (
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                aria-label="Cerrar"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X size={18} aria-hidden />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                aria-label="Volver al paso anterior"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ArrowLeft size={18} aria-hidden />
+              </button>
+            )}
             <span className="text-[14px] font-semibold text-foreground">
-              Agregando cuenta
+              {headerTitle}
             </span>
-            <span aria-hidden className="h-9 w-9" />
+            {/* Indicador de paso a la derecha. Solo visible cuando hay
+                wizard de 2 pasos (kind=bank). Para flujos de 1 paso lo
+                ocultamos para no confundir. */}
+            {needsStep2 ? (
+              <span
+                aria-label={`Paso ${step} de 2`}
+                className="text-[11px] font-semibold tabular-nums text-muted-foreground"
+              >
+                {step}/2
+              </span>
+            ) : (
+              <span aria-hidden className="h-9 w-9" />
+            )}
           </header>
 
-          {/* Card preview — shrink-0 también. La card siempre se ve
-              completa, sin importar cuánto crezca el form abajo. */}
+          {/* Card preview — siempre visible en ambos pasos. La
+              continuidad visual ayuda al user a ver cómo va quedando
+              su cuenta mientras refina el subtipo en step 2. */}
           <div className="shrink-0 px-5 pt-3">
             <div style={getAccountCardStyle(previewAccount)}>
               <AccountCard
@@ -305,161 +336,158 @@ export function AccountWizardSheet({
             </div>
           </div>
 
-          {/* Scroll area: plantillas + form fields. flex-1 + min-h-0 +
-              overflow-y-auto es el patrón clásico para que el
-              overflow realmente dispare el scroll dentro del flex
-              parent. overscroll-contain evita que el inertial scroll
-              de iOS propague al backdrop. */}
+          {/* Scroll area: contenido específico de cada paso. */}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <section className="px-5 pt-5">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Plantillas
-            </p>
-            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {PRESETS.map((preset) => {
-                const active = selectedPresetId === preset.id;
-                const Fallback = preset.fallbackIcon ?? Wallet;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => applyPreset(preset)}
-                    aria-pressed={active}
-                    className={cn(
-                      "flex w-[72px] flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active ? "bg-muted" : "hover:bg-muted/50",
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-foreground",
-                        accountChipBgClass(preset.label),
-                        active &&
-                          "ring-2 ring-foreground ring-offset-2 ring-offset-background",
-                      )}
-                    >
-                      <AccountBrandIcon
-                        label={preset.label}
-                        fallback={<Fallback size={20} aria-hidden />}
-                      />
-                    </span>
-                    <span
-                      className={cn(
-                        "w-full truncate text-center text-[11px] leading-tight",
-                        active
-                          ? "font-semibold text-foreground"
-                          : "font-medium text-muted-foreground",
-                      )}
-                    >
-                      {preset.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+            {step === 1 ? (
+              <>
+                {/* Plantillas */}
+                <section className="px-5 pt-5">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                    Plantillas
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {PRESETS.map((preset) => {
+                      const active = selectedPresetId === preset.id;
+                      const Fallback = preset.fallbackIcon ?? Wallet;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyPreset(preset)}
+                          aria-pressed={active}
+                          className={cn(
+                            "flex w-[72px] flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            active ? "bg-muted" : "hover:bg-muted/50",
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-foreground",
+                              accountChipBgClass(preset.label),
+                              active &&
+                                "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+                            )}
+                          >
+                            <AccountBrandIcon
+                              label={preset.label}
+                              fallback={<Fallback size={20} aria-hidden />}
+                            />
+                          </span>
+                          <span
+                            className={cn(
+                              "w-full truncate text-center text-[11px] leading-tight",
+                              active
+                                ? "font-semibold text-foreground"
+                                : "font-medium text-muted-foreground",
+                            )}
+                          >
+                            {preset.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-          {/* Form fields. Nombre + moneda siempre. Subtipo solo
-              cuando es banco — sin él la lista de "Sueldo / Ahorro /
-              Crédito" no tiene sentido para Yape o Efectivo. El form
-              vive DENTRO del scroll area; la CTA "Agregar a Lumi"
-              queda afuera anclada abajo (tag `form="..."` en el
-              button preserva el submit). */}
-          <form
-            id="account-wizard-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void handleSubmit();
-            }}
-            aria-busy={submitting}
-            className="flex flex-col gap-4 px-5 pt-5 pb-5"
-          >
-            <label className="block">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                Nombre
-              </span>
-              <input
-                type="text"
-                value={label}
-                onChange={(e) => handleLabelChange(e.target.value)}
-                disabled={nameLocked || submitting}
-                placeholder={
-                  nameLocked ? lockedKindName : "Ej. Mi colchón, BCP, Caja"
-                }
-                aria-invalid={showError && label.trim().length === 0}
-                maxLength={LABEL_MAX_LENGTH}
-                className={cn(
-                  "mt-1.5 h-11 w-full rounded-xl border bg-card px-3 text-[14px] font-medium text-foreground transition-colors placeholder:text-muted-foreground/60",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
-                  showError && label.trim().length === 0
-                    ? "border-destructive"
-                    : "border-border",
-                )}
-              />
-              {showError && label.trim().length === 0 ? (
-                <p className="mt-1 text-[12px] text-destructive">
-                  Asigna un nombre antes de continuar.
-                </p>
-              ) : null}
-            </label>
-
-            {/* Moneda — segmented control. Yape/Plin desactivan USD
-                porque ninguna soporta dólares en Perú. */}
-            <div role="radiogroup" aria-label="Moneda">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                Moneda
-              </span>
-              <div className="mt-1.5 inline-flex h-11 w-full items-stretch rounded-xl border border-border bg-muted p-1">
-                {(
-                  [
-                    { value: "PEN" as const, label: "S/ Soles" },
-                    { value: "USD" as const, label: "$ Dólares" },
-                  ]
-                ).map((opt) => {
-                  const selected = currency === opt.value;
-                  const disabled =
-                    submitting || (currencyLocked && opt.value === "USD");
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      disabled={disabled}
-                      onClick={() => setCurrency(opt.value)}
+                {/* Nombre + moneda. Subtipo NO va acá — es el paso 2. */}
+                <div className="flex flex-col gap-4 px-5 pt-5 pb-5">
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                      Nombre
+                    </span>
+                    <input
+                      type="text"
+                      value={label}
+                      onChange={(e) => handleLabelChange(e.target.value)}
+                      disabled={nameLocked || submitting}
+                      placeholder={
+                        nameLocked
+                          ? lockedKindName
+                          : "Ej. Mi colchón, BCP, Caja"
+                      }
+                      aria-invalid={showError && label.trim().length === 0}
+                      maxLength={LABEL_MAX_LENGTH}
                       className={cn(
-                        "flex-1 rounded-lg text-[13px] font-semibold transition-colors",
+                        "mt-1.5 h-11 w-full rounded-xl border bg-card px-3 text-[14px] font-medium text-foreground transition-colors placeholder:text-muted-foreground/60",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        selected
-                          ? "bg-background text-foreground shadow-[var(--shadow-xs)]"
-                          : "text-muted-foreground hover:text-foreground",
-                        disabled &&
-                          "cursor-not-allowed opacity-50 hover:text-muted-foreground",
+                        "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
+                        showError && label.trim().length === 0
+                          ? "border-destructive"
+                          : "border-border",
                       )}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {currencyLocked ? (
-                <p className="mt-1 text-[11.5px] text-muted-foreground">
-                  {lockedKindName} solo opera en soles.
-                </p>
-              ) : null}
-            </div>
+                    />
+                    {showError && label.trim().length === 0 ? (
+                      <p className="mt-1 text-[12px] text-destructive">
+                        Asigna un nombre antes de continuar.
+                      </p>
+                    ) : null}
+                  </label>
 
-            {/* Subtipo — solo banco. Útil para diferenciar dos cuentas
-                en el mismo banco (ej. BCP Sueldo + BCP Ahorro). */}
-            {kind === "bank" ? (
-              <div role="radiogroup" aria-label="Tipo de producto">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                  Tipo de producto (opcional)
-                </span>
-                <div className="mt-1.5 flex flex-wrap gap-2">
+                  <div role="radiogroup" aria-label="Moneda">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                      Moneda
+                    </span>
+                    <div className="mt-1.5 inline-flex h-11 w-full items-stretch rounded-xl border border-border bg-muted p-1">
+                      {(
+                        [
+                          { value: "PEN" as const, label: "S/ Soles" },
+                          { value: "USD" as const, label: "$ Dólares" },
+                        ]
+                      ).map((opt) => {
+                        const selected = currency === opt.value;
+                        const disabled =
+                          submitting ||
+                          (currencyLocked && opt.value === "USD");
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={disabled}
+                            onClick={() => setCurrency(opt.value)}
+                            className={cn(
+                              "flex-1 rounded-lg text-[13px] font-semibold transition-colors",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              selected
+                                ? "bg-background text-foreground shadow-[var(--shadow-xs)]"
+                                : "text-muted-foreground hover:text-foreground",
+                              disabled &&
+                                "cursor-not-allowed opacity-50 hover:text-muted-foreground",
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {currencyLocked ? (
+                      <p className="mt-1 text-[11.5px] text-muted-foreground">
+                        {lockedKindName} solo opera en soles.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : (
+              // Step 2 — subtipo del producto. Pills más grandes que
+              // antes porque ahora son la única decisión visible en
+              // este paso, no un detalle más al pie del form.
+              <div className="flex flex-col gap-3 px-5 pt-5 pb-5">
+                <p className="text-[14px] font-semibold text-foreground">
+                  ¿Qué tipo de producto es?
+                </p>
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  Si tienes varias cuentas en el mismo banco, esto las
+                  diferencia. Puedes saltarlo y dejarlo en blanco.
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-label="Tipo de producto"
+                  className="mt-2 grid grid-cols-2 gap-2"
+                >
                   {ACCOUNT_SUBTYPE_OPTIONS.map((opt) => {
                     const selected = subtype === opt;
                     return (
@@ -470,7 +498,7 @@ export function AccountWizardSheet({
                         aria-checked={selected}
                         onClick={() => setSubtype(selected ? null : opt)}
                         className={cn(
-                          "inline-flex h-9 items-center rounded-full border px-3 text-[12px] font-semibold transition-colors",
+                          "inline-flex h-12 items-center justify-center rounded-xl border px-3 text-[13px] font-semibold transition-colors",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           selected
                             ? "border-foreground bg-foreground text-background"
@@ -483,22 +511,17 @@ export function AccountWizardSheet({
                   })}
                 </div>
               </div>
-            ) : null}
-
-          </form>
+            )}
           </div>
 
-          {/* Footer fijo abajo — CTA primaria siempre visible y
-              alcanzable sin importar cuánto haya scrolleado el user
-              en el form de arriba. shrink-0 + border-t + bg-popover
-              da la separación visual del scroll area. El form="..."
-              attribute conecta este button con el <form> de arriba
-              vía DOM, así que un Enter o tap todavía submit el
-              form normalmente. */}
+          {/* Footer fijo abajo. Copy y action dependen del paso:
+                step 1 + needsStep2 → "Continuar" (advance)
+                step 1 + !needsStep2 → "Agregar a Lumi" (submit)
+                step 2 → "Agregar a Lumi" (submit) */}
           <div className="shrink-0 border-t border-border bg-popover px-5 pb-6 pt-3">
             <button
-              type="submit"
-              form="account-wizard-form"
+              type="button"
+              onClick={handlePrimaryAction}
               disabled={submitting}
               className={cn(
                 "inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-5 text-[14px] font-semibold text-primary-foreground transition-colors",
@@ -507,14 +530,13 @@ export function AccountWizardSheet({
                 "disabled:cursor-not-allowed disabled:opacity-60",
               )}
             >
-              Agregar a Lumi
+              {primaryLabel}
             </button>
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Duplicate guard — mismo patrón que el form viejo. Drawer
-          modal con título + descripción + botón Entendido. */}
+      {/* Duplicate guard — Drawer modal sobre el wizard. */}
       <Drawer open={dupOpen} onOpenChange={setDupOpen}>
         <DrawerContent
           aria-describedby="account-dup-desc"
