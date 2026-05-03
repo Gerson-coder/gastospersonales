@@ -27,7 +27,7 @@ import type { Currency } from "@/lib/supabase/types";
 const STORAGE_KEY = "kane-prefs";
 const DEFAULT_CURRENCY: Currency = "PEN";
 
-type LumiPrefs = {
+type KanePrefs = {
   currency?: Currency;
   // Other keys (e.g. `theme`) MUST be preserved on write.
   [key: string]: unknown;
@@ -37,14 +37,14 @@ function isCurrency(value: unknown): value is Currency {
   return value === "PEN" || value === "USD";
 }
 
-function readPrefs(): LumiPrefs {
+function readPrefs(): KanePrefs {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return parsed as LumiPrefs;
+      return parsed as KanePrefs;
     }
     return {};
   } catch {
@@ -114,7 +114,7 @@ export function useActiveCurrency(): {
       // Read-merge-write so we preserve `theme` and any other key the
       // settings page (or future code) parks under `kane-prefs`.
       const prefs = readPrefs();
-      const updated: LumiPrefs = { ...prefs, currency: next };
+      const updated: KanePrefs = { ...prefs, currency: next };
       const serialized = JSON.stringify(updated);
       window.localStorage.setItem(STORAGE_KEY, serialized);
 

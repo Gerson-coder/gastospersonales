@@ -50,7 +50,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // users always end up on fresh code instead of the old stale shell.
   useServiceWorkerUpdate();
   // One-shot migracion del rebrand: copia claves de localStorage del
-  // formato `lumi-*` legacy al `kane-*` actual y borra las viejas.
+  // formato legacy al `kane-*` actual y borra las viejas.
   // Idempotente — corridas siguientes son no-ops porque las claves
   // legacy ya no estan. Sin esto, los users que venian de la version
   // anterior pierden currency / theme / metas / presupuestos al

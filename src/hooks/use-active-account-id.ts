@@ -36,20 +36,20 @@ import { useCallback, useSyncExternalStore } from "react";
 const STORAGE_KEY = "kane-prefs";
 const FIELD = "activeAccountId";
 
-type LumiPrefs = {
+type KanePrefs = {
   activeAccountId?: string | null;
   // Other keys (currency, theme, ...) MUST be preserved on write.
   [key: string]: unknown;
 };
 
-function readPrefs(): LumiPrefs {
+function readPrefs(): KanePrefs {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return parsed as LumiPrefs;
+      return parsed as KanePrefs;
     }
     return {};
   } catch {
@@ -94,7 +94,7 @@ export function useActiveAccountId(): {
       // that would otherwise re-trigger every subscriber.
       if (prefs[FIELD] === next) return;
 
-      const updated: LumiPrefs = { ...prefs, [FIELD]: next };
+      const updated: KanePrefs = { ...prefs, [FIELD]: next };
       const serialized = JSON.stringify(updated);
       window.localStorage.setItem(STORAGE_KEY, serialized);
 
