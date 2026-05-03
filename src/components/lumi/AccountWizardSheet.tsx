@@ -31,7 +31,15 @@
 "use client";
 
 import * as React from "react";
-import { X, ArrowLeft, Banknote, Wallet, Plus } from "lucide-react";
+import {
+  X,
+  ArrowLeft,
+  Banknote,
+  Wallet,
+  Plus,
+  Pencil,
+  Landmark,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -91,6 +99,16 @@ const PRESETS: WizardPreset[] = [
   { id: "bbva", label: "BBVA", kind: "bank" },
   { id: "scotiabank", label: "Scotiabank", kind: "bank" },
   { id: "plin", label: "Plin", kind: "plin", currency: "PEN" },
+  // Catch-all para bancos / billeteras / cajas que no están en
+  // nuestra lista (Caja Huancayo, Caja Arequipa, Mibanco, BanBif,
+  // Pichincha, Falabella, Ripley, Tunki, etc.). Cuando el user elige
+  // "Otro", la UI muestra un mini-picker para que decida si es
+  // efectivo o banco, y el campo de nombre queda editable para tipear
+  // la marca/etiqueta libremente. La card preview cae al gradiente
+  // neutral porque accountBrandSlug no encuentra el slug — apenas
+  // agreguemos un theme nuevo a account-card-theme.ts el render lo
+  // toma automáticamente.
+  { id: "other", label: "Otro", kind: "cash", fallbackIcon: Pencil },
 ];
 
 // Cuántas plantillas se muestran inline antes del "Más" affordance.
@@ -174,12 +192,17 @@ export function AccountWizardSheet({
     () => PRESETS.find((p) => p.id === selectedPresetId) ?? null,
     [selectedPresetId],
   );
-  // Lock del nombre: kind-based (Yape/Plin) o por preset bancario.
-  // Banco bloquea para preservar la consistencia del slug — cuentas
-  // múltiples del mismo banco se diferencian via subtipo (paso 2),
-  // no via label libre.
+  // El preset "Otro" deja TODO editable — kind se elige inline,
+  // nombre se tipea libre. Lo flageo separado porque varias ramas
+  // de la lógica (lock del nombre, mini-picker visible, copy del
+  // helper) se bifurcan en este caso.
+  const isOtherPreset = selectedPreset?.id === "other";
+  // Lock del nombre: kind-based (Yape/Plin) o por preset bancario,
+  // PERO no cuando es "Otro" (ese permite tipear cualquier marca,
+  // ej. "Caja Huancayo", "Mibanco", "BanBif").
   const nameLocked =
-    lockedKindName !== undefined || selectedPreset?.kind === "bank";
+    lockedKindName !== undefined ||
+    (selectedPreset?.kind === "bank" && !isOtherPreset);
   const currencyLocked = kind === "yape" || kind === "plin";
 
   // El paso 2 solo tiene sentido para banco — es el subtipo. Para
@@ -209,10 +232,23 @@ export function AccountWizardSheet({
     setSelectedPresetId(preset.id);
     setKind(preset.kind);
     const locked = LOCKED_KIND_NAMES[preset.kind];
-    setLabel(locked ?? preset.label);
+    // "Otro" arranca con label vacío para que el user tipee desde
+    // cero. El resto de presets pre-rellenan la marca como starter.
+    if (preset.id === "other") {
+      setLabel("");
+    } else {
+      setLabel(locked ?? preset.label);
+    }
     if (preset.currency) setCurrency(preset.currency);
     if (preset.kind !== "bank") setSubtype(null);
     setShowError(false);
+  }
+
+  // Cambio de kind desde el mini-picker del preset "Otro". Limpia el
+  // subtype si el user vuelve a cash (no aplica a no-banco).
+  function handleOtherKindChange(next: AccountKind) {
+    setKind(next);
+    if (next !== "bank") setSubtype(null);
   }
 
   function handleLabelChange(next: string) {
@@ -455,6 +491,61 @@ export function AccountWizardSheet({
 
                 {/* Nombre + moneda. Subtipo NO va acá — es el paso 2. */}
                 <div className="flex flex-col gap-4 px-5 pt-5 pb-5">
+                  {/* Mini-picker de kind solo cuando el user eligió
+                      "Otro" — necesita decidir si su cuenta nueva es
+                      efectivo (Mi colchón / Caja chica) o banco
+                      (Caja Huancayo / Mibanco). Para los presets de
+                      marca el kind ya está fijado y este picker no
+                      hace falta. */}
+                  {isOtherPreset ? (
+                    <div role="radiogroup" aria-label="Tipo de cuenta">
+                      <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                        ¿Qué tipo de cuenta?
+                      </span>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        {(
+                          [
+                            {
+                              value: "cash" as const,
+                              label: "Efectivo",
+                              Icon: Banknote,
+                            },
+                            {
+                              value: "bank" as const,
+                              label: "Banco",
+                              Icon: Landmark,
+                            },
+                          ]
+                        ).map((opt) => {
+                          const selected = kind === opt.value;
+                          const Icon = opt.Icon;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              disabled={submitting}
+                              onClick={() =>
+                                handleOtherKindChange(opt.value)
+                              }
+                              className={cn(
+                                "inline-flex h-12 items-center justify-center gap-2 rounded-xl border px-3 text-[13px] font-semibold transition-colors",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                selected
+                                  ? "border-foreground bg-foreground text-background"
+                                  : "border-border bg-card text-foreground hover:bg-muted",
+                              )}
+                            >
+                              <Icon size={16} aria-hidden="true" />
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <label className="block">
                     <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
                       Nombre
@@ -465,7 +556,11 @@ export function AccountWizardSheet({
                       onChange={(e) => handleLabelChange(e.target.value)}
                       disabled={nameLocked || submitting}
                       placeholder={
-                        nameLocked ? lockedKindName : "Ponle un nombre"
+                        nameLocked
+                          ? lockedKindName
+                          : isOtherPreset && kind === "bank"
+                            ? "Ej. Caja Huancayo, Mibanco"
+                            : "Ponle un nombre"
                       }
                       aria-invalid={showError && label.trim().length === 0}
                       aria-describedby={!nameLocked ? "wizard-name-hint" : undefined}
@@ -484,16 +579,19 @@ export function AccountWizardSheet({
                         Asigna un nombre antes de continuar.
                       </p>
                     ) : !nameLocked ? (
-                      // Helper text permanente cuando el campo es
-                      // editable. Da ejemplos concretos para que el
-                      // user no se quede pensando "¿qué pongo acá?"
-                      // y entienda que puede personalizar más allá
-                      // de lo que las plantillas sugieren.
+                      // Helper text context-aware. Si el user está en
+                      // "Otro" + Banco, sugerimos cajas/bancos que NO
+                      // están en nuestros presets (para que descubra
+                      // que esa rama existe). Si está en "Otro" +
+                      // Efectivo o sin preset, sugerimos nombres de
+                      // efectivo típicos.
                       <p
                         id="wizard-name-hint"
                         className="mt-1 text-[11.5px] text-muted-foreground"
                       >
-                        Ejemplos: Mi colchón, Caja chica, Ahorros.
+                        {isOtherPreset && kind === "bank"
+                          ? "Ejemplos: Caja Huancayo, Mibanco, BanBif, Pichincha."
+                          : "Ejemplos: Mi colchón, Caja chica, Ahorros."}
                       </p>
                     ) : null}
                   </label>
