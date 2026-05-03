@@ -10,13 +10,14 @@
  * Behavior:
  *   - When `categoryId` is null, the component renders `null` — we never
  *     contaminate the capture flow with a section that has no context.
- *   - When MRU returns nothing AND the category has zero visible
- *     merchants, the component also renders `null` (e.g. a brand-new
- *     category where the user hasn't seeded anything yet). The drawer
- *     entry would otherwise dead-end on an empty list.
- *   - When MRU is empty but the category does have merchants, we still
- *     render the section with just the "Ver más" affordance so the user
- *     can drill in.
+ *   - When MRU is empty AND the category has zero visible merchants, we
+ *     still render the section showing only the "+ Más" mini-card. It is
+ *     the user's only entry point into the create flow; MerchantsDrawer
+ *     has a proper empty-state with a "Crear comercio" CTA so the path
+ *     is not a dead-end.
+ *   - When MRU is empty but the category does have merchants, we render
+ *     the section with just the "+ Más" affordance so the user can drill
+ *     in to the full list.
  *   - Tapping the currently-selected chip toggles it off (sends `null`
  *     up).
  *
@@ -119,8 +120,6 @@ export function MerchantPicker({
     };
   }, [categoryId]);
 
-  const hasAny = all.length > 0;
-
   // Visible strip = pinned (if outside MRU) + MRU, deduped by id, capped
   // at MRU_LIMIT. The pinned merchant lands at index 0 so the user sees
   // their pick land in the visible row immediately after closing the
@@ -158,12 +157,16 @@ export function MerchantPicker({
     [onChange, visible],
   );
 
-  // Bail out when there's no category context, when the category has zero
-  // visible merchants, or while we're still on the first hydration tick
-  // (avoids a flash of an empty section before data lands).
+  // Bail out when there's no category context, or while we're still on
+  // the first hydration tick (avoids a flash of an empty section before
+  // data lands). When the category has zero visible merchants we STILL
+  // render — the "+ Más" mini-card is the user's only entry point into
+  // MerchantsDrawer's create flow, and the drawer has a proper empty
+  // state with a "Crear comercio" CTA. Hiding the section here would
+  // leave the user with no way to add the first merchant in a custom or
+  // unseeded category.
   if (!categoryId || !categoryName) return null;
   if (loading) return null;
-  if (!hasAny) return null;
 
   const handleChipClick = (id: string) => {
     // Toggle: tapping the selected chip clears the selection.
