@@ -195,25 +195,45 @@ export function NotificationsBell({ className }: { className?: string }) {
   // the trigger itself → trigger registers a press → reopen → another stray
   // event closes again. Net effect: visible close-open-close flicker.
   //
-  // Two-layer fix:
+  // Three-layer fix (the previous two layers were not enough on real
+  // devices — user reported the flicker still happens):
   //   1. Suppress touch-driven pointerdown on the trigger while open. This
-  //      stops the bounce-tap from synthesizing an open after the swipe-
-  //      driven close, regardless of timing.
-  //   2. 600ms time-window guard on `handleOpenChange` as belt-and-suspenders
-  //      for the case where the closing pointer event is interpreted as a
-  //      genuine new press by Base UI internally and bypasses the trigger
-  //      handler. The previous 250ms wasn't enough — slow swipes / momentum
-  //      release stretch the close→reopen gap past that window.
+  //      stops the bounce-tap that synthesizes an open after the swipe-
+  //      driven close.
+  //   2. 1000ms time-window guard on `handleOpenChange`. Bumped from 600ms
+  //      because slow swipes / momentum release stretch the close→reopen
+  //      gap past that window on mid-range Android.
+  //   3. NEW: explicit window-scroll listener that pre-empts Base UI's
+  //      drag-threshold logic. As soon as the page scrolls we close the
+  //      menu AND stamp the close time, so the existing 1000ms reopen
+  //      guard kicks in for any stray events Base UI fires afterward.
+  //      Window-level only (no capture, no element scrolling) so the
+  //      internal `<ul>` overflow-y-auto inside the menu can still scroll
+  //      normally — element scroll doesn't bubble to window.
   const lastCloseAtRef = React.useRef(0);
 
   function handleOpenChange(next: boolean) {
-    if (next && Date.now() - lastCloseAtRef.current < 600) return;
+    if (next && Date.now() - lastCloseAtRef.current < 1000) return;
     if (!next) lastCloseAtRef.current = Date.now();
     setOpen(next);
     // Mark as read when the user opens the dropdown — they've now seen
     // them, that's the same contract as the bell badge in any inbox app.
     if (next && unreadCount > 0) markAllRead();
   }
+
+  // Layer 3 — close on page scroll while open. We attach the listener only
+  // when the menu is open so the rest of the page pays nothing for it.
+  React.useEffect(() => {
+    if (!open) return;
+    const onScroll = () => {
+      lastCloseAtRef.current = Date.now();
+      setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [open]);
 
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange} modal={true}>
