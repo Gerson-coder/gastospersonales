@@ -36,94 +36,107 @@ try {
   sharp = require(join(ROOT, "node_modules", "sharp"));
 }
 
-// Source es ahora un SVG vector (1254x1254) en /public/icons/kane.svg —
-// el user lo proveyó traceado desde su diseño final. sharp + librsvg
-// rasterizan a cualquier size sin perder calidad. Si el SVG cambia,
-// solo correr este script para regenerar los PNG variants.
 const SOURCE_PATH = join(ROOT, "public", "icons", "kane.svg");
 const ICONS_DIR = join(ROOT, "public", "icons");
 mkdirSync(ICONS_DIR, { recursive: true });
 
-const rawSvgBuffer = readFileSync(SOURCE_PATH);
-
 // Color sólido detrás del icono en el maskable variant.
 const MASKABLE_BG = { r: 1, g: 94, b: 44, alpha: 1 }; // #015E2C rich green
 
-// El kane.svg viene del trace del icono original del user que tiene
-// CREAM bg + DARK GREEN K (paleta invertida a lo que queremos para
-// el PWA). Recoloreamos pixel-level el raster a:
-//   - Bright green (g >> r,b): preservar (arrow + $ accent)
-//   - Dark/medium green (la K): white
-//   - Cream/light: dark green #015E2C (el bg deseado)
-//   - Mid AA: interpolación lineal
-// Esta función re-rasteriza el SVG a un PNG buffer "recoloreado" que
-// despues alimenta al renderAt / renderMaskable. Sin esto el icono
-// salia con el cream del SVG fuente como bordes en Samsung One UI.
-async function recoloredBuffer(svgBuf, density) {
-  const { data, info } = await sharp(svgBuf, { density })
-    .resize(1024, 1024, { fit: "cover", position: "center" })
+// kane.svg es un trace del diseño final del user. El SVG natural ya
+// renderiza con verde rounded-card + K blanca + $ blanco + flecha
+// blanca (es exactamente lo que queremos visualmente, casi). El UNICO
+// problema es que los paths "cream" del trace (#FCFCFC, #FBFBFB, etc.)
+// forman DOS cosas a la vez: (a) la K + flecha + $ que queremos
+// preservar en blanco, (b) un "halo" exterior que rellena las esquinas
+// redondeadas con cream/blanco — eso es lo que NO queremos.
+//
+// No podemos distinguir esos dos roles de los paths cream a nivel SVG
+// (mismos colores, mismas estructuras). La solución más confiable es
+// pixel-level pero ACOTADA a la banda exterior:
+//
+//   1. Renderizar kane.svg al natural → verde card + K blanca + halos
+//      blancos en las 4 esquinas.
+//   2. Recorrer SOLO la banda exterior (outer 12% del frame) y reemplazar
+//      todos los pixeles "near-white" (R,G,B > 200) por verde #015E2C.
+//      La K + flecha + $ viven en el centro, nunca llegan a esta banda,
+//      asi que quedan intactos.
+//   3. Resultado: cuadrado verde lleno hasta los bordes + K/$/flecha
+//      blancos en el centro.
+async function buildSourceBuffer() {
+  const SIZE = 1024;
+  const { data, info } = await sharp(readFileSync(SOURCE_PATH), {
+    density: 144,
+  })
+    .resize(SIZE, SIZE, { fit: "cover", position: "center" })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const NEW_BG = [1, 94, 44]; // #015E2C — verde target
-  const NEW_K = [255, 255, 255]; // blanco
+  const GREEN = [1, 94, 44]; // #015E2C
+  const BAND = Math.round(SIZE * 0.12); // outer 12% — fuera de la K
+  const W = info.width;
+  const H = info.height;
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i],
-      g = data[i + 1],
-      b = data[i + 2];
+  for (let y = 0; y < H; y++) {
+    const rowInBand = y < BAND || y >= H - BAND;
+    for (let x = 0; x < W; x++) {
+      const inBand = rowInBand || x < BAND || x >= W - BAND;
+      if (!inBand) continue;
 
-    // Bright green MUY saturado (solo el arrow + $ del accent #22C55E
-    // ≈ (34,197,94)). Antes el threshold de g>130 atrapaba tintes
-    // medios del K (#4E8660 etc.) y los preservaba en lugar de
-    // mapearlos a white. Subido a g>170 + diferencia >60 con max(r,b)
-    // para que solo el verde vivo del arrow sobreviva al recolor.
-    const maxRB = Math.max(r, b);
-    if (g > 170 && g > maxRB + 60) continue;
+      const i = (y * W + x) * 4;
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2];
 
-    // Threshold binario sobre lightness. Sharp aplica anti-aliasing
-    // en el downsample 1024 → 192/512/etc., asi que no necesitamos
-    // fade aqui — el final tendra bordes suaves del propio resize.
-    // Antes el fade dejaba la K como un gris-verde tintado en lugar
-    // de white puro porque los shades del K (#0xxx-#2Bxxx) tienen
-    // L≈50-90, no L=0 — la formula de fade no llegaba a t=1 para
-    // ellos.
-    const L = 0.299 * r + 0.587 * g + 0.114 * b;
-    if (L > 150) {
-      // Light (cream bg) → verde
-      data[i] = NEW_BG[0];
-      data[i + 1] = NEW_BG[1];
-      data[i + 2] = NEW_BG[2];
-    } else {
-      // Dark (la K) → white
-      data[i] = NEW_K[0];
-      data[i + 1] = NEW_K[1];
-      data[i + 2] = NEW_K[2];
+      // En la banda exterior reemplazamos CUALQUIER pixel que no sea
+      // ya el verde #015E2C exacto. Esto cubre tres cosas:
+      //   - cream halos de las esquinas (R,G,B > 200)
+      //   - pixeles intermedios del antialiasing del path bg redondeado
+      //   - greens medianos (#4E8660 etc.) que forman outline en el borde
+      // Threshold de 8 unidades de tolerancia por canal para absorber
+      // cualquier off-by-one de sharp.
+      const isExactGreen =
+        Math.abs(r - GREEN[0]) <= 8 &&
+        Math.abs(g - GREEN[1]) <= 8 &&
+        Math.abs(b - GREEN[2]) <= 8;
+      if (!isExactGreen) {
+        data[i] = GREEN[0];
+        data[i + 1] = GREEN[1];
+        data[i + 2] = GREEN[2];
+        data[i + 3] = 255;
+      }
     }
   }
 
   return await sharp(data, {
-    raw: { width: info.width, height: info.height, channels: info.channels },
+    raw: { width: W, height: H, channels: info.channels },
   })
     .png({ compressionLevel: 9 })
     .toBuffer();
 }
 
-// Pre-recolorear UNA VEZ a 1024x1024, después renderAt/renderMaskable
-// resamplean este PNG a las sizes finales (más rápido que recolorear
-// por cada size, y el resampleo de un PNG ya recoloreado es fiel).
-console.log("Recoloring kane.svg → green bg + white K...");
-const sourceBuffer = await recoloredBuffer(rawSvgBuffer, 144);
+console.log("Rasterizing kane.svg + filling corner halos with green...");
+const sourceBuffer = await buildSourceBuffer();
 console.log("  done.\n");
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 async function renderAt(buf, size, outPath) {
-  // Source ya es un PNG recoloreado a 1024x1024 — solo redimensionar.
-  // Sin density (no aplica a PNG fuente).
-  await sharp(buf)
+  // El SVG fuente tiene un path de bg con beziers ligeramente curvas
+  // en las esquinas (no es rectangle puro), entonces los píxeles fuera
+  // de la silueta quedan transparentes. Componer sobre un cuadrado verde
+  // sólido garantiza que el icono final sea un cuadrado verde lleno
+  // hasta los bordes — el SO (iOS/Android) aplica su propio rounding
+  // en hardware si quiere.
+  const inner = await sharp(buf)
     .resize(size, size, { fit: "cover", position: "center" })
+    .png()
+    .toBuffer();
+  await sharp({
+    create: { width: size, height: size, channels: 4, background: MASKABLE_BG },
+  })
+    .composite([{ input: inner, gravity: "center" }])
     .png({ compressionLevel: 9 })
     .toFile(outPath);
   const meta = await sharp(outPath).metadata();
@@ -164,8 +177,14 @@ async function renderMaskable(buf, size, outPath) {
  * (1 frame). Compatible con todos los browsers actuales.
  */
 async function renderFavicon(buf, outPath) {
-  const pngBuf = await sharp(buf)
+  const inner = await sharp(buf)
     .resize(32, 32, { fit: "cover", position: "center" })
+    .png()
+    .toBuffer();
+  const pngBuf = await sharp({
+    create: { width: 32, height: 32, channels: 4, background: MASKABLE_BG },
+  })
+    .composite([{ input: inner, gravity: "center" }])
     .png()
     .toBuffer();
 

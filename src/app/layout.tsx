@@ -48,13 +48,13 @@ export const metadata: Metadata = {
     // refetch del icono fresco. Bumpear este numero cada vez que se
     // regenera el icono.
     icon: [
-      { url: "/favicon.ico?v=5", sizes: "any" },
-      { url: "/icons/favicon-16.png?v=5", sizes: "16x16", type: "image/png" },
-      { url: "/icons/favicon-32.png?v=5", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-192.png?v=5", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png?v=5", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico?v=6", sizes: "any" },
+      { url: "/icons/favicon-16.png?v=6", sizes: "16x16", type: "image/png" },
+      { url: "/icons/favicon-32.png?v=6", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png?v=6", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png?v=6", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/icons/apple-touch-icon.png?v=5",
+    apple: "/icons/apple-touch-icon.png?v=6",
   },
 };
 
