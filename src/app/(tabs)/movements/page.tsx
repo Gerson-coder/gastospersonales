@@ -561,11 +561,11 @@ function MovementsContent() {
     }
   }
 
-  function handleEdit() {
-    if (!actionSheetTx) return;
-    const id = actionSheetTx.id;
-    setActionSheetTx(null);
-    router.push(`/capture?edit=${id}`);
+  // Edit flow — same single source of truth for both the long-press
+  // action sheet and the detail drawer. /capture?edit=<id> handles
+  // rehydration + full validation, so we don't duplicate edit UI here.
+  function editTx(tx: TransactionView) {
+    router.push(`/capture?edit=${tx.id}`);
   }
 
   /**
@@ -583,12 +583,11 @@ function MovementsContent() {
    *     is back as if nothing happened.
    *   - Because /movements does NOT subscribe to realtime, we don't have to
    *     guard against a concurrent insert event arriving for the same id.
+   *
+   * Shared by long-press (action sheet) and tap (detail drawer) — both
+   * surfaces need identical archive semantics.
    */
-  async function handleArchive() {
-    if (!actionSheetTx) return;
-    const tx = actionSheetTx;
-    setActionSheetTx(null);
-
+  async function archiveTx(tx: TransactionView) {
     // Optimistic local removal.
     setRows((prev) => prev.filter((r) => r.id !== tx.id));
 
@@ -638,6 +637,21 @@ function MovementsContent() {
       });
       toast.error(err instanceof Error ? err.message : "No pudimos archivar.");
     }
+  }
+
+  // Action-sheet adapters — the sheet's onEdit / onArchive props are
+  // arg-less, so we read from actionSheetTx + close the sheet here.
+  function handleEdit() {
+    if (!actionSheetTx) return;
+    const tx = actionSheetTx;
+    setActionSheetTx(null);
+    editTx(tx);
+  }
+  async function handleArchive() {
+    if (!actionSheetTx) return;
+    const tx = actionSheetTx;
+    setActionSheetTx(null);
+    await archiveTx(tx);
   }
 
   // Filter chain composes the chip filter with the free-text search.
@@ -823,13 +837,23 @@ function MovementsContent() {
         />
       ) : null}
 
-      {/* Detail drawer — short tap on any row. Read-only surface. */}
+      {/* Detail drawer — short tap on any row. Editar y Eliminar
+          comparten el flujo del action sheet (mismas helpers) para que
+          el comportamiento sea uniforme entre tap y long-press. */}
       <TransactionDetailDrawer
         open={detailTx !== null}
         onOpenChange={(open) => {
           if (!open) setDetailTx(null);
         }}
         transaction={detailTx}
+        onEdit={(tx) => {
+          setDetailTx(null);
+          editTx(tx);
+        }}
+        onArchive={(tx) => {
+          setDetailTx(null);
+          void archiveTx(tx);
+        }}
       />
     </div>
   );

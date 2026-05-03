@@ -97,7 +97,12 @@ import {
   ACCOUNT_UPSERTED_EVENT,
   type Account,
 } from "@/lib/data/accounts";
-import { TX_UPSERTED_EVENT, type TransactionView } from "@/lib/data/transactions";
+import {
+  TX_UPSERTED_EVENT,
+  archiveTransaction,
+  unarchiveTransaction,
+  type TransactionView,
+} from "@/lib/data/transactions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -1448,6 +1453,49 @@ export default function DashboardPage() {
   // Detail drawer target — null when closed. Tap on a recent row.
   const [detailTx, setDetailTx] = React.useState<TransactionView | null>(null);
 
+  // Edit + archive handlers — wired into the detail drawer footer.
+  // Edit reuses /capture?edit=<id> (single source of truth for the
+  // capture/edit form). Archive does soft-delete + a 5-second Sonner
+  // undo. We do NOT remove locally: the dashboard subscribes to
+  // realtime via `useTransactionsWindow`, so the row falls off within
+  // ~250ms (debounced) once the server confirms. Adding local removal
+  // here would just add another state-management surface for no UX win.
+  const handleDetailEdit = React.useCallback(
+    (tx: TransactionView) => {
+      setDetailTx(null);
+      router.push(`/capture?edit=${tx.id}`);
+    },
+    [router],
+  );
+  const handleDetailArchive = React.useCallback(async (tx: TransactionView) => {
+    setDetailTx(null);
+    try {
+      await archiveTransaction(tx.id);
+      toast("Movimiento archivado", {
+        action: {
+          label: "Deshacer",
+          onClick: async () => {
+            try {
+              await unarchiveTransaction(tx.id);
+              toast.success("Restaurado.");
+            } catch (undoErr) {
+              toast.error(
+                undoErr instanceof Error
+                  ? undoErr.message
+                  : "No pudimos restaurar el movimiento.",
+              );
+            }
+          },
+        },
+        duration: 5000,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No pudimos archivar.",
+      );
+    }
+  }, []);
+
   // ── Mobile hero — period selector + saldo actual ──────────────────────
   // El hero muestra: gasto del período + saldo actual (= ingreso − gasto).
   // Sin presupuestos derivados — eso vivía antes y producía números
@@ -2139,13 +2187,17 @@ export default function DashboardPage() {
       </div>
 
       {/* Detail drawer — short tap on any row in the recent list. The
-          portal mount point is irrelevant for vaul; state lives here. */}
+          portal mount point is irrelevant for vaul; state lives here.
+          Editar navega a /capture?edit=<id> (mismo flow que long-press
+          en /movements); Eliminar archive + Sonner undo de 5s. */}
       <TransactionDetailDrawer
         open={detailTx !== null}
         onOpenChange={(open) => {
           if (!open) setDetailTx(null);
         }}
         transaction={detailTx}
+        onEdit={handleDetailEdit}
+        onArchive={(tx) => void handleDetailArchive(tx)}
       />
 
     </div>

@@ -22,6 +22,8 @@ import {
   StickyNote,
   Store,
   Landmark,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -45,6 +47,18 @@ export type TransactionDetailDrawerProps = {
    *  state. Pattern matches TransactionActionSheet so /movements can
    *  keep its existing `actionSheetTx`-style state for both. */
   transaction: TransactionView | null;
+  /** Optional Edit handler. When provided, the drawer renders an
+   *  "Editar" button in its footer. The caller decides what edit
+   *  means — typically navigate to `/capture?edit=<id>` so the same
+   *  capture UI handles the round-trip with full validation, abono
+   *  inline, saldo guard, etc. (vs duplicating a mini-form here). */
+  onEdit?: (transaction: TransactionView) => void;
+  /** Optional Archive (soft-delete) handler. When provided, the
+   *  drawer renders an "Eliminar" button. The caller is responsible
+   *  for the archive call + the 5-second undo toast — same contract
+   *  as the long-press TransactionActionSheet so behavior is uniform
+   *  across surfaces. */
+  onArchive?: (transaction: TransactionView) => void;
 };
 
 // es-PE long-date formatter — "sábado, 2 de mayo de 2026". Pinned to
@@ -100,6 +114,8 @@ export function TransactionDetailDrawer({
   open,
   onOpenChange,
   transaction,
+  onEdit,
+  onArchive,
 }: TransactionDetailDrawerProps) {
   // Mounting Drawer with `open=true` and `transaction=null` would
   // render an empty sheet for a frame on close. Bailing here keeps
@@ -221,6 +237,26 @@ export function TransactionDetailDrawer({
         </div>
 
         <div className="flex flex-col gap-2 px-4 pb-6 pt-3">
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={() => onEdit(t)}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card text-[14px] font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Pencil size={15} aria-hidden />
+              Editar
+            </button>
+          ) : null}
+          {onArchive ? (
+            <button
+              type="button"
+              onClick={() => onArchive(t)}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 text-[14px] font-semibold text-destructive transition-colors hover:bg-destructive/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+            >
+              <Trash2 size={15} aria-hidden />
+              Eliminar
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => onOpenChange(false)}
