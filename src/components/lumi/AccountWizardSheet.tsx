@@ -31,7 +31,7 @@
 "use client";
 
 import * as React from "react";
-import { X, ArrowLeft, Banknote, Wallet } from "lucide-react";
+import { X, ArrowLeft, Banknote, Wallet, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -86,12 +86,28 @@ type WizardPreset = {
 const PRESETS: WizardPreset[] = [
   { id: "cash", label: "Efectivo", kind: "cash", fallbackIcon: Banknote },
   { id: "bcp", label: "BCP", kind: "bank" },
+  { id: "yape", label: "Yape", kind: "yape", currency: "PEN" },
   { id: "interbank", label: "Interbank", kind: "bank" },
   { id: "bbva", label: "BBVA", kind: "bank" },
   { id: "scotiabank", label: "Scotiabank", kind: "bank" },
-  { id: "yape", label: "Yape", kind: "yape", currency: "PEN" },
   { id: "plin", label: "Plin", kind: "plin", currency: "PEN" },
 ];
+
+// Cuántas plantillas se muestran inline antes del "Más" affordance.
+// Misma idea que el strip de comercios en /capture: 3 visibles +
+// pill de "Más" para descubrir el resto. Sin esto, los users nuevos
+// no se enteran de que pueden scrollear horizontal.
+const VISIBLE_PRESETS = 3;
+
+// Subtipos disponibles en el wizard. Filtramos "debito" porque el
+// user lo pidió quitar — los users peruanos rara vez piensan en
+// "Débito" como categoria de cuenta (es más bien una tarjeta, y eso
+// se modela aparte). Las cuentas con kind=card legacy siguen
+// renderizando bien en otras superficies — solo no las creamos
+// nuevas desde acá.
+const WIZARD_SUBTYPE_OPTIONS = ACCOUNT_SUBTYPE_OPTIONS.filter(
+  (opt) => opt !== "debito",
+);
 
 type Step = 1 | 2;
 
@@ -119,6 +135,11 @@ export function AccountWizardSheet({
   const [submitting, setSubmitting] = React.useState(false);
   const [dupOpen, setDupOpen] = React.useState(false);
   const [showError, setShowError] = React.useState(false);
+  // Drawer con todas las plantillas — abre desde el pill "Más" del
+  // strip horizontal. Sin esto, las plantillas que no entran en los 3
+  // visibles quedaban escondidas detrás de un scroll que los users
+  // nuevos no descubren.
+  const [allPresetsOpen, setAllPresetsOpen] = React.useState(false);
 
   // Re-seed cada vez que el sheet abre.
   React.useEffect(() => {
@@ -130,7 +151,23 @@ export function AccountWizardSheet({
     setSelectedPresetId(null);
     setStep(1);
     setShowError(false);
+    setAllPresetsOpen(false);
   }, [open]);
+
+  // Visible 3 + pinning del preset activo. Si el user ya eligió una
+  // plantilla que NO está en los 3 visibles (lo seleccionó desde el
+  // drawer "Más"), la pineamos al frente para que el chip activo
+  // aparezca en el strip — mismo patrón que MerchantPicker.
+  const visiblePresets = React.useMemo<WizardPreset[]>(() => {
+    const head = PRESETS.slice(0, VISIBLE_PRESETS);
+    if (!selectedPresetId) return head;
+    if (head.some((p) => p.id === selectedPresetId)) return head;
+    const pinned = PRESETS.find((p) => p.id === selectedPresetId);
+    if (!pinned) return head;
+    // Reemplazamos el último visible por el pinneado para no romper
+    // el cap visual de 3.
+    return [pinned, ...head.slice(0, VISIBLE_PRESETS - 1)];
+  }, [selectedPresetId]);
 
   const lockedKindName = LOCKED_KIND_NAMES[kind];
   const selectedPreset = React.useMemo(
@@ -340,13 +377,17 @@ export function AccountWizardSheet({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {step === 1 ? (
               <>
-                {/* Plantillas */}
+                {/* Plantillas — solo 3 visibles + pill "Más". Mismo
+                    patrón que el strip de comercios en /capture. Los
+                    users nuevos no saben que pueden scrollear
+                    horizontal, así que el affordance "Más" hace
+                    descubrible la lista completa via drawer. */}
                 <section className="px-5 pt-5">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Plantillas
                   </p>
-                  <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {PRESETS.map((preset) => {
+                  <div className="flex gap-2">
+                    {visiblePresets.map((preset) => {
                       const active = selectedPresetId === preset.id;
                       const Fallback = preset.fallbackIcon ?? Wallet;
                       return (
@@ -388,6 +429,27 @@ export function AccountWizardSheet({
                         </button>
                       );
                     })}
+                    {/* "Más" — círculo dashed con + adentro, mismo
+                        lenguaje visual que las plantillas pero claro
+                        que es affordance, no un banco más. */}
+                    <button
+                      type="button"
+                      onClick={() => setAllPresetsOpen(true)}
+                      aria-haspopup="dialog"
+                      aria-expanded={allPresetsOpen}
+                      aria-label="Ver todas las plantillas"
+                      className="flex w-[72px] flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground"
+                      >
+                        <Plus size={18} aria-hidden="true" />
+                      </span>
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        Más
+                      </span>
+                    </button>
                   </div>
                 </section>
 
@@ -403,11 +465,10 @@ export function AccountWizardSheet({
                       onChange={(e) => handleLabelChange(e.target.value)}
                       disabled={nameLocked || submitting}
                       placeholder={
-                        nameLocked
-                          ? lockedKindName
-                          : "Ej. Mi colchón, BCP, Caja"
+                        nameLocked ? lockedKindName : "Ponle un nombre"
                       }
                       aria-invalid={showError && label.trim().length === 0}
+                      aria-describedby={!nameLocked ? "wizard-name-hint" : undefined}
                       maxLength={LABEL_MAX_LENGTH}
                       className={cn(
                         "mt-1.5 h-11 w-full rounded-xl border bg-card px-3 text-[14px] font-medium text-foreground transition-colors placeholder:text-muted-foreground/60",
@@ -421,6 +482,18 @@ export function AccountWizardSheet({
                     {showError && label.trim().length === 0 ? (
                       <p className="mt-1 text-[12px] text-destructive">
                         Asigna un nombre antes de continuar.
+                      </p>
+                    ) : !nameLocked ? (
+                      // Helper text permanente cuando el campo es
+                      // editable. Da ejemplos concretos para que el
+                      // user no se quede pensando "¿qué pongo acá?"
+                      // y entienda que puede personalizar más allá
+                      // de lo que las plantillas sugieren.
+                      <p
+                        id="wizard-name-hint"
+                        className="mt-1 text-[11.5px] text-muted-foreground"
+                      >
+                        Ejemplos: Mi colchón, Caja chica, Ahorros.
                       </p>
                     ) : null}
                   </label>
@@ -488,7 +561,7 @@ export function AccountWizardSheet({
                   aria-label="Tipo de producto"
                   className="mt-2 grid grid-cols-2 gap-2"
                 >
-                  {ACCOUNT_SUBTYPE_OPTIONS.map((opt) => {
+                  {WIZARD_SUBTYPE_OPTIONS.map((opt) => {
                     const selected = subtype === opt;
                     return (
                       <button
@@ -535,6 +608,74 @@ export function AccountWizardSheet({
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Todas las plantillas — drawer que abre desde el pill "Más"
+          del strip. Muestra el catálogo completo en una grid 3-col
+          para que el user vea TODAS las opciones disponibles sin
+          tener que recordar que existe scroll horizontal. */}
+      <Drawer open={allPresetsOpen} onOpenChange={setAllPresetsOpen}>
+        <DrawerContent
+          aria-describedby="wizard-presets-desc"
+          className="bg-background"
+        >
+          <DrawerHeader>
+            <DrawerTitle>Elige una plantilla</DrawerTitle>
+            <DrawerDescription
+              id="wizard-presets-desc"
+              className="text-[12.5px]"
+            >
+              Aplica el banco o billetera y sigue editando si quieres.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="grid grid-cols-3 gap-2 px-4 pb-6 max-h-[60vh] overflow-y-auto overscroll-contain">
+            {PRESETS.map((preset) => {
+              const active = selectedPresetId === preset.id;
+              const Fallback = preset.fallbackIcon ?? Wallet;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    applyPreset(preset);
+                    setAllPresetsOpen(false);
+                  }}
+                  aria-pressed={active}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3 transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    active ? "bg-muted" : "hover:bg-muted/50",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl text-foreground",
+                      accountChipBgClass(preset.label),
+                      active &&
+                        "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+                    )}
+                  >
+                    <AccountBrandIcon
+                      label={preset.label}
+                      fallback={<Fallback size={20} aria-hidden />}
+                    />
+                  </span>
+                  <span
+                    className={cn(
+                      "w-full truncate text-center text-[11px] leading-tight",
+                      active
+                        ? "font-semibold text-foreground"
+                        : "font-medium text-muted-foreground",
+                    )}
+                  >
+                    {preset.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Duplicate guard — Drawer modal sobre el wizard. */}
       <Drawer open={dupOpen} onOpenChange={setDupOpen}>
