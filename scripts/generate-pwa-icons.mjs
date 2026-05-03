@@ -42,10 +42,10 @@ mkdirSync(ICONS_DIR, { recursive: true });
 
 const sourceBuffer = readFileSync(SOURCE_PATH);
 
-// Color sólido detrás del icono en el maskable variant. Tomado del
-// fondo claro del icono fuente — si cambiás a un fondo oscuro, ajustá
-// estos valores.
-const MASKABLE_BG = { r: 232, g: 240, b: 232, alpha: 1 }; // #E8F0E8 cream
+// Color sólido detrás del icono en el maskable variant. Debe matchear
+// el fondo del SVG/PNG fuente para que el padding del safe-area no se
+// note. Hoy el icono tiene bg verde oscuro #0A2E22.
+const MASKABLE_BG = { r: 10, g: 46, b: 34, alpha: 1 }; // #0A2E22 dark green
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -124,6 +124,8 @@ async function renderFavicon(buf, outPath) {
 console.log("Generating PWA icons from kane-icon.png...\n");
 
 try {
+  await renderAt(sourceBuffer, 16, join(ICONS_DIR, "favicon-16.png"));
+  await renderAt(sourceBuffer, 32, join(ICONS_DIR, "favicon-32.png"));
   await renderAt(sourceBuffer, 192, join(ICONS_DIR, "icon-192.png"));
   await renderAt(sourceBuffer, 512, join(ICONS_DIR, "icon-512.png"));
   await renderMaskable(sourceBuffer, 512, join(ICONS_DIR, "icon-512-maskable.png"));

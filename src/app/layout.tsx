@@ -36,13 +36,23 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
-    icon: "/icons/icon-512.png",
+    // `icon` array: el browser elige la size que mejor le sirve por
+    // contexto (tab favicon, bookmarks, history, etc.). favicon-16/32
+    // son específicos para tabs en desktop, los más grandes para
+    // bookmarks panel y HD displays.
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
     apple: "/icons/apple-touch-icon.png",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0F3D2E",
+  themeColor: "#0A2E22",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
