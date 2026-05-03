@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { AppHeader } from "@/components/lumi/AppHeader";
 import { SavingOverlay } from "@/components/lumi/SavingOverlay";
 import { AccountBrandIcon } from "@/components/lumi/AccountBrandIcon";
+import { AccountWizardSheet } from "@/components/lumi/AccountWizardSheet";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import {
   ACCOUNT_SUBTYPE_LABEL,
@@ -415,13 +416,14 @@ function AccountsPageInner() {
         </div>
       </div>
 
-      {/* Create sheet */}
-      <AccountFormSheet
-        mode="create"
+      {/* Create sheet — flujo nuevo con preview live + plantillas.
+          Edit sigue usando AccountFormSheet (abajo) para no tocar lo
+          que ya funciona — esa surface tiene archivar y otra logica
+          que el wizard no necesita. */}
+      <AccountWizardSheet
         open={createOpen}
         existingAccounts={accounts}
         onOpenChange={setCreateOpen}
-        onOptimisticClose={() => setCreateOpen(false)}
         reload={reload}
       />
 
