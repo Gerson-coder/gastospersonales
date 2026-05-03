@@ -1,0 +1,57 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background: dark green gradient top-left → deeper bottom-right -->
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F3D2E"/>
+      <stop offset="100%" stop-color="#052E1F"/>
+    </linearGradient>
+    <!-- K letter: white → very light mint -->
+    <linearGradient id="kGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F8F2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rect (rx=110 ≈ 21% of 512, standard iOS app icon radius) -->
+  <rect x="0" y="0" width="512" height="512" rx="110" ry="110" fill="url(#bg)"/>
+
+  <!--
+    K construction:
+    - Vertical stem: x=100..164, y=96..416
+    - Upper diagonal arm: from (164,256) up to (370,96)
+    - Lower diagonal arm: from (164,256) down to (370,416)
+    Arms are rendered as thick stroked paths with round caps for a bold, modern look.
+  -->
+  <!-- Vertical stem -->
+  <rect x="100" y="96" width="64" height="320" rx="10" fill="url(#kGrad)"/>
+  <!-- Upper arm (stem-mid to top-right) -->
+  <line x1="148" y1="258" x2="362" y2="96" stroke="url(#kGrad)" stroke-width="60" stroke-linecap="round"/>
+  <!-- Lower arm (stem-mid to bottom-right) -->
+  <line x1="148" y1="258" x2="362" y2="416" stroke="url(#kGrad)" stroke-width="60" stroke-linecap="round"/>
+
+  <!-- Dollar circle: white circle, top-right quadrant -->
+  <!-- Center: (370, 148), radius 68 -->
+  <circle cx="370" cy="148" r="68" fill="#FFFFFF"/>
+  <!-- $ symbol: dark green, centered in circle -->
+  <text
+    x="370"
+    y="175"
+    text-anchor="middle"
+    font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="900"
+    font-size="78"
+    fill="#0B3D2E"
+  >$</text>
+
+  <!--
+    Growth arrow: bright green #22C55E, bottom-right area.
+    Shaft: diagonal line going up-right.
+    Arrowhead: open chevron at the tip.
+  -->
+  <!-- Shaft -->
+  <line x1="268" y1="418" x2="398" y2="298" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
+  <!-- Arrowhead horizontal segment (top of L-shape) -->
+  <line x1="298" y1="278" x2="418" y2="278" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
+  <!-- Arrowhead vertical segment (right side of L-shape) -->
+  <line x1="418" y1="278" x2="418" y2="398" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
+</svg>
