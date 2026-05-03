@@ -53,9 +53,13 @@ export function KaneIcon({
           <stop offset="0%" stopColor="#FFFFFF" />
           <stop offset="100%" stopColor="#F0F8F2" />
         </linearGradient>
+        <linearGradient id="kane-icon-k-base" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#F5FAF5" />
+          <stop offset="100%" stopColor="#DDE8DD" />
+        </linearGradient>
       </defs>
 
-      {/* Fondo: rounded rect estilo iOS app icon (rx ≈ 21%) */}
+      {/* Fondo: rounded rect (rx ≈ 21%) */}
       <rect
         x="0"
         y="0"
@@ -66,69 +70,41 @@ export function KaneIcon({
         fill="url(#kane-icon-bg)"
       />
 
-      {/* K construida con stem + dos brazos diagonales (look bold, moderno) */}
-      <rect x="100" y="96" width="64" height="320" rx="10" fill="url(#kane-icon-k)" />
-      <line
-        x1="148"
-        y1="258"
-        x2="362"
-        y2="96"
-        stroke="url(#kane-icon-k)"
-        strokeWidth="60"
-        strokeLinecap="round"
-      />
-      <line
-        x1="148"
-        y1="258"
-        x2="362"
-        y2="416"
-        stroke="url(#kane-icon-k)"
-        strokeWidth="60"
-        strokeLinecap="round"
+      {/* K cuerpo principal: paths sólidos con brazos cortados al ras */}
+      <path
+        d="M130 100 L130 410 L250 270 L380 100 L300 100 L210 215 L210 100 Z"
+        fill="url(#kane-icon-k)"
       />
 
-      {/* Círculo del dólar (top-right) */}
-      <circle cx="370" cy="148" r="68" fill="#FFFFFF" />
+      {/* K base curve */}
+      <path
+        d="M130 410 Q220 340 305 360 L380 440 L130 440 Z"
+        fill="url(#kane-icon-k-base)"
+      />
+
+      {/* $ circle + simbolo */}
+      <circle cx="195" cy="395" r="52" fill="#FFFFFF" />
       <text
-        x="370"
-        y="175"
+        x="195"
+        y="413"
         textAnchor="middle"
         fontFamily="'Arial Black', 'Helvetica Neue', Arial, sans-serif"
         fontWeight={900}
-        fontSize={78}
+        fontSize={58}
         fill="#0B3D2E"
       >
         $
       </text>
 
-      {/* Flecha de crecimiento (bottom-right, forma de L) */}
-      <line
-        x1="268"
-        y1="418"
-        x2="398"
-        y2="298"
+      {/* Flecha de crecimiento que atraviesa el K hacia arriba-derecha */}
+      <path
+        d="M250 400 Q335 320, 430 215"
         stroke="#22C55E"
-        strokeWidth="26"
+        strokeWidth="22"
+        fill="none"
         strokeLinecap="round"
       />
-      <line
-        x1="298"
-        y1="278"
-        x2="418"
-        y2="278"
-        stroke="#22C55E"
-        strokeWidth="26"
-        strokeLinecap="round"
-      />
-      <line
-        x1="418"
-        y1="278"
-        x2="418"
-        y2="398"
-        stroke="#22C55E"
-        strokeWidth="26"
-        strokeLinecap="round"
-      />
+      <polygon points="450,200 412,217 432,250" fill="#22C55E" />
     </svg>
   );
 }

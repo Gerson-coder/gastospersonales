@@ -1,57 +1,92 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Background: dark green gradient top-left → deeper bottom-right -->
+    <!-- Fondo: verde oscuro profundo -->
     <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0F3D2E"/>
       <stop offset="100%" stop-color="#052E1F"/>
     </linearGradient>
-    <!-- K letter: white → very light mint -->
+    <!-- K body: blanca con leve gradiente top→bottom -->
     <linearGradient id="kGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#FFFFFF"/>
       <stop offset="100%" stop-color="#F0F8F2"/>
     </linearGradient>
+    <!-- K base curve: blanca con sombra leve para diferenciar la
+         "pie" del cuerpo principal -->
+    <linearGradient id="kGradBase" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F5FAF5"/>
+      <stop offset="100%" stop-color="#DDE8DD"/>
+    </linearGradient>
   </defs>
 
-  <!-- Background rounded rect (rx=110 ≈ 21% of 512, standard iOS app icon radius) -->
+  <!-- Fondo redondeado estilo iOS app icon -->
   <rect x="0" y="0" width="512" height="512" rx="110" ry="110" fill="url(#bg)"/>
 
   <!--
-    K construction:
-    - Vertical stem: x=100..164, y=96..416
-    - Upper diagonal arm: from (164,256) up to (370,96)
-    - Lower diagonal arm: from (164,256) down to (370,416)
-    Arms are rendered as thick stroked paths with round caps for a bold, modern look.
+    K cuerpo principal: path sólido (no stroke) con brazos cortados
+    al ras. Esto le da el feel "compacto" que el user pidio — los
+    brazos no se prolongan más allá del cuerpo. Vertices:
+      (130,100)  esquina sup-izq del stem
+      (130,410)  esquina inf-izq del stem
+      (250,270)  punta interior donde nacen los brazos
+      (380,100)  punta superior del brazo diagonal
+      (300,100)  cierre del brazo superior
+      (210,215)  punta interna del brazo superior
+      (210,100)  vuelta al stem
   -->
-  <!-- Vertical stem -->
-  <rect x="100" y="96" width="64" height="320" rx="10" fill="url(#kGrad)"/>
-  <!-- Upper arm (stem-mid to top-right) -->
-  <line x1="148" y1="258" x2="362" y2="96" stroke="url(#kGrad)" stroke-width="60" stroke-linecap="round"/>
-  <!-- Lower arm (stem-mid to bottom-right) -->
-  <line x1="148" y1="258" x2="362" y2="416" stroke="url(#kGrad)" stroke-width="60" stroke-linecap="round"/>
+  <path
+    d="M130 100
+       L130 410
+       L250 270
+       L380 100
+       L300 100
+       L210 215
+       L210 100 Z"
+    fill="url(#kGrad)"
+  />
 
-  <!-- Dollar circle: white circle, top-right quadrant -->
-  <!-- Center: (370, 148), radius 68 -->
-  <circle cx="370" cy="148" r="68" fill="#FFFFFF"/>
-  <!-- $ symbol: dark green, centered in circle -->
-  <text
-    x="370"
-    y="175"
+  <!--
+    K base curve: una "pie" que junta el stem con un brazo inferior
+    derecho via curva quadratica. Coherente con el diseño base que
+    mostro el user en la referencia.
+  -->
+  <path
+    d="M130 410
+       Q220 340 305 360
+       L380 440
+       L130 440 Z"
+    fill="url(#kGradBase)"
+  />
+
+  <!--
+    Circulo del $: blanco solido, en la base inferior izquierda del K.
+    El r=52 lo mantiene proporcional al stem (64px de ancho ⇒ circulo
+    apenas mas chico, no compite visualmente).
+  -->
+  <circle cx="195" cy="395" r="52" fill="#FFFFFF"/>
+  <text x="195" y="413"
     text-anchor="middle"
     font-family="'Arial Black', 'Helvetica Neue', Arial, sans-serif"
     font-weight="900"
-    font-size="78"
+    font-size="58"
     fill="#0B3D2E"
   >$</text>
 
   <!--
-    Growth arrow: bright green #22C55E, bottom-right area.
-    Shaft: diagonal line going up-right.
-    Arrowhead: open chevron at the tip.
+    Flecha de crecimiento: nace dentro del cuerpo del K (cerca del
+    nacimiento de los brazos, donde estarian si no estuvieran cortados)
+    y sale hacia arriba-derecha. Asi visualmente "atraviesa" la K en
+    lugar de quedar separada. Trazo grueso (22px) con linecap round
+    para que se note como "movimiento" y no como una linea estatica.
   -->
-  <!-- Shaft -->
-  <line x1="268" y1="418" x2="398" y2="298" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
-  <!-- Arrowhead horizontal segment (top of L-shape) -->
-  <line x1="298" y1="278" x2="418" y2="278" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
-  <!-- Arrowhead vertical segment (right side of L-shape) -->
-  <line x1="418" y1="278" x2="418" y2="398" stroke="#22C55E" stroke-width="26" stroke-linecap="round"/>
+  <path
+    d="M250 400
+       Q335 320, 430 215"
+    stroke="#22C55E"
+    stroke-width="22"
+    fill="none"
+    stroke-linecap="round"
+  />
+  <!-- Punta de flecha: triangulo apuntando arriba-derecha, con la
+       punta (450,200) saliendo apenas mas alla del cuerpo del K -->
+  <polygon points="450,200 412,217 432,250" fill="#22C55E"/>
 </svg>
