@@ -112,6 +112,8 @@ import {
   unarchiveTransaction,
   type TransactionView,
 } from "@/lib/data/transactions";
+import { listBudgets, type Budget } from "@/lib/data/budgets";
+import { listGoals, type Goal } from "@/lib/data/goals";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -787,104 +789,14 @@ function DesktopTipBar() {
 
 // ─── Budgets / Goals dashboard sections ──────────────────────────────────
 //
-// Both features live in localStorage today (see /budgets and /goals for
-// the source-of-truth helpers). The dashboard mirrors a tiny slice of
-// each — top 3 items + a "Ver mis …" link — without re-implementing
-// the persistence layer. Read-only here; create/edit lives at /budgets
-// and /goals.
-
-type DashBudget = {
-  id: string;
-  categoryId: string;
-  limitMinor: number;
-  currency: Currency;
-};
-type DashGoal = {
-  id: string;
-  name: string;
-  targetMinor: number;
-  currentMinor: number;
-  currency: Currency;
-  icon: string;
-};
-
-const BUDGETS_STORAGE_KEY = "kane-budgets";
-const GOALS_STORAGE_KEY = "kane-goals";
-
-function safeReadStorage<T>(key: string, isShape: (v: unknown) => v is T): T[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isShape);
-  } catch {
-    return [];
-  }
-}
-
-function isDashBudget(v: unknown): v is DashBudget {
-  if (!v || typeof v !== "object") return false;
-  const x = v as Record<string, unknown>;
-  return (
-    typeof x.id === "string" &&
-    typeof x.categoryId === "string" &&
-    typeof x.limitMinor === "number" &&
-    Number.isFinite(x.limitMinor) &&
-    (x.currency === "PEN" || x.currency === "USD")
-  );
-}
-
-function isDashGoal(v: unknown): v is DashGoal {
-  if (!v || typeof v !== "object") return false;
-  const x = v as Record<string, unknown>;
-  return (
-    typeof x.id === "string" &&
-    typeof x.name === "string" &&
-    typeof x.targetMinor === "number" &&
-    typeof x.currentMinor === "number" &&
-    (x.currency === "PEN" || x.currency === "USD") &&
-    typeof x.icon === "string"
-  );
-}
-
-/** Subscribe to localStorage changes (cross-tab) + visibility events so
- * the dashboard sections refresh when the user creates a budget/goal
- * elsewhere and comes back. */
-function useStorageList<T>(
-  key: string,
-  isShape: (v: unknown) => v is T,
-): T[] {
-  const [list, setList] = React.useState<T[]>(() =>
-    safeReadStorage(key, isShape),
-  );
-
-  React.useEffect(() => {
-    setList(safeReadStorage(key, isShape));
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== key) return;
-      setList(safeReadStorage(key, isShape));
-    };
-    const onFocus = () => setList(safeReadStorage(key, isShape));
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        setList(safeReadStorage(key, isShape));
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- key/isShape are stable per call site
-  }, []);
-
-  return list;
-}
+// Both features now live in Supabase (tables `budgets` / `goals`, RLS-scoped;
+// see migration 00023_budgets_goals.sql). Source of truth is `/budgets` and
+// `/goals` — the dashboard mirrors a tiny slice (top 3 items + "Ver mis …"
+// link). Read-only here; create/edit lives in those routes.
+//
+// Each section fetches its own list once on mount/currency-change. The lists
+// are tiny (a handful of rows per user), so a separate roundtrip is fine and
+// keeps the components decoupled from the parent.
 
 function DashboardBudgetsSection({
   currency,
@@ -893,7 +805,24 @@ function DashboardBudgetsSection({
   currency: Currency;
   byCategoryCurrentMonth: CategoryBucket[];
 }) {
-  const budgets = useStorageList(BUDGETS_STORAGE_KEY, isDashBudget);
+  const [budgets, setBudgets] = React.useState<Budget[]>([]);
+
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listBudgets();
+        if (!cancelled) setBudgets(list);
+      } catch {
+        // Silent — the empty state is the safe fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const visible = budgets.filter((b) => b.currency === currency);
 
   // Build categoryId -> { name, spent } from the hook's current-month
@@ -913,12 +842,12 @@ function DashboardBudgetsSection({
   const ranked = React.useMemo(() => {
     return [...visible]
       .map((b) => {
-        const limit = b.limitMinor / 100;
-        const meta = spentByCategoryId.get(b.categoryId);
+        const limit = b.limit_minor / 100;
+        const meta = spentByCategoryId.get(b.category_id);
         const spent = meta?.spent ?? 0;
         const name = meta?.name ?? null;
         const ratio = limit > 0 ? spent / limit : 0;
-        return { ...b, limit, spent, name, ratio };
+        return { id: b.id, limit, spent, name, ratio };
       })
       .sort((a, b) => b.ratio - a.ratio)
       .slice(0, 3);
@@ -1039,7 +968,24 @@ function BudgetRow({
 }
 
 function DashboardGoalsSection({ currency }: { currency: Currency }) {
-  const goals = useStorageList(GOALS_STORAGE_KEY, isDashGoal);
+  const [goals, setGoals] = React.useState<Goal[]>([]);
+
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listGoals();
+        if (!cancelled) setGoals(list);
+      } catch {
+        // Silent — empty state is the safe fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const visible = goals.filter((g) => g.currency === currency);
 
   // Top 3 by closest-to-target ratio so the meta the user is closest to
@@ -1047,10 +993,17 @@ function DashboardGoalsSection({ currency }: { currency: Currency }) {
   const ranked = React.useMemo(() => {
     return [...visible]
       .map((g) => {
-        const target = g.targetMinor / 100;
-        const current = g.currentMinor / 100;
+        const target = g.target_minor / 100;
+        const current = g.current_minor / 100;
         const ratio = target > 0 ? current / target : 0;
-        return { ...g, target, current, ratio };
+        return {
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          target,
+          current,
+          ratio,
+        };
       })
       .sort((a, b) => b.ratio - a.ratio)
       .slice(0, 3);

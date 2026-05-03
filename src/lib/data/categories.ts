@@ -93,7 +93,7 @@ export async function createCategory(draft: CategoryDraft): Promise<Category> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    throw new Error("Necesitás iniciar sesión para crear categorías.");
+    throw new Error("Necesitas iniciar sesión para crear categorías.");
   }
 
   const trimmedName = draft.name.trim();

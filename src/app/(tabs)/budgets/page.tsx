@@ -5,15 +5,15 @@
  * monthly limit (in PEN or USD); the page shows progress bars based on the
  * actual spend this month from real Supabase transactions.
  *
- * Persistence is intentionally local — `localStorage["kane-budgets"]` — so we
- * don't need a DB migration. The aggregation reads non-archived transactions
+ * Persistence is Supabase (table `budgets`, RLS-scoped). Each user's data is
+ * isolated by `auth.uid()`. Soft-delete via `archived_at` — same convention
+ * as transactions/categories. The aggregation reads non-archived transactions
  * for the current month + active currency via the centralized data layer
  * (`listTransactionsWindow`) and only consumes the public `TransactionView`
  * shape (no `amount_minor` access outside `transactions.ts`).
  *
- * Demo mode (no Supabase env): we render the localStorage budgets but hide
- * the spend column with a sign-in hint, so the screen stays usable for
- * browsing.
+ * Demo mode (no Supabase env): we render an empty state with a sign-in hint
+ * so the screen stays usable for browsing.
  */
 "use client";
 
@@ -36,6 +36,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { listCategories, type Category } from "@/lib/data/categories";
+import {
+  archiveBudget,
+  createBudget,
+  listBudgets,
+  updateBudget,
+  type Budget,
+} from "@/lib/data/budgets";
 import { listTransactionsWindow, type TransactionView } from "@/lib/data/transactions";
 import {
   DEFAULT_CATEGORY_ICON,
@@ -53,52 +60,6 @@ const SUPABASE_ENABLED =
   process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
   typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
-
-// ─── Storage ──────────────────────────────────────────────────────────────
-const STORAGE_KEY = "kane-budgets";
-
-type Budget = {
-  id: string;
-  categoryId: string;
-  limitMinor: number;
-  currency: Currency;
-  createdAt: string;
-};
-
-function isBudget(value: unknown): value is Budget {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === "string" &&
-    typeof v.categoryId === "string" &&
-    typeof v.limitMinor === "number" &&
-    Number.isFinite(v.limitMinor) &&
-    (v.currency === "PEN" || v.currency === "USD") &&
-    typeof v.createdAt === "string"
-  );
-}
-
-function readBudgets(): Budget[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isBudget);
-  } catch {
-    return [];
-  }
-}
-
-function writeBudgets(list: Budget[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    // Quota exceeded or storage disabled — UI keeps in-memory value.
-  }
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 function startOfMonthISO(): string {
@@ -127,22 +88,13 @@ function parseAmount(input: string): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function makeId(): string {
-  // crypto.randomUUID is widely available; fall back to a timestamp-based id
-  // when running in a constrained runtime.
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `b_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  }
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function BudgetsPage() {
   const { currency, hydrated } = useActiveCurrency();
 
   const [budgets, setBudgets] = React.useState<Budget[]>([]);
-  const [budgetsLoaded, setBudgetsLoaded] = React.useState(false);
+  const [budgetsLoaded, setBudgetsLoaded] = React.useState(!SUPABASE_ENABLED);
+  const [budgetsAuthError, setBudgetsAuthError] = React.useState(false);
 
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = React.useState<boolean>(SUPABASE_ENABLED);
@@ -154,10 +106,32 @@ export default function BudgetsPage() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Budget | null>(null);
 
-  // Hydrate budgets from localStorage on mount (SSR-safe).
+  // Load budgets from Supabase on mount.
   React.useEffect(() => {
-    setBudgets(readBudgets());
-    setBudgetsLoaded(true);
+    if (!SUPABASE_ENABLED) {
+      setBudgetsLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listBudgets();
+        if (!cancelled) setBudgets(list);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : "";
+        if (/iniciar sesi[oó]n/i.test(msg)) {
+          setBudgetsAuthError(true);
+        } else {
+          toast.error("Error al cargar presupuestos", { description: msg });
+        }
+      } finally {
+        if (!cancelled) setBudgetsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load categories.
@@ -221,7 +195,7 @@ export default function BudgetsPage() {
 
   // Build a categoryId → spent (minor) map for the active currency.
   // We use the public `TransactionView` shape: `amount` is in major units, so
-  // we multiply back to minor here to compare against `limitMinor`. This keeps
+  // we multiply back to minor here to compare against `limit_minor`. This keeps
   // the centralized mapper rule intact (no `amount_minor` outside transactions.ts).
   const totalsByCategory = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -251,36 +225,47 @@ export default function BudgetsPage() {
     [budgets, currency],
   );
 
-  function persist(next: Budget[]) {
-    setBudgets(next);
-    writeBudgets(next);
+  async function handleCreate(input: {
+    categoryId: string;
+    limitMinor: number;
+    currency: Currency;
+  }) {
+    try {
+      const created = await createBudget(input);
+      setBudgets((prev) => [created, ...prev]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No pudimos crear el presupuesto.";
+      toast.error("Error al crear presupuesto", { description: msg });
+    }
   }
 
-  function handleCreate(input: { categoryId: string; limitMinor: number; currency: Currency }) {
-    const next: Budget = {
-      id: makeId(),
-      categoryId: input.categoryId,
-      limitMinor: input.limitMinor,
-      currency: input.currency,
-      createdAt: new Date().toISOString(),
-    };
-    persist([next, ...budgets]);
+  async function handleUpdate(
+    id: string,
+    patch: { categoryId: string; limitMinor: number; currency: Currency },
+  ) {
+    try {
+      const updated = await updateBudget(id, patch);
+      setBudgets((prev) => prev.map((b) => (b.id === id ? updated : b)));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "No pudimos actualizar el presupuesto.";
+      toast.error("Error al actualizar presupuesto", { description: msg });
+    }
   }
 
-  function handleUpdate(id: string, patch: { categoryId: string; limitMinor: number; currency: Currency }) {
-    const next = budgets.map((b) =>
-      b.id === id
-        ? { ...b, categoryId: patch.categoryId, limitMinor: patch.limitMinor, currency: patch.currency }
-        : b,
-    );
-    persist(next);
+  async function handleDelete(id: string) {
+    // Optimistic — the operation is small and we don't want a flash.
+    const previous = budgets;
+    setBudgets((prev) => prev.filter((b) => b.id !== id));
+    try {
+      await archiveBudget(id);
+    } catch (err) {
+      setBudgets(previous);
+      const msg = err instanceof Error ? err.message : "No pudimos eliminar el presupuesto.";
+      toast.error("Error al eliminar presupuesto", { description: msg });
+    }
   }
 
-  function handleDelete(id: string) {
-    persist(budgets.filter((b) => b.id !== id));
-  }
-
-  const showSpend = SUPABASE_ENABLED && !categoriesAuthError;
+  const showSpend = SUPABASE_ENABLED && !categoriesAuthError && !budgetsAuthError;
   const aggregatesLoading = showSpend && (categoriesLoading || transactionsLoading);
   const showEmptyState = budgetsLoaded && visibleBudgets.length === 0;
 
@@ -309,32 +294,35 @@ export default function BudgetsPage() {
           ) : showEmptyState ? (
             <Card className="rounded-2xl border-dashed border-border p-5 text-sm">
               <p className="text-muted-foreground">
-                No tienes presupuestos. Define un límite mensual por categoría
-                para no pasarte.
+                {budgetsAuthError
+                  ? "Inicia sesión para ver y crear tus presupuestos."
+                  : "No tienes presupuestos. Define un límite mensual por categoría para no pasarte."}
               </p>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setCreateOpen(true)}
-                className="mt-3 h-9 rounded-lg"
-              >
-                <Plus size={14} aria-hidden="true" />
-                <span className="ml-1">Crear primer presupuesto</span>
-              </Button>
+              {!budgetsAuthError ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setCreateOpen(true)}
+                  className="mt-3 h-9 rounded-lg"
+                >
+                  <Plus size={14} aria-hidden="true" />
+                  <span className="ml-1">Crear primer presupuesto</span>
+                </Button>
+              ) : null}
             </Card>
           ) : (
             <Card className="overflow-hidden rounded-2xl border-border p-0">
               <ul className="divide-y divide-border" role="list">
                 {visibleBudgets.map((b) => {
-                  const cat = categoryById.get(b.categoryId);
+                  const cat = categoryById.get(b.category_id);
                   const Icon: LucideIconLike = cat
                     ? getCategoryIcon(cat.icon ?? DEFAULT_CATEGORY_ICON)
                     : getCategoryIcon(DEFAULT_CATEGORY_ICON);
                   const name = cat?.name ?? "Categoría eliminada";
-                  const spentMinor = totalsByCategory.get(b.categoryId) ?? 0;
+                  const spentMinor = totalsByCategory.get(b.category_id) ?? 0;
                   const percent =
-                    b.limitMinor > 0
-                      ? Math.round((spentMinor / b.limitMinor) * 100)
+                    b.limit_minor > 0
+                      ? Math.round((spentMinor / b.limit_minor) * 100)
                       : 0;
                   const barColor =
                     percent > 100
@@ -375,16 +363,16 @@ export default function BudgetsPage() {
                               {showSpend ? (
                                 aggregatesLoading ? (
                                   <span className="opacity-70">
-                                    Calculando… de {formatMoney(b.limitMinor, b.currency)}
+                                    Calculando… de {formatMoney(b.limit_minor, b.currency)}
                                   </span>
                                 ) : (
                                   <>
                                     {formatMoney(spentMinor, b.currency)} de{" "}
-                                    {formatMoney(b.limitMinor, b.currency)}
+                                    {formatMoney(b.limit_minor, b.currency)}
                                   </>
                                 )
                               ) : (
-                                <>— de {formatMoney(b.limitMinor, b.currency)}</>
+                                <>— de {formatMoney(b.limit_minor, b.currency)}</>
                               )}
                             </div>
                           </div>
@@ -428,17 +416,19 @@ export default function BudgetsPage() {
           ) : null}
         </section>
 
-        <div className="mt-2">
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            aria-label="Agregar presupuesto"
-            className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
-          >
-            <Plus size={16} aria-hidden="true" />
-            <span className="ml-1">Agregar presupuesto</span>
-          </Button>
-        </div>
+        {!budgetsAuthError ? (
+          <div className="mt-2">
+            <Button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              aria-label="Agregar presupuesto"
+              className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
+            >
+              <Plus size={16} aria-hidden="true" />
+              <span className="ml-1">Agregar presupuesto</span>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <BudgetFormSheet
@@ -536,8 +526,8 @@ function BudgetFormSheet({
   React.useEffect(() => {
     if (!open) return;
     if (mode === "edit" && budget) {
-      setCategoryId(budget.categoryId);
-      setAmount((budget.limitMinor / 100).toFixed(2));
+      setCategoryId(budget.category_id);
+      setAmount((budget.limit_minor / 100).toFixed(2));
       setCurrency(budget.currency);
     } else {
       setCategoryId("");

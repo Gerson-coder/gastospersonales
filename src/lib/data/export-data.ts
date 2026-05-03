@@ -2,9 +2,9 @@
  * Export user data — Kane
  *
  * Bundles every piece of user-owned data (accounts, categories, merchants,
- * transactions) plus relevant local-only stores into a single JSON Blob.
- * Intended as a safety net before destructive operations like factory
- * reset, and as a "give me my data" affordance.
+ * transactions, budgets, goals) plus relevant local-only stores into a
+ * single JSON Blob. Intended as a safety net before destructive operations
+ * like factory reset, and as a "give me my data" affordance.
  *
  * RLS scopes every read to the current user; we still pass an explicit
  * `user_id` filter on the user-only tables (`categories`, `merchants`) so
@@ -17,6 +17,8 @@
 "use client";
 
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { listBudgets } from "@/lib/data/budgets";
+import { listGoals } from "@/lib/data/goals";
 
 export async function exportUserData(): Promise<Blob> {
   const supabase = createSupabaseClient();
@@ -39,6 +41,22 @@ export async function exportUserData(): Promise<Blob> {
       supabase.from("transactions").select("*"),
     ]);
 
+  // Budgets and goals come from their own data layers (so we get the same
+  // shape the rest of the app uses). Failures here shouldn't block the rest
+  // of the export — wrap with try/catch and default to empty.
+  let budgets: unknown[] = [];
+  let goals: unknown[] = [];
+  try {
+    budgets = await listBudgets();
+  } catch {
+    // Table not yet provisioned (pre-migration 00023) or transient error.
+  }
+  try {
+    goals = await listGoals();
+  } catch {
+    // Same as above.
+  }
+
   // Collect any error that isn't a "feature not deployed yet" (merchants
   // table may not exist pre-migration 00006). We don't want a missing
   // optional table to block a user from exporting the rest of their data.
@@ -58,13 +76,13 @@ export async function exportUserData(): Promise<Blob> {
     categories: categoriesRes.data ?? [],
     merchants: merchantsRes.error ? [] : (merchantsRes.data ?? []),
     transactions: transactionsRes.data ?? [],
+    budgets,
+    goals,
     // Local-only stores so the export is genuinely complete.
     localStorage:
       typeof window === "undefined"
         ? {}
         : {
-            "kane-budgets": safeRead("kane-budgets"),
-            "kane-goals": safeRead("kane-goals"),
             "kane-prefs": safeRead("kane-prefs"),
           },
   };
@@ -78,6 +96,10 @@ export async function exportUserData(): Promise<Blob> {
  * Local-only export for demo mode (no Supabase env). Returns a Blob with
  * just the localStorage contents — useful when SUPABASE_ENABLED is false
  * but we still want the "Descargar mis datos" affordance to do something.
+ *
+ * Note: budgets/goals previously lived in localStorage; now they're in
+ * Supabase. In demo mode we have no DB to read from, so we still surface
+ * any leftover legacy keys for the user's safety.
  */
 export function exportLocalOnly(): Blob {
   const payload = {
@@ -86,6 +108,8 @@ export function exportLocalOnly(): Blob {
     categories: [],
     merchants: [],
     transactions: [],
+    budgets: [],
+    goals: [],
     localStorage:
       typeof window === "undefined"
         ? {}

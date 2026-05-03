@@ -35,9 +35,14 @@
 const LEGACY_TO_NEW: Record<string, string> = {
   // Bag JSON con currency, theme, activeAccountId
   "lumi-prefs": "kane-prefs",
-  // Local-only: presupuestos por categoria
+  // Local-only: presupuestos por categoria.
+  // NOTA: aunque budgets y goals ahora viven en Supabase (migracion 00023),
+  // mantenemos este rename para que los users legacy lumi conserven la data
+  // local antes de que `uploadLegacyLocalDataToSupabase()` la suba al backend.
+  // Borrar este mapping = los users lumi pierden sus presupuestos/metas viejos.
   "lumi-budgets": "kane-budgets",
-  // Local-only: metas de ahorro
+  // Local-only: metas de ahorro. Misma nota que budgets — necesario para
+  // que la subida one-shot a Supabase los vea bajo la clave kane-*.
   "lumi-goals": "kane-goals",
   // Profile / display
   "lumi-user-name": "kane-user-name",

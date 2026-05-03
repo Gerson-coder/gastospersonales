@@ -3,14 +3,15 @@
  *
  * Personal savings-goals manager. The user defines a goal (name, target,
  * optional deadline, current progress) and tracks progress with manual
- * contributions or withdrawals. Stored in localStorage under `kane-goals`
- * — no DB migration. Filtered by the active currency from `kane-prefs`.
+ * contributions or withdrawals. Persisted in Supabase (table `goals`,
+ * RLS-scoped); see migration 00023_budgets_goals.sql.
  *
  * Mobile-first, calm and motivating tone, mirrors the rest of Kane.
  */
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import {
   Plus,
   Trash2,
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -47,31 +49,23 @@ import {
   type Currency,
 } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
+import {
+  archiveGoal,
+  contributeGoal,
+  createGoal,
+  listGoals,
+  updateGoal,
+  type Goal,
+  type GoalIcon,
+} from "@/lib/data/goals";
 
-// ─── Types & constants ─────────────────────────────────────────────────────
-type GoalIcon =
-  | "target"
-  | "plane"
-  | "home"
-  | "car"
-  | "graduation-cap"
-  | "heart"
-  | "gift"
-  | "piggy-bank"
-  | "sparkles";
+// ─── Demo mode flag ───────────────────────────────────────────────────────
+const SUPABASE_ENABLED =
+  typeof process.env.NEXT_PUBLIC_SUPABASE_URL === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL.length > 0 &&
+  typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0;
 
-type Goal = {
-  id: string;
-  name: string;
-  targetMinor: number;
-  currentMinor: number;
-  currency: Currency;
-  deadlineISO: string | null;
-  icon: GoalIcon;
-  createdAt: string;
-};
-
-const STORAGE_KEY = "kane-goals";
 const NAME_MAX_LENGTH = 32;
 
 type IconChoice = {
@@ -95,49 +89,6 @@ const ICON_CHOICES: IconChoice[] = [
 function getIconComponent(slug: GoalIcon) {
   const found = ICON_CHOICES.find((c) => c.slug === slug);
   return found ? found.Icon : Target;
-}
-
-// ─── Storage helpers ──────────────────────────────────────────────────────
-function readGoalsFromStorage(): Goal[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // Light shape validation — corrupted entries are skipped silently.
-    return parsed.filter(
-      (g): g is Goal =>
-        g &&
-        typeof g === "object" &&
-        typeof g.id === "string" &&
-        typeof g.name === "string" &&
-        typeof g.targetMinor === "number" &&
-        typeof g.currentMinor === "number" &&
-        (g.currency === "PEN" || g.currency === "USD") &&
-        (g.deadlineISO === null || typeof g.deadlineISO === "string") &&
-        typeof g.icon === "string" &&
-        typeof g.createdAt === "string",
-    );
-  } catch {
-    return [];
-  }
-}
-
-function writeGoalsToStorage(goals: Goal[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
-  } catch {
-    // Quota exceeded or storage disabled — keep in-memory state for the session.
-  }
-}
-
-function makeId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────
@@ -175,16 +126,39 @@ function formatDeadline(deadlineISO: string | null, now: Date): string {
 export default function GoalsPage() {
   const { currency } = useActiveCurrency();
   const [allGoals, setAllGoals] = React.useState<Goal[]>([]);
-  const [hydrated, setHydrated] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(!SUPABASE_ENABLED);
+  const [authError, setAuthError] = React.useState(false);
   const [editing, setEditing] = React.useState<Goal | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [contributionTarget, setContributionTarget] =
     React.useState<Goal | null>(null);
 
-  // Pull from storage on mount.
+  // Pull from Supabase on mount.
   React.useEffect(() => {
-    setAllGoals(readGoalsFromStorage());
-    setHydrated(true);
+    if (!SUPABASE_ENABLED) {
+      setLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listGoals();
+        if (!cancelled) setAllGoals(list);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : "";
+        if (/iniciar sesi[oó]n/i.test(msg)) {
+          setAuthError(true);
+        } else {
+          toast.error("Error al cargar metas", { description: msg });
+        }
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Visible list — scoped to active currency.
@@ -194,41 +168,32 @@ export default function GoalsPage() {
   );
 
   const totals = React.useMemo(() => {
-    const current = goals.reduce((acc, g) => acc + g.currentMinor, 0);
-    const target = goals.reduce((acc, g) => acc + g.targetMinor, 0);
+    const current = goals.reduce((acc, g) => acc + g.current_minor, 0);
+    const target = goals.reduce((acc, g) => acc + g.target_minor, 0);
     return { current, target, count: goals.length };
   }, [goals]);
 
-  const persist = React.useCallback((next: Goal[]) => {
-    setAllGoals(next);
-    writeGoalsToStorage(next);
-  }, []);
-
   const handleCreate = React.useCallback(
-    (draft: {
+    async (draft: {
       name: string;
       targetMinor: number;
       currency: Currency;
       deadlineISO: string | null;
       icon: GoalIcon;
     }) => {
-      const goal: Goal = {
-        id: makeId(),
-        name: draft.name,
-        targetMinor: draft.targetMinor,
-        currentMinor: 0,
-        currency: draft.currency,
-        deadlineISO: draft.deadlineISO,
-        icon: draft.icon,
-        createdAt: new Date().toISOString(),
-      };
-      persist([goal, ...allGoals]);
+      try {
+        const created = await createGoal(draft);
+        setAllGoals((prev) => [created, ...prev]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No pudimos crear la meta.";
+        toast.error("Error al crear meta", { description: msg });
+      }
     },
-    [allGoals, persist],
+    [],
   );
 
   const handleUpdate = React.useCallback(
-    (
+    async (
       id: string,
       patch: {
         name: string;
@@ -238,46 +203,44 @@ export default function GoalsPage() {
         icon: GoalIcon;
       },
     ) => {
-      const next = allGoals.map((g) =>
-        g.id === id
-          ? {
-              ...g,
-              name: patch.name,
-              targetMinor: patch.targetMinor,
-              currency: patch.currency,
-              deadlineISO: patch.deadlineISO,
-              icon: patch.icon,
-            }
-          : g,
-      );
-      persist(next);
+      try {
+        const updated = await updateGoal(id, patch);
+        setAllGoals((prev) => prev.map((g) => (g.id === id ? updated : g)));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No pudimos actualizar la meta.";
+        toast.error("Error al actualizar meta", { description: msg });
+      }
     },
-    [allGoals, persist],
+    [],
   );
 
-  const handleDelete = React.useCallback(
-    (id: string) => {
-      const next = allGoals.filter((g) => g.id !== id);
-      persist(next);
-    },
-    [allGoals, persist],
-  );
+  const handleDelete = React.useCallback(async (id: string) => {
+    const previous = allGoals;
+    setAllGoals((prev) => prev.filter((g) => g.id !== id));
+    try {
+      await archiveGoal(id);
+    } catch (err) {
+      setAllGoals(previous);
+      const msg = err instanceof Error ? err.message : "No pudimos eliminar la meta.";
+      toast.error("Error al eliminar meta", { description: msg });
+    }
+  }, [allGoals]);
 
   const handleContribution = React.useCallback(
-    (id: string, deltaMinor: number, mode: "add" | "subtract") => {
-      const next = allGoals.map((g) => {
-        if (g.id !== id) return g;
-        const change = mode === "add" ? deltaMinor : -deltaMinor;
-        const updated = Math.max(0, g.currentMinor + change);
-        return { ...g, currentMinor: updated };
-      });
-      persist(next);
+    async (id: string, deltaMinor: number, mode: "add" | "subtract") => {
+      try {
+        const updated = await contributeGoal(id, deltaMinor, mode);
+        setAllGoals((prev) => prev.map((g) => (g.id === id ? updated : g)));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No pudimos registrar el aporte.";
+        toast.error("Error al registrar aporte", { description: msg });
+      }
     },
-    [allGoals, persist],
+    [],
   );
 
-  const showSummary = hydrated && goals.length > 0;
-  const showEmpty = hydrated && goals.length === 0;
+  const showSummary = loaded && !authError && goals.length > 0;
+  const showEmpty = loaded && goals.length === 0;
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
@@ -288,6 +251,26 @@ export default function GoalsPage() {
           titleStyle="page"
           className="px-0 pt-0"
         />
+
+        {/* Skeleton while loading */}
+        {!loaded ? (
+          <section aria-label="Cargando metas">
+            <div className="grid grid-cols-1 gap-3">
+              {[0, 1].map((i) => (
+                <Card key={i} className="rounded-2xl border-border p-4">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="h-10 w-10 flex-shrink-0 rounded-xl" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Skeleton className="h-3.5 w-32 rounded" />
+                      <Skeleton className="h-2.5 w-24 rounded" />
+                    </div>
+                  </div>
+                  <Skeleton className="mt-3 h-2 w-full rounded-full" />
+                </Card>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {/* Summary card — only when at least one goal exists in this currency. */}
         {showSummary ? (
@@ -311,44 +294,50 @@ export default function GoalsPage() {
         ) : null}
 
         {/* Goals list */}
-        <section aria-labelledby="goals-list">
-          <h2
-            id="goals-list"
-            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
-          >
-            Tus metas
-          </h2>
+        {loaded ? (
+          <section aria-labelledby="goals-list">
+            <h2
+              id="goals-list"
+              className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+            >
+              Tus metas
+            </h2>
 
-          {showEmpty ? (
-            <Card className="rounded-2xl border-dashed border-border p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Define una meta y haz crecer tus ahorros poco a poco.
-              </p>
-              <Button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="mt-4 h-10 rounded-xl px-4 text-[13px] font-semibold"
-              >
-                <Plus size={14} aria-hidden="true" />
-                <span className="ml-1">Crear primera meta</span>
-              </Button>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-3">
-              {goals.map((goal) => (
-                <GoalCard
-                  key={goal.id}
-                  goal={goal}
-                  onEdit={() => setEditing(goal)}
-                  onContribute={() => setContributionTarget(goal)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+            {showEmpty ? (
+              <Card className="rounded-2xl border-dashed border-border p-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {authError
+                    ? "Inicia sesión para ver y crear tus metas."
+                    : "Define una meta y haz crecer tus ahorros poco a poco."}
+                </p>
+                {!authError ? (
+                  <Button
+                    type="button"
+                    onClick={() => setCreateOpen(true)}
+                    className="mt-4 h-10 rounded-xl px-4 text-[13px] font-semibold"
+                  >
+                    <Plus size={14} aria-hidden="true" />
+                    <span className="ml-1">Crear primera meta</span>
+                  </Button>
+                ) : null}
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {goals.map((goal) => (
+                  <GoalCard
+                    key={goal.id}
+                    goal={goal}
+                    onEdit={() => setEditing(goal)}
+                    onContribute={() => setContributionTarget(goal)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         {/* Add goal */}
-        {!showEmpty ? (
+        {loaded && !showEmpty && !authError ? (
           <div className="mt-6">
             <Button
               type="button"
@@ -370,7 +359,7 @@ export default function GoalsPage() {
         defaultCurrency={currency}
         onOpenChange={setCreateOpen}
         onSubmit={(draft) => {
-          handleCreate(draft);
+          void handleCreate(draft);
           setCreateOpen(false);
         }}
       />
@@ -387,11 +376,11 @@ export default function GoalsPage() {
             if (!open) setEditing(null);
           }}
           onSubmit={(draft) => {
-            handleUpdate(editing.id, draft);
+            void handleUpdate(editing.id, draft);
             setEditing(null);
           }}
           onDelete={() => {
-            handleDelete(editing.id);
+            void handleDelete(editing.id);
             setEditing(null);
           }}
         />
@@ -406,7 +395,7 @@ export default function GoalsPage() {
             if (!open) setContributionTarget(null);
           }}
           onSubmit={(deltaMinor, mode) => {
-            handleContribution(contributionTarget.id, deltaMinor, mode);
+            void handleContribution(contributionTarget.id, deltaMinor, mode);
             setContributionTarget(null);
           }}
         />
@@ -425,8 +414,8 @@ type GoalCardProps = {
 function GoalCard({ goal, onEdit, onContribute }: GoalCardProps) {
   const Icon = getIconComponent(goal.icon);
   const percent =
-    goal.targetMinor > 0
-      ? Math.round((goal.currentMinor / goal.targetMinor) * 100)
+    goal.target_minor > 0
+      ? Math.round((goal.current_minor / goal.target_minor) * 100)
       : 0;
   const complete = percent >= 100;
   const barWidth = Math.min(100, Math.max(0, percent));
@@ -438,7 +427,7 @@ function GoalCard({ goal, onEdit, onContribute }: GoalCardProps) {
     const id = window.setInterval(() => setNow(new Date()), 60 * 60 * 1000);
     return () => window.clearInterval(id);
   }, []);
-  const deadlineLabel = formatDeadline(goal.deadlineISO, now);
+  const deadlineLabel = formatDeadline(goal.deadline, now);
   const deadlinePast = deadlineLabel === "Fecha cumplida";
 
   return (
@@ -460,8 +449,8 @@ function GoalCard({ goal, onEdit, onContribute }: GoalCardProps) {
             </span>
           </div>
           <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-            {formatMoney(goal.currentMinor, goal.currency)} de{" "}
-            {formatMoney(goal.targetMinor, goal.currency)}
+            {formatMoney(goal.current_minor, goal.currency)} de{" "}
+            {formatMoney(goal.target_minor, goal.currency)}
           </p>
         </div>
       </div>
@@ -567,9 +556,9 @@ function GoalFormSheet(props: GoalFormSheetProps) {
     if (!props.open) return;
     if (isEdit && initialGoal) {
       setName(initialGoal.name);
-      setTargetInput((initialGoal.targetMinor / 100).toFixed(2));
+      setTargetInput((initialGoal.target_minor / 100).toFixed(2));
       setCurrency(initialGoal.currency);
-      setDeadline(initialGoal.deadlineISO ?? "");
+      setDeadline(initialGoal.deadline ?? "");
       setIcon(initialGoal.icon);
     } else {
       setName("");
@@ -589,7 +578,7 @@ function GoalFormSheet(props: GoalFormSheetProps) {
 
   const trimmed = name.trim();
   const targetMinor = Number(parseMoneyToMinor(targetInput));
-  const currentMinor = isEdit && initialGoal ? initialGoal.currentMinor : 0;
+  const currentMinor = isEdit && initialGoal ? initialGoal.current_minor : 0;
 
   const nameInvalid = trimmed.length === 0;
   const targetInvalid = targetMinor <= 0;
@@ -1007,8 +996,8 @@ function ContributionSheet({
                 )}
               />
               <p className="mt-1.5 text-[12px] text-muted-foreground tabular-nums">
-                Tienes guardado {formatMoney(goal.currentMinor, goal.currency)}{" "}
-                de {formatMoney(goal.targetMinor, goal.currency)}
+                Tienes guardado {formatMoney(goal.current_minor, goal.currency)}{" "}
+                de {formatMoney(goal.target_minor, goal.currency)}
               </p>
               {showError && invalid ? (
                 <p role="alert" className="mt-1 text-xs text-destructive">

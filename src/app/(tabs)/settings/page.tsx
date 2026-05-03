@@ -1213,8 +1213,13 @@ function DangerZoneCard() {
     try {
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("kane-prefs");
+        // Budgets/goals live in Supabase since migration 00023; these
+        // removeItem calls are defense-in-depth against any stale legacy
+        // localStorage data left over from before the migration uploaded
+        // it to the server.
         window.localStorage.removeItem("kane-budgets");
         window.localStorage.removeItem("kane-goals");
+        window.localStorage.removeItem("kane-supabase-migration-done");
         window.localStorage.removeItem("kane-user-name");
         window.localStorage.removeItem("kane_seen_intro");
         window.localStorage.removeItem("kane-last-email");

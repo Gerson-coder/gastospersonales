@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useServiceWorkerUpdate } from "@/hooks/use-service-worker-update";
 import { SessionProvider } from "@/lib/use-session";
 import { migrateLegacyStorage } from "@/lib/storage-migration";
+import { uploadLegacyLocalDataToSupabase } from "@/lib/storage-to-supabase-migration";
 
 /**
  * Suppresses a known upstream noise from vaul (the lib that powers shadcn
@@ -57,6 +58,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // actualizar.
   React.useEffect(() => {
     migrateLegacyStorage();
+    // Fire-and-forget: upload any leftover localStorage budgets/goals to
+    // Supabase. Bails on its own if not authenticated, no env, or sentinel
+    // already set. Idempotent. Must run AFTER migrateLegacyStorage so any
+    // legacy `lumi-budgets` / `lumi-goals` keys have already been renamed
+    // to `kane-*` and are visible to this uploader.
+    void uploadLegacyLocalDataToSupabase();
   }, []);
   return (
     <ThemeProvider

@@ -298,6 +298,50 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["auth_attempts"]["Row"]>;
         Relationships: [];
       };
+      // ─── Added by migration 00023_budgets_goals.sql ────────────────
+      budgets: {
+        Row: {
+          id: string;
+          user_id: string;
+          category_id: string;
+          limit_minor: number;
+          currency: Currency;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["budgets"]["Row"]> & {
+          user_id: string;
+          category_id: string;
+          limit_minor: number;
+          currency: Currency;
+        };
+        Update: Partial<Database["public"]["Tables"]["budgets"]["Row"]>;
+        Relationships: [];
+      };
+      goals: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          target_minor: number;
+          current_minor: number;
+          currency: Currency;
+          deadline: string | null;
+          icon: string;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["goals"]["Row"]> & {
+          user_id: string;
+          name: string;
+          target_minor: number;
+          currency: Currency;
+        };
+        Update: Partial<Database["public"]["Tables"]["goals"]["Row"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

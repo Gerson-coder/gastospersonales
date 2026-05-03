@@ -41,8 +41,14 @@ async function recoverFromStaleSession(
   if (typeof window !== "undefined") {
     try {
       window.localStorage.removeItem("kane-prefs");
+      // Source of truth for budgets/goals is now Supabase (migration 00023);
+      // these `removeItem` calls are defense-in-depth against any stale
+      // legacy data left in localStorage from before the migration ran.
       window.localStorage.removeItem("kane-budgets");
       window.localStorage.removeItem("kane-goals");
+      // Reset the one-shot upload sentinel so a future fresh login doesn't
+      // see leftover state telling it the migration already happened.
+      window.localStorage.removeItem("kane-supabase-migration-done");
       window.localStorage.removeItem("kane-user-name");
       window.localStorage.removeItem("kane_seen_intro");
       window.localStorage.removeItem("kane-last-email");
