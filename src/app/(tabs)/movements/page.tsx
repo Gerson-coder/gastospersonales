@@ -60,6 +60,7 @@ import {
   archiveTransaction,
   listTransactionsByCurrency,
   unarchiveTransaction,
+  TX_UPSERTED_EVENT,
   type ListCursor,
   type TransactionView,
 } from "@/lib/data/transactions";
@@ -542,6 +543,68 @@ function MovementsContent() {
       cancelled = true;
     };
   }, [currency, reloadKey]);
+
+  // Live-update bridge — /movements does NOT subscribe to Supabase
+  // realtime (per design: realtime lives only in /dashboard to keep
+  // the connection budget tight). Without this listener, navigating
+  // back from /capture after an edit shows stale values because the
+  // App Router caches the /movements component and our local `rows`
+  // state never noticed the update.
+  //
+  // Strategy: on TX_UPSERTED_EVENT (which now fires from create,
+  // update, archive, AND unarchive) refetch the FIRST page and merge
+  // by id with whatever the user already has. We don't reset the full
+  // list — that would lose the user's pagination + scroll position.
+  // For each row in the fresh first page:
+  //   - if id is already in `rows`, replace (picks up edited values)
+  //   - else add (picks up newly-created rows)
+  // Pagination beyond page 1 stays intact; if a row at position 100
+  // was archived elsewhere we'll still show it stale until reload —
+  // acceptable degradation, edits almost always target recent rows.
+  //
+  // Visibility / pageshow / focus listeners cover the case where
+  // /capture fired the event while /movements was hidden, plus the
+  // mobile-foreground and tab-switch refresh patterns the rest of the
+  // app already uses (see /capture's account refresh effect).
+  React.useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const result = await listTransactionsByCurrency({ currency, limit: 20 });
+        if (cancelled) return;
+        setRows((prev) => {
+          const byId = new Map(prev.map((r) => [r.id, r]));
+          for (const r of result.rows) byId.set(r.id, r);
+          const merged = Array.from(byId.values());
+          merged.sort(
+            (a, b) =>
+              b.occurredAt.localeCompare(a.occurredAt) ||
+              b.id.localeCompare(a.id),
+          );
+          return merged;
+        });
+      } catch {
+        // Soft-fail — the next mount fetch / manual reload covers it.
+      }
+    }
+    const handler = () => {
+      void refresh();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    globalThis.addEventListener(TX_UPSERTED_EVENT, handler);
+    globalThis.addEventListener("focus", handler);
+    globalThis.addEventListener("pageshow", handler);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      globalThis.removeEventListener(TX_UPSERTED_EVENT, handler);
+      globalThis.removeEventListener("focus", handler);
+      globalThis.removeEventListener("pageshow", handler);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [currency]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;

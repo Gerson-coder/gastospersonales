@@ -400,11 +400,17 @@ export async function getAccountBalances(
 }
 
 /**
- * Cross-component cue that a transaction was just inserted / updated.
- * Fires SYNCHRONOUSLY after the Supabase ACK so any mounted listener
- * (e.g. /dashboard) refetches without waiting for the realtime broadcast
- * (~500-1500ms). Realtime + visibility refetch still cover the case where
- * the change came from another tab/device.
+ * Cross-component cue that a transaction was just changed (insert,
+ * update, archive, or unarchive). Fires SYNCHRONOUSLY after the
+ * Supabase ACK so any mounted listener (e.g. /dashboard, /movements)
+ * refetches without waiting for the realtime broadcast (~500-1500ms).
+ * Realtime + visibility refetch still cover the case where the change
+ * came from another tab/device.
+ *
+ * Name kept as `TX_UPSERTED_EVENT` for backwards compat — semantically
+ * it now means "tx changed somehow". Archive flows fire it too so that
+ * /movements (which is NOT subscribed to realtime) can stay in sync
+ * after an archive triggered from /dashboard's detail drawer.
  */
 export const TX_UPSERTED_EVENT = "tx:upserted";
 function emitTxUpserted(): void {
@@ -517,6 +523,7 @@ export async function archiveTransaction(id: string): Promise<void> {
     // RLS quietly returned 0 rows, or the row was already archived.
     throw new Error("Este movimiento ya no existe.");
   }
+  emitTxUpserted();
 }
 
 /**
@@ -567,4 +574,5 @@ export async function unarchiveTransaction(id: string): Promise<void> {
   if (!data) {
     throw new Error("Este movimiento ya no existe.");
   }
+  emitTxUpserted();
 }
