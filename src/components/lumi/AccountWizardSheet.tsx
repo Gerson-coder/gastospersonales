@@ -135,7 +135,21 @@ export function AccountWizardSheet({
   }, [open]);
 
   const lockedKindName = LOCKED_KIND_NAMES[kind];
-  const nameLocked = lockedKindName !== undefined;
+  // Lookup del preset activo para decidir locks. Banco preset bloquea
+  // el nombre porque la consistencia del slug (BCP, Interbank, BBVA,
+  // Scotiabank) depende del label exacto — si el user tipea "bcp"
+  // minúscula o "BCP Sueldo" ad-hoc se rompe el theming de la card y
+  // el matching del watermark. Diferentes cuentas en el mismo banco
+  // se diferencian via el subtipo (Sueldo / Ahorro / Crédito) más
+  // abajo. Efectivo NO bloquea — "Efectivo" no es una marca con
+  // theme registrado, y los users renombran a "Mi colchón" / "Caja"
+  // / lo que sea.
+  const selectedPreset = React.useMemo(
+    () => PRESETS.find((p) => p.id === selectedPresetId) ?? null,
+    [selectedPresetId],
+  );
+  const nameLocked =
+    lockedKindName !== undefined || selectedPreset?.kind === "bank";
   const currencyLocked = kind === "yape" || kind === "plin";
 
   // Account "ficticio" para el preview. Usa el label efectivo (lock
@@ -234,14 +248,31 @@ export function AccountWizardSheet({
         <SheetContent
           side="bottom"
           aria-labelledby="account-wizard-title"
-          className="rounded-t-3xl px-0 pb-6 pt-2 md:max-w-md"
+          // showCloseButton=false — el default de shadcn pinta una X
+          // en top-right, pero el header de abajo tiene la suya
+          // mejor posicionada y con label en español. Sin esto se
+          // veían dos botones de cerrar.
+          showCloseButton={false}
+          // Layout flex column con header + card + footer fijos y
+          // scroll en el medio. Antes el SheetContent crecía sin
+          // limite cuando aparecia el subtype picker (al elegir
+          // banco) y el browser auto-scrolleaba la card preview
+          // fuera de vista. Ahora la card siempre queda visible.
+          //
+          // h-[95dvh] mobile + max-h-[95dvh] override el default;
+          // desktop sigue centrado a 85vh por el data-attr default.
+          className={cn(
+            "flex flex-col rounded-t-3xl px-0 pb-0 pt-2",
+            "data-[side=bottom]:!h-[95dvh] data-[side=bottom]:!max-h-[95dvh]",
+            "md:max-w-md md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh]",
+          )}
         >
-          {/* Header: X + título centrado. SheetTitle queda visualmente
-              hidden — la H2 visible la maneja el span del header. */}
           <SheetTitle id="account-wizard-title" className="sr-only">
             Agregando cuenta
           </SheetTitle>
-          <header className="flex items-center justify-between px-5 pt-2 pb-1">
+
+          {/* Header: shrink-0 — anclado arriba siempre. */}
+          <header className="flex shrink-0 items-center justify-between px-5 pt-2 pb-1">
             <button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -253,16 +284,12 @@ export function AccountWizardSheet({
             <span className="text-[14px] font-semibold text-foreground">
               Agregando cuenta
             </span>
-            {/* Spacer para que el título quede centrado entre la X y
-                este placeholder de mismo ancho. */}
             <span aria-hidden className="h-9 w-9" />
           </header>
 
-          {/* Card preview live — el style inyecta los CSS vars del
-              tema según el slug detectado. Si el label no matchea
-              ningún brand registrado (cash, custom name) cae al
-              gradiente neutral por defecto. */}
-          <div className="px-5 pt-3">
+          {/* Card preview — shrink-0 también. La card siempre se ve
+              completa, sin importar cuánto crezca el form abajo. */}
+          <div className="shrink-0 px-5 pt-3">
             <div style={getAccountCardStyle(previewAccount)}>
               <AccountCard
                 bankSlug={accountBrandSlug(previewAccount.label)}
@@ -278,10 +305,12 @@ export function AccountWizardSheet({
             </div>
           </div>
 
-          {/* Plantillas — fila scrollable. Cada chip aplica el preset
-              completo (kind + label + currency cuando aplica). El que
-              está activo lleva un ring para que el user vea de un
-              vistazo qué está construyendo. */}
+          {/* Scroll area: plantillas + form fields. flex-1 + min-h-0 +
+              overflow-y-auto es el patrón clásico para que el
+              overflow realmente dispare el scroll dentro del flex
+              parent. overscroll-contain evita que el inertial scroll
+              de iOS propague al backdrop. */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <section className="px-5 pt-5">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
               Plantillas
@@ -334,14 +363,18 @@ export function AccountWizardSheet({
 
           {/* Form fields. Nombre + moneda siempre. Subtipo solo
               cuando es banco — sin él la lista de "Sueldo / Ahorro /
-              Crédito" no tiene sentido para Yape o Efectivo. */}
+              Crédito" no tiene sentido para Yape o Efectivo. El form
+              vive DENTRO del scroll area; la CTA "Agregar a Lumi"
+              queda afuera anclada abajo (tag `form="..."` en el
+              button preserva el submit). */}
           <form
+            id="account-wizard-form"
             onSubmit={(e) => {
               e.preventDefault();
               void handleSubmit();
             }}
             aria-busy={submitting}
-            className="flex flex-col gap-4 px-5 pt-5"
+            className="flex flex-col gap-4 px-5 pt-5 pb-5"
           >
             <label className="block">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
@@ -452,12 +485,23 @@ export function AccountWizardSheet({
               </div>
             ) : null}
 
-            {/* CTA primaria. Verde Lumi + ícono inline en el copy. */}
+          </form>
+          </div>
+
+          {/* Footer fijo abajo — CTA primaria siempre visible y
+              alcanzable sin importar cuánto haya scrolleado el user
+              en el form de arriba. shrink-0 + border-t + bg-popover
+              da la separación visual del scroll area. El form="..."
+              attribute conecta este button con el <form> de arriba
+              vía DOM, así que un Enter o tap todavía submit el
+              form normalmente. */}
+          <div className="shrink-0 border-t border-border bg-popover px-5 pb-6 pt-3">
             <button
               type="submit"
+              form="account-wizard-form"
               disabled={submitting}
               className={cn(
-                "mt-2 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-5 text-[14px] font-semibold text-primary-foreground transition-colors",
+                "inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-5 text-[14px] font-semibold text-primary-foreground transition-colors",
                 "shadow-[var(--shadow-card)] hover:bg-primary/90 active:bg-primary/80",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 "disabled:cursor-not-allowed disabled:opacity-60",
@@ -465,7 +509,7 @@ export function AccountWizardSheet({
             >
               Agregar a Lumi
             </button>
-          </form>
+          </div>
         </SheetContent>
       </Sheet>
 
