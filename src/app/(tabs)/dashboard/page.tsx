@@ -601,11 +601,23 @@ function guessIconKey(name: string | null | undefined): CategoryId {
 // single CTA (no zero-filled "Gastaste hoy/semana/mes" cards competing for
 // attention with the "registra tu primero" prompt).
 function EmptyDashboardCard({
-  currency: _currency,
+  currency,
   accountsCount,
+  otherCurrency,
+  otherCurrencyAccountsCount,
+  onSwitchCurrency,
 }: {
   currency: Currency;
   accountsCount: number;
+  /** The currency the user could switch back to. */
+  otherCurrency: Currency;
+  /** Accounts the user has in `otherCurrency`. When > 0 we render an
+   *  escape hatch — typical "stuck" case: user toggled to USD on the
+   *  dashboard pero solo tiene cuentas en PEN, asi que cualquier CTA
+   *  de "Registra un gasto" lo lleva a un /capture igualmente bloqueado.
+   *  El boton les devuelve a la moneda donde si tienen saldo. */
+  otherCurrencyAccountsCount: number;
+  onSwitchCurrency: () => void;
 }) {
   // Two distinct first-time states share this card:
   //   1. Brand-new user who only has the auto-seeded Efectivo (or zero
@@ -618,12 +630,19 @@ function EmptyDashboardCard({
   //      in the active currency window. They've already onboarded —
   //      what they're missing is movements. Primary CTA stays /capture.
   const needsAccount = accountsCount <= 1;
+  // "Stuck on inactive currency" — render only when the user has
+  // accounts in the OTHER currency. If they have zero accounts in
+  // either currency they're brand-new, the switch button would be
+  // pointless (nothing to switch back to).
+  const canSwitchBack = otherCurrencyAccountsCount > 0;
   const title = needsAccount
     ? "Crea tu cuenta de saldo"
     : "Registra tu primer gasto";
   const body = needsAccount
     ? "Antes de empezar, agrega la cuenta donde tienes tu dinero (BCP, Interbank, Yape, Plin…). Así podrás registrar gastos contra el saldo correcto."
-    : "Apenas tengamos un movimiento empezamos a armar tu historial: evolución, categorías y últimas transacciones.";
+    : canSwitchBack
+      ? `No tienes movimientos en ${CURRENCY_LABEL[currency].toLowerCase()}. Puedes registrar uno o volver a ${CURRENCY_LABEL[otherCurrency].toLowerCase()}, donde sí tienes cuentas.`
+      : "Apenas tengamos un movimiento empezamos a armar tu historial: evolución, categorías y últimas transacciones.";
   const primaryHref = needsAccount ? "/accounts?create=1" : "/capture";
   const primaryLabel = needsAccount ? "Crear cuenta" : "Empezar";
   const secondaryHref = needsAccount ? "/capture" : "/receipt";
@@ -659,6 +678,15 @@ function EmptyDashboardCard({
             {secondaryLabel}
           </Link>
         </div>
+        {canSwitchBack ? (
+          <button
+            type="button"
+            onClick={onSwitchCurrency}
+            className="mt-4 inline-flex h-9 items-center justify-center rounded-full px-4 text-[12.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Volver a {CURRENCY_LABEL[otherCurrency].toLowerCase()}
+          </button>
+        ) : null}
       </div>
     </Card>
   );
@@ -1208,7 +1236,8 @@ function MobileInsightCard({
 export default function DashboardPage() {
   const router = useRouter();
   const { name, hydrated } = useUserName();
-  const { currency } = useActiveCurrency();
+  const { currency, setCurrency } = useActiveCurrency();
+  const otherCurrency: Currency = currency === "PEN" ? "USD" : "PEN";
 
   // Real data via the shared 6-month window hook. Returns []/zeroes in demo
   // mode would still call Supabase, so we gate all usage of `window` results
@@ -1905,6 +1934,13 @@ export default function DashboardPage() {
                 // assume "returning" so we don't flash the wrong CTA on
                 // the first paint of every mount.
                 accountsCount={accountsHydrated ? accounts.length : 99}
+                otherCurrency={otherCurrency}
+                otherCurrencyAccountsCount={
+                  accountsHydrated
+                    ? accounts.filter((a) => a.currency === otherCurrency).length
+                    : 0
+                }
+                onSwitchCurrency={() => setCurrency(otherCurrency)}
               />
             ) : (
               <>
