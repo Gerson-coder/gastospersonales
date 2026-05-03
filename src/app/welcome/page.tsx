@@ -260,7 +260,7 @@ function NameStep({
             spellCheck={false}
             autoFocus
             required
-            maxLength={40}
+            maxLength={20}
             placeholder="Tu nombre"
             value={name}
             onChange={(e) => onChange(e.target.value)}

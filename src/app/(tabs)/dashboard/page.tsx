@@ -655,8 +655,13 @@ function EmptyDashboardCard({
       : "Apenas tengamos un movimiento empezamos a armar tu historial: evolución, categorías y últimas transacciones.";
   const primaryHref = needsAccount ? "/accounts?create=1" : "/capture";
   const primaryLabel = needsAccount ? "Crear cuenta" : "Empezar";
-  const secondaryHref = needsAccount ? "/capture" : "/receipt";
-  const secondaryLabel = needsAccount ? "Registrar gasto" : "Escanear ticket";
+  // Secondary CTA solo aparece para usuarios que YA tienen cuentas pero
+  // estan en estado "sin movimientos" — para el user brand-new (sin
+  // cuentas) ofrecer "Registrar gasto" no tiene sentido: no hay donde
+  // descontar el saldo, y al tocarlo cae en /capture bloqueado por el
+  // balance guard. Mejor un solo CTA inequívoco: Crear cuenta.
+  const secondaryHref = needsAccount ? null : "/receipt";
+  const secondaryLabel = needsAccount ? null : "Escanear ticket";
 
   return (
     <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
@@ -681,12 +686,14 @@ function EmptyDashboardCard({
           >
             {primaryLabel}
           </Link>
-          <Link
-            href={secondaryHref}
-            className="inline-flex h-11 items-center justify-center rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {secondaryLabel}
-          </Link>
+          {secondaryHref && secondaryLabel ? (
+            <Link
+              href={secondaryHref}
+              className="inline-flex h-11 items-center justify-center rounded-full border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {secondaryLabel}
+            </Link>
+          ) : null}
         </div>
         {canSwitchBack ? (
           <button

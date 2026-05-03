@@ -33,7 +33,7 @@ import { useUserName } from "@/lib/use-user-name";
 import { cn } from "@/lib/utils";
 
 const MIN_LENGTH = 2;
-const MAX_LENGTH = 40;
+const MAX_LENGTH = 20;
 
 export default function OnboardingNamePage() {
   const router = useRouter();

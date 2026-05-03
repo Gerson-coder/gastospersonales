@@ -2,7 +2,7 @@
   "name": "Kane — Tu asesor financiero",
   "short_name": "Kane",
   "description": "Tu asesor financiero. Captura gastos con foto, entiende en qué se te va el sueldo, sin complicaciones.",
-  "start_url": "/capture",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
