@@ -40,14 +40,21 @@ export const metadata: Metadata = {
     // contexto (tab favicon, bookmarks, history, etc.). favicon-16/32
     // son específicos para tabs en desktop, los más grandes para
     // bookmarks panel y HD displays.
+    //
+    // Cache-bust con `?v=N`: las URLs de iconos no llevan hash de
+    // build (a diferencia de chunks JS/CSS), entonces los browsers y
+    // el Service Worker cachean la antigua /favicon.ico/.png durante
+    // dias. Al cambiar el v= forzamos una URL nueva → cache miss →
+    // refetch del icono fresco. Bumpear este numero cada vez que se
+    // regenera el icono.
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
-      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico?v=3", sizes: "any" },
+      { url: "/icons/favicon-16.png?v=3", sizes: "16x16", type: "image/png" },
+      { url: "/icons/favicon-32.png?v=3", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png?v=3", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png?v=3", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/icons/apple-touch-icon.png",
+    apple: "/icons/apple-touch-icon.png?v=3",
   },
 };
 
