@@ -172,7 +172,15 @@ export function MerchantPicker({
         className="mt-3 px-4"
         aria-label="Comercio (opcional)"
       >
-        <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Avatar-first vertical mini-cards. El logo (48px) protagoniza,
+            el nombre vive chico abajo. Sin borde de pill — el ring + bg
+            del estado seleccionado es lo que distingue, no un contorno
+            permanente que aplana todos los chips. Todas las columnas
+            comparten min-width para que el ritmo visual sea uniforme
+            aun cuando un nombre sea "Yape" (4 chars) y otro "Pardo's
+            Chicken" (15). overflow-x-auto + flex permite scroll lateral
+            si los 3 MRU + "Mas" no entran en viewports angostos. */}
+        <div className="flex gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visible.map((m) => {
             const selected = value === m.id;
             return (
@@ -183,43 +191,55 @@ export function MerchantPicker({
                 aria-pressed={selected}
                 aria-label={`Comercio ${m.name}${selected ? " (seleccionado)" : ""}`}
                 className={cn(
-                  "inline-flex h-9 flex-shrink-0 items-center gap-2 rounded-full border pl-1 pr-3 text-[12px] font-medium transition-colors",
+                  "flex w-[72px] flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  selected
-                    ? "border-foreground bg-foreground text-background font-semibold"
-                    : "border-border bg-card text-foreground hover:bg-muted",
+                  selected ? "bg-muted" : "hover:bg-muted/50",
                 )}
               >
                 <MerchantAvatar
                   name={m.name}
                   logoSlug={m.logo_slug}
-                  size="sm"
                   className={cn(
-                    selected && "ring-1 ring-background/20",
+                    "h-12 w-12 text-[14px]",
+                    selected &&
+                      "ring-2 ring-foreground ring-offset-2 ring-offset-background",
                   )}
                 />
-                <span className="truncate max-w-[7.5rem]">{m.name}</span>
+                <span
+                  className={cn(
+                    "w-full truncate text-center text-[11px] leading-tight",
+                    selected
+                      ? "font-semibold text-foreground"
+                      : "font-medium text-muted-foreground",
+                  )}
+                >
+                  {m.name}
+                </span>
               </button>
             );
           })}
-          {/* "Más" pill — afordancia para abrir el drawer completo
-              cuando los 3 MRU no alcanzan. Reemplaza al ex-link "Ver
-              todos" que vivia en una segunda fila junto al header
-              eliminado: poniendolo inline al final del strip ahorra
-              una row vertical y mantiene el lenguaje de chips uniforme.
-              Tambien cubre el edge case de "MRU vacio pero la categoria
-              tiene comercios" — antes el strip quedaba vacio y solo se
-              veia el link, ahora siempre hay al menos esta pill. */}
+          {/* "Mas" mini-card — circulo dashed con + para que el affordance
+              al drawer completo viva en el mismo lenguaje visual que los
+              comercios. Cubre el edge case "MRU vacio pero la categoria
+              tiene comercios" (siempre hay al menos esta opcion para
+              entrar al drawer). */}
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={drawerOpen}
             aria-label="Ver todos los comercios"
-            className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full border border-dashed border-border bg-transparent px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex w-[72px] flex-shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Plus size={14} aria-hidden="true" />
-            Más
+            <span
+              aria-hidden="true"
+              className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground transition-colors group-hover:text-foreground"
+            >
+              <Plus size={18} aria-hidden="true" />
+            </span>
+            <span className="text-[11px] font-medium text-muted-foreground">
+              Más
+            </span>
           </button>
         </div>
       </section>
