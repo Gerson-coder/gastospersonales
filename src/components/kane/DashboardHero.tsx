@@ -4,6 +4,8 @@ import * as React from "react";
 import { Eye, EyeOff, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHideBalances } from "@/hooks/use-hide-balances";
+import { getAccountCardStyle } from "@/lib/account-card-theme";
+import type { Account } from "@/lib/data/accounts";
 
 export type Period = "today" | "week" | "month";
 
@@ -15,6 +17,14 @@ export interface DashboardHeroProps {
   /** Saldo actual del período = ingreso − gasto. Puede ser negativo. */
   saldo: number;
   currency: "PEN" | "USD";
+  /**
+   * Cuenta activa (el chip seleccionado en /dashboard). Cuando se pasa, el
+   * hero pinta el degradé del banco correspondiente vía
+   * `getAccountCardStyle()` — mismo sistema de tokens CSS que usa la
+   * AccountCard del carousel mobile (Yape rojo, BBVA azul, Interbank lima).
+   * Si es `null`/`undefined`, fallback al `bg-primary` neutro.
+   */
+  account?: Account | null;
   className?: string;
 }
 
@@ -49,8 +59,15 @@ export function DashboardHero({
   spent,
   saldo,
   currency,
+  account,
   className,
 }: DashboardHeroProps) {
+  // Theme tokens (--card-bg-from / --card-bg-to / --card-accent) when there's
+  // an active account. Same source of truth as the mobile AccountCard, so
+  // selecting "Yape" en los chips del dashboard pinta el hero rojo/coral
+  // sin que el component sepa nada del slug.
+  const accountStyle = account ? getAccountCardStyle(account) : undefined;
+  const hasAccountTheme = Boolean(account);
   // hideBalances persistido en kane-prefs — comparte el mismo flag que
   // el AccountCardCarousel mobile, así si el user oculta saldos en uno
   // u otro la preferencia respeta el switch entre breakpoints (desktop
@@ -84,9 +101,15 @@ export function DashboardHero({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-[var(--shadow-card)]",
+        "relative overflow-hidden rounded-3xl p-6 text-primary-foreground shadow-[var(--shadow-card)]",
+        // Bank-themed gradient when an account is active; fallback al verde
+        // primary cuando no hay cuenta seleccionada (estado inicial / "Todas").
+        hasAccountTheme
+          ? "bg-[linear-gradient(135deg,var(--card-bg-from)_0%,var(--card-bg-to)_100%)]"
+          : "bg-primary",
         className,
       )}
+      style={accountStyle}
     >
       {/* Wallet decorativo */}
       <Wallet

@@ -421,7 +421,7 @@ export default function ProfilePage() {
         <SheetContent
           side="bottom"
           aria-labelledby="editname-title"
-          className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-md"
+          className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-2xl"
         >
           <form onSubmit={handleEditSubmit} aria-busy={submitting}>
             <SheetHeader className="px-0">

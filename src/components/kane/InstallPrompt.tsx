@@ -106,8 +106,9 @@ export function InstallPrompt() {
         role="region"
         aria-label="Instalar aplicación"
         className={cn(
-          "fixed left-4 right-4 z-40",
-          "bottom-28 md:bottom-6 md:left-auto md:right-6 md:max-w-sm",
+          // Mobile-only floating banner. On desktop (md+), the install CTA
+          // lives in the Sidebar — rendering both was duplicate UI.
+          "fixed left-4 right-4 bottom-28 z-40 md:hidden",
           "flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-card",
         )}
       >

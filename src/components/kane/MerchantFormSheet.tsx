@@ -151,7 +151,7 @@ export function MerchantFormSheet(props: Props) {
         <SheetContent
           side="bottom"
           aria-labelledby={titleId}
-          className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-md"
+          className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-2xl"
         >
           <SheetHeader className="px-0">
             <SheetTitle id={titleId} className="font-sans not-italic text-base font-semibold">{title}</SheetTitle>
@@ -201,7 +201,7 @@ export function MerchantFormSheet(props: Props) {
       <SheetContent
         side="bottom"
         aria-labelledby={titleId}
-        className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-md"
+        className="rounded-t-3xl px-5 pb-6 pt-2 md:max-w-2xl"
       >
         <form onSubmit={handleSubmit} aria-busy={submitting}>
           <SheetHeader className="px-0">

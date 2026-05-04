@@ -145,6 +145,7 @@ export function TransactionDetailDrawer({
           "bg-background",
           "data-[vaul-drawer-direction=bottom]:!max-h-[95dvh] data-[vaul-drawer-direction=bottom]:h-[95dvh]",
           "md:data-[vaul-drawer-direction=bottom]:!max-h-[90vh] md:data-[vaul-drawer-direction=bottom]:!h-auto",
+          "md:data-[vaul-drawer-direction=bottom]:!max-w-2xl",
         )}
       >
         <DrawerHeader className="shrink-0 text-center">

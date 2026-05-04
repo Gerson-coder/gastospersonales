@@ -318,7 +318,7 @@ export default function SettingsPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
         <header className="flex items-start gap-3">
           <Link
@@ -487,18 +487,15 @@ export default function SettingsPage() {
           </SettingsSection>
         </div>
 
-        {/* Bottom two sections: Tus datos + Zona de peligro — side by side on desktop */}
-        <div className="md:grid md:grid-cols-2 md:items-start md:gap-8">
-          {/* Tus datos — export safety net */}
-          <SettingsSection title="Tus datos" headingId="settings-data">
-            <DataExportCard />
-          </SettingsSection>
+        {/* Tus datos — export safety net, full width */}
+        <SettingsSection title="Tus datos" headingId="settings-data">
+          <DataExportCard />
+        </SettingsSection>
 
-          {/* Zona de peligro — destructive resets */}
-          <SettingsSection title="Zona de peligro" headingId="settings-danger">
-            <DangerZoneCard />
-          </SettingsSection>
-        </div>
+        {/* Zona de peligro — destructive resets, full width so it reads as weighty and deliberate */}
+        <SettingsSection title="Zona de peligro" headingId="settings-danger">
+          <DangerZoneCard />
+        </SettingsSection>
 
         {/* Sign out */}
         <div className="mt-8">
@@ -522,7 +519,7 @@ export default function SettingsPage() {
           role="alertdialog"
           aria-labelledby="signout-title"
           aria-describedby="signout-desc"
-          className="rounded-t-2xl md:max-w-md"
+          className="rounded-t-2xl md:max-w-2xl"
         >
           <SheetHeader>
             <SheetTitle
@@ -581,7 +578,7 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={headingId} className="mt-8">
+    <section aria-labelledby={headingId} className="mt-6 md:mt-0">
       <h2
         id={headingId}
         className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
@@ -1437,7 +1434,7 @@ function DangerZoneCard() {
           role="alertdialog"
           aria-labelledby="reset-cats-title"
           aria-describedby="reset-cats-desc"
-          className="rounded-t-2xl md:max-w-md"
+          className="rounded-t-2xl md:max-w-2xl"
         >
           <SheetHeader>
             <SheetTitle
@@ -1486,7 +1483,7 @@ function DangerZoneCard() {
           role="alertdialog"
           aria-labelledby="reset-accounts-title"
           aria-describedby="reset-accounts-desc"
-          className="rounded-t-2xl md:max-w-md"
+          className="rounded-t-2xl md:max-w-2xl"
         >
           <SheetHeader>
             <SheetTitle
@@ -1552,7 +1549,7 @@ function DangerZoneCard() {
           role="alertdialog"
           aria-labelledby="factory-title"
           aria-describedby="factory-desc"
-          className="rounded-t-2xl md:max-w-md"
+          className="rounded-t-2xl md:max-w-2xl"
         >
           <SheetHeader>
             <SheetTitle
@@ -1624,7 +1621,7 @@ function DangerZoneCard() {
           role="alertdialog"
           aria-labelledby="delete-account-title"
           aria-describedby="delete-account-desc"
-          className="rounded-t-2xl md:max-w-md"
+          className="rounded-t-2xl md:max-w-2xl"
         >
           <SheetHeader>
             <SheetTitle

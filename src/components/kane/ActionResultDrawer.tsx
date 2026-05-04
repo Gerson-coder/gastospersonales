@@ -71,7 +71,7 @@ export function ActionResultDrawer({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent
         aria-describedby="action-result-desc"
-        className="bg-background"
+        className="bg-background md:!max-w-2xl"
       >
         <DrawerHeader className="text-center">
           <div

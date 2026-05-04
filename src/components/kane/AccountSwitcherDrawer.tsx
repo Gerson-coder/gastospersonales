@@ -68,7 +68,7 @@ export function AccountSwitcherDrawer({
 }: AccountSwitcherDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent className="max-h-[85vh] md:!max-w-2xl">
         <DrawerHeader className="text-left">
           <DrawerTitle>Tus cuentas</DrawerTitle>
           <DrawerDescription>

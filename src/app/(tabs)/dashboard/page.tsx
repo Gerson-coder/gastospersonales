@@ -1933,7 +1933,7 @@ export default function DashboardPage() {
               <SheetContent
                 side="bottom"
                 aria-labelledby="dashboard-account-picker-title"
-                className="rounded-t-2xl px-4 pb-6 pt-2 md:max-w-md"
+                className="rounded-t-2xl px-4 pb-6 pt-2 md:max-w-2xl"
               >
                 <SheetHeader className="px-1">
                   <SheetTitle
@@ -2164,6 +2164,17 @@ export default function DashboardPage() {
                       spent={heroNumbers.spent}
                       saldo={heroNumbers.saldo}
                       currency={currency}
+                      // Mismo tema que la AccountCard del carousel mobile —
+                      // resuelve la cuenta del chip activo y, como fallback,
+                      // la primera de la moneda actual (mismo criterio que
+                      // el efecto de selección por defecto). Sin esto el
+                      // hero quedaba siempre verde primary aunque el chip
+                      // dijera "Yape" / "BBVA".
+                      account={
+                        accounts.find((a) => a.id === selectedAccountId) ??
+                        carouselAccounts[0] ??
+                        null
+                      }
                     />
                     <StatTrendCard
                       kind="expense"

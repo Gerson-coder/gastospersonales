@@ -179,7 +179,7 @@ export function MerchantsDrawer({
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent
           aria-describedby="merchants-drawer-desc"
-          className="bg-background"
+          className="bg-background md:!max-w-2xl"
         >
           <DrawerHeader>
             <DrawerTitle className="font-sans not-italic text-base font-semibold">Comercios de {categoryName}</DrawerTitle>

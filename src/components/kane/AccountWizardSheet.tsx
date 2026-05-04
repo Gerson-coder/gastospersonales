@@ -390,7 +390,7 @@ export function AccountWizardSheet({
           className={cn(
             "flex flex-col px-0 pb-0 pt-0",
             "data-[side=bottom]:!h-[100dvh] data-[side=bottom]:!max-h-[100dvh] data-[side=bottom]:rounded-none",
-            "md:max-w-md md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh] md:rounded-2xl",
+            "md:max-w-3xl md:data-[side=bottom]:!h-auto md:data-[side=bottom]:!max-h-[90vh] md:rounded-2xl",
           )}
         >
           <SheetTitle id="account-wizard-title" className="sr-only">
@@ -782,7 +782,7 @@ export function AccountWizardSheet({
       <Drawer open={allPresetsOpen} onOpenChange={setAllPresetsOpen}>
         <DrawerContent
           aria-describedby="wizard-presets-desc"
-          className="bg-background"
+          className="bg-background md:!max-w-2xl"
         >
           <DrawerHeader>
             <DrawerTitle>Elige una plantilla</DrawerTitle>
@@ -847,7 +847,7 @@ export function AccountWizardSheet({
       <Drawer open={dupOpen} onOpenChange={setDupOpen}>
         <DrawerContent
           aria-describedby="account-dup-desc"
-          className="bg-background"
+          className="bg-background md:!max-w-2xl"
         >
           <DrawerHeader>
             <DrawerTitle>Cuenta duplicada</DrawerTitle>
