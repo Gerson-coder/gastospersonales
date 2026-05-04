@@ -1338,23 +1338,32 @@ export default function DashboardPage() {
     };
   }, [window.refetch]);
 
-  // sessionStorage flag set by /receipt y /capture justo antes del push
-  // a /dashboard. Cubre el caso en que el dashboard remonte fresh: el
-  // useEffect lee el flag, lo limpia, y dispara refetch. Es la red de
-  // seguridad más confiable porque no depende del segment cache ni del
-  // timing del evento (synchronous read en el primer render post-mount).
+  // sessionStorage flag set by /receipt (and any other write flow that
+  // navigates back to /dashboard) just before pushing here. Fires on every
+  // mount: si el flag está, hacemos refetch — independiente del segment
+  // cache, del realtime websocket, y del timing del evento `tx:upserted`.
+  // Es la red de seguridad más confiable porque es síncrona y se dispara
+  // en el primer render post-mount.
+  //
+  // Mantener una ref a `refetch` para que el efecto no se re-evalúe cada
+  // vez que la identidad del objeto `window` (resultado del hook) cambie
+  // entre renders — `refetch` en sí mismo es estable, pero TypeScript no
+  // puede deducirlo a través del hook return. La ref garantiza que el
+  // efecto SOLO corra una vez en mount.
+  const refetchRef = React.useRef(window.refetch);
+  refetchRef.current = window.refetch;
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     try {
       const flag = globalThis.sessionStorage?.getItem("kane:tx-just-created");
       if (flag) {
         globalThis.sessionStorage.removeItem("kane:tx-just-created");
-        window.refetch();
+        refetchRef.current();
       }
     } catch {
       // private mode / quota — los listeners de focus/event igual cubren.
     }
-  }, [window.refetch]);
+  }, []);
 
   // Account list — feeds the carousel + the desktop chip strip. Refetched
   // on mount AND on the `account:upserted` event so a new account created

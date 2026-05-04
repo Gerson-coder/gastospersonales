@@ -21,6 +21,7 @@
 import * as React from "react";
 
 import {
+  TX_UPSERTED_EVENT,
   getAccountBalances,
   type Currency,
 } from "@/lib/data/transactions";
@@ -80,6 +81,23 @@ export function useAccountBalances(
     }
     setBalancesLoaded(false);
     void reload();
+  }, [reload, skip]);
+
+  // Refetch on tx:upserted — el dashboard / accounts / capture
+  // dispararon este evento al crear/editar/archivar una transacción.
+  // Sin esto el saldo del picker quedaba PRE-INSERT después de
+  // capturar un gasto OCR (la tarjeta y los CTAs "registrar gasto"
+  // mostraban el monto viejo) hasta que el user navegara a otra ruta
+  // y volviera. Mismo patrón que /dashboard y /movements.
+  React.useEffect(() => {
+    if (skip) return;
+    const handler = () => {
+      void reload();
+    };
+    globalThis.addEventListener(TX_UPSERTED_EVENT, handler);
+    return () => {
+      globalThis.removeEventListener(TX_UPSERTED_EVENT, handler);
+    };
   }, [reload, skip]);
 
   return { balances, balancesLoaded, reload };

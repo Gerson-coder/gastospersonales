@@ -78,7 +78,6 @@ import {
 import { type Category, listCategories } from "@/lib/data/categories";
 import {
   createTransaction,
-  emitTxUpserted,
   type TransactionKind,
 } from "@/lib/data/transactions";
 import {
@@ -899,10 +898,6 @@ function ReceiptPageInner() {
   // Save submission state: prevents double-tap on the green "Aceptar y
   // guardar" button while the network request is in flight.
   const [isSaving, setIsSaving] = React.useState(false);
-  // After a successful save we surface a small inline "Guardado" banner
-  // (same pattern as /capture) for ~900ms before navigating away. The
-  // banner is friendlier than a toast and matches the rest of the app.
-  const [saved, setSaved] = React.useState(false);
 
   // Loading phase ticks 0 → 1 → 2 every ~800ms while in the loading state.
   const [loadingPhase, setLoadingPhase] = React.useState<LoadingPhase>(0);
@@ -1359,37 +1354,39 @@ function ReceiptPageInner() {
         receiptId: receiptId ?? null,
       });
 
-      // El bug previo: refresh() afuera del setTimeout y push adentro
-      // dejaba 900ms en los que el cache podía regenerarse, y el
-      // emitTxUpserted dentro del setTimeout disparaba "al vacío" si
-      // /dashboard estaba descargado. Tres redundancias para garantizar
-      // que la nueva transacción aparezca al instante:
+      // ── Bug #recents-not-updating-after-OCR ────────────────────────
+      // El flujo previo introducía un `setTimeout(900ms)` para mostrar
+      // un banner "Guardado" antes de navegar. En PWA mobile standalone
+      // ese timer caía en una ventana donde el SW podía pausar el JS
+      // (background tab heuristics + page-transition throttling),
+      // resultando en un push retrasado en el que el dashboard montaba
+      // CON el realtime websocket dormido y el segment cache de Next 16
+      // sirviendo el snapshot anterior. La transacción quedaba en la
+      // DB pero el dashboard no refetcheaba hasta el próximo evento.
       //
-      // 1) sessionStorage flag — leído por el listener `useDirtyOnReturn`
-      //    del dashboard al montar. Es la señal MÁS confiable: síncrona,
-      //    read-once, sobrevive a cualquier tipo de cache. Si todos los
-      //    otros mecanismos fallan, este garantiza el refetch.
-      // 2) emitTxUpserted() — para el caso en que /dashboard YA esté
-      //    montado (revisita rápida): el listener recibe el evento y
-      //    refetcha sin esperar el realtime broadcast (500-1500ms).
-      // 3) router.refresh() — invalida el cache de segmentos del App
-      //    Router justo antes del push, para que el remontaje fuerce
-      //    queries de servidor frescas.
+      // /capture no tenía el problema porque su `router.push` corre
+      // inmediatamente después del await — el dashboard remonta antes
+      // de que el browser tenga oportunidad de cachear estado stale.
       //
-      // Show the inline "Guardado" banner, then navigate. 900ms es
-      // suficiente para que el user registre la confirmación sin
-      // sentirse atascado en la página.
+      // Solución: alinear /receipt con /capture exactamente —
+      //   1) toast.success() para el feedback inmediato (reemplaza el
+      //      banner inline; el user ve el confirm aún en /receipt antes
+      //      de que el push complete).
+      //   2) sessionStorage flag — red de seguridad para el caso en que
+      //      el dashboard remonte fresco sin haber escuchado el evento
+      //      `tx:upserted` (lo lee el `useEffect` del dashboard en mount
+      //      y dispara refetch). Síncrono, sobrevive a cualquier cache.
+      //   3) emitTxUpserted() — ya disparado dentro de `createTransaction`,
+      //      cubre el caso donde el dashboard ya esté montado.
+      //   4) router.refresh() + router.push("/dashboard") — sin demora.
       try {
         window.sessionStorage.setItem("kane:tx-just-created", String(Date.now()));
       } catch {
-        // private mode / quota — los mecanismos 2 y 3 igual cubren la mayoría.
+        // private mode / quota — el push + el evento siguen cubriendo la mayoría.
       }
-      setSaved(true);
-      window.setTimeout(() => {
-        emitTxUpserted();
-        router.refresh();
-        router.push("/dashboard");
-      }, 900);
+      toast.success("Movimiento guardado");
+      router.refresh();
+      router.push("/dashboard");
     } catch (err) {
       const message =
         err instanceof Error
@@ -1833,31 +1830,6 @@ function ReceiptPageInner() {
             )}
           </div>
         </Card>
-
-        {/* Saved banner — same pattern as /capture: visually-hidden
-            announcement + a calm inline card. Replaces the previous
-            toast.success("Movimiento guardado.") which read jarringly
-            against the rest of the app's quieter confirmations. */}
-        <output
-          role="status"
-          aria-live="polite"
-          className={cn(
-            "mt-4 block transition-opacity duration-300",
-            saved ? "opacity-100" : "pointer-events-none h-0 opacity-0",
-          )}
-        >
-          {saved ? (
-            <div className="flex items-center gap-3 rounded-2xl bg-foreground px-4 py-3 text-background shadow-[var(--shadow-float)]">
-              <span
-                aria-hidden="true"
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-              >
-                <Check size={18} />
-              </span>
-              <span className="flex-1 text-[13px] font-semibold">Guardado</span>
-            </div>
-          ) : null}
-        </output>
       </div>
 
       {/* Sticky CTA bar — soft gradient backdrop so it floats above the form
