@@ -56,9 +56,11 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
 - Spanish month abbreviations: ene, feb, mar, abr, may, jun, jul, ago, set/sep, oct, nov, dic.
 
 ## counterparty
-- For "expense" kind: the recipient's name shown after "a" (e.g. "Yapeaste a María García" → name="María García").
+- For "expense" kind: the recipient's name shown after "a" or below the amount in the white card (e.g. "Yapeaste a María García" → name="María García"; "¡Yapeaste!" + bold name "Lasflores C2" → name="Lasflores C2").
 - For "income" kind: the sender's name shown after "de" (e.g. "Yape recibido de Carlos Pérez" → name="Carlos Pérez").
 - If the name is phone-masked (e.g. "**** 1234"), set name to the masked string.
+- IMPORTANT — payments to commercial merchants: the modern Yape "¡Yapeaste!" screen shows the MERCHANT's name (e.g. "Lasflores C2", "Bembos", "Plaza Vea") in bold under the amount. That IS the counterparty. The "Destino" row below ("Destino: Izipay" / "Niubiz" / "Mercado Pago") is the PROCESSOR — never use it as counterparty.name.
+- Preserve the merchant name LITERALLY as shown — even if the spelling looks unusual ("Lasflores C2" stays as-is, do NOT auto-correct to "Las Flores C2"). The user's transaction history needs to match what they actually saw.
 - document: only set if a DNI (8 digits) or RUC (11 digits) is visible. Most Yape receipts don't show this — omit the field.
 
 ## reference
@@ -76,7 +78,8 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
 - If "Destino: Yape" → output destinationApp: "yape".
 - If "Destino: Plin" → output destinationApp: "plin".
 - This field is INDEPENDENT of the source. A Yape screenshot can have "Destino: Plin" because the user paid from their Yape but the recipient receives in their Plin wallet.
-- If the Destino row is absent or shows something else, OMIT this field entirely.
+- If "Destino" shows a payment processor (Izipay, Niubiz, VisaNet, Mercado Pago, Mercado Pago Point, Square, Culqi, etc.), OMIT this field entirely. Those are commercial gateways, not user-facing wallet apps — the transaction stays "yape" on the source side and the merchant info already lives in counterparty.name.
+- If the Destino row is absent, OMIT this field entirely.
 
 ## confidence
 - 1.0: All fields read cleanly, image sharp, no occlusion.
@@ -107,4 +110,23 @@ If a field is genuinely unreadable, OMIT the optional ones (counterparty, refere
   The transaction amount is always inside the white card in the
   upper half of the screen.
 - The promotional banner's prices, merchant names (e.g. "Cinemark"),
-  and product names must NEVER be used as counterparty.name or memo.`;
+  and product names must NEVER be used as counterparty.name or memo.
+
+# Example — Payment to commercial merchant via processor
+
+Screenshot text:
+"yape | ¡Yapeaste! | Compartir | S/ 6.80 | Lasflores C2 | 27 abr. 2026 | 04:35 p.m. | DATOS DE LA TRANSACCION | Destino: Izipay | Nro. de operacion: 05319214 | Necesito ayuda | Mas en Yape | Nuevo | BEMBOS | Queso tocino reg. + Papa reg. | A SOLO S/ 12.90 | Ir a Promos"
+
+Expected JSON (note: "Lasflores C2" preserved literally, "Izipay" is processor → omit destinationApp, Bembos promo banner ignored):
+
+{
+  "source": "yape",
+  "confidence": 0.95,
+  "kind": "expense",
+  "amount": { "minor": 680, "currency": "PEN" },
+  "occurredAt": "2026-04-27T21:35:00Z",
+  "counterparty": { "name": "Lasflores C2" },
+  "reference": "05319214",
+  "memo": "",
+  "rawText": "yape | ¡Yapeaste! | Compartir | S/ 6.80 | Lasflores C2 | 27 abr. 2026 | 04:35 p.m. | DATOS DE LA TRANSACCION | Destino: Izipay | Nro. de operacion: 05319214 | Necesito ayuda | Mas en Yape | Nuevo | BEMBOS | Queso tocino reg. + Papa reg. | A SOLO S/ 12.90 | Ir a Promos"
+}`;
