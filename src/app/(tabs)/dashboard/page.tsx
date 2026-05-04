@@ -65,10 +65,9 @@ import { CURRENCY_LABEL } from "@/lib/money";
 import { formatTxDate, formatLimaDate } from "@/lib/format-tx-date";
 import { AppHeader } from "@/components/kane/AppHeader";
 import { CurrencySwitch } from "@/components/kane/CurrencySwitch";
-import { DashboardHero, type Period } from "@/components/kane/DashboardHero";
+import { type Period } from "@/components/kane/DashboardHero";
 import { AccountCardCarousel } from "@/components/kane/AccountCardCarousel";
 import { useAccountBalances } from "@/hooks/use-account-balances";
-import { StatTrendCard } from "@/components/kane/StatTrendCard";
 import {
   MobileTodayCard,
   ExpenseSubline,
@@ -866,6 +865,69 @@ function DesktopTipBar() {
   );
 }
 
+// ─── SummaryCell ──────────────────────────────────────────────────────────
+// Una celda de la SummaryBar del dashboard desktop. Tres celdas en fila
+// reemplazan al hero gigante + 2 StatTrendCard del layout previo:
+// Ingresos / Gastos / Balance del mes, con un delta opcional vs el mes
+// anterior (mismo dato que alimentaba a StatTrendCard, sin sparkline).
+//
+// `deltaInverted`: cuando un delta positivo significa MAL (gastos subieron),
+// invertimos la flecha+color para que verde siempre lea "buen camino".
+function SummaryCell({
+  label,
+  amount,
+  currency,
+  tone,
+  delta,
+  deltaInverted = false,
+  showSign = false,
+}: {
+  label: string;
+  amount: number;
+  currency: Currency;
+  tone: "default" | "positive" | "negative";
+  delta?: number | null;
+  deltaInverted?: boolean;
+  showSign?: boolean;
+}) {
+  const hasDelta = typeof delta === "number" && Number.isFinite(delta) && delta !== 0;
+  const deltaUp = (delta ?? 0) > 0;
+  // "buen" = verde, "mal" = rojo. Para ingresos un delta positivo es bueno;
+  // para gastos un delta positivo es malo (deltaInverted = true).
+  const deltaIsGood = deltaInverted ? !deltaUp : deltaUp;
+  const deltaColor = deltaIsGood
+    ? "text-[oklch(0.45_0.16_162)] dark:text-[oklch(0.85_0.14_162)]"
+    : "text-destructive";
+  const DeltaIcon = deltaUp ? TrendingUp : TrendingDown;
+  return (
+    <div className="flex flex-col gap-1.5 px-6 py-5">
+      <span className="text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <MoneyDisplay
+        amount={amount}
+        currency={currency}
+        size="md"
+        tone={tone}
+        showSign={showSign}
+      />
+      {hasDelta ? (
+        <span className={cn("inline-flex items-center gap-1 text-[12px] font-medium", deltaColor)}>
+          <DeltaIcon size={13} aria-hidden />
+          <span className="tabular-nums" style={{ fontFeatureSettings: '"tnum","lnum"' }}>
+            {Math.abs(delta as number) >= 1
+              ? `${Math.round((delta as number) * 100)}%`
+              : `${((delta as number) * 100).toFixed(0)}%`}
+          </span>
+          <span className="text-muted-foreground font-normal">vs mes anterior</span>
+        </span>
+      ) : (
+        <span className="text-[12px] text-muted-foreground">&nbsp;</span>
+      )}
+    </div>
+  );
+}
+
 // ─── Budgets / Goals dashboard sections ──────────────────────────────────
 //
 // Both features now live in Supabase (tables `budgets` / `goals`, RLS-scoped;
@@ -1621,9 +1683,11 @@ export default function DashboardPage() {
   // dividirlo entre 30 días). Saldo es la métrica honesta del estado.
   // Period is locked to "month" — the today/week pills were dropping users
   // onto an empty Saldo (no movements today / this week) which felt broken.
-  // The hero now always reflects the current month total. setPeriod is kept
-  // for the DashboardHero prop signature but never invoked.
-  const [period, setPeriod] = React.useState<Period>("month");
+  // The hero (mobile) now always reflects the current month total.
+  // Desktop redesign neobank-style retiró el DashboardHero por completo;
+  // dejamos `period` como `Period` (no narrow literal) para que el switch
+  // dentro de heroNumbers/dateRangeLabel siga compilando sin tocar mobile.
+  const period = "month" as Period;
 
   const heroNumbers = React.useMemo(() => {
     const now = new Date();
@@ -1722,17 +1786,6 @@ export default function DashboardPage() {
         : `, ${monday.getFullYear()} / ${sunday.getFullYear()}`;
     return `${monday.getDate()} ${shortMonth(monday)} - ${sunday.getDate()} ${shortMonth(sunday)}${yearLabel}`;
   }, [period]);
-
-  // Series para los sparklines de StatTrendCard — 6 meses de monthTotals.
-  const expenseSeries = React.useMemo(() => {
-    if (isDemo) return [40, 95, 30, 110, 50, 100, 25, 90, 60, 105, 35, 80];
-    return window.monthTotals.map((b) => b.spent);
-  }, [isDemo, window.monthTotals]);
-
-  const incomeSeries = React.useMemo(() => {
-    if (isDemo) return [60, 35, 75, 40, 70, 45, 80, 38, 72, 42, 68, 50];
-    return window.monthTotals.map((b) => b.income);
-  }, [isDemo, window.monthTotals]);
 
   // ── Mobile MobileTodayCard data ───────────────────────────────────────
   // Today expense snapshot: total spent today + the latest expense row,
@@ -2154,106 +2207,133 @@ export default function DashboardPage() {
 
                 </div>
 
-                {/* ─── DESKTOP LAYOUT ─────────────────────────────────── */}
-                <div className="hidden md:flex md:flex-col md:gap-5 md:mt-5">
-                  {/* ROW 1: Hero + StatTrend x2 */}
-                  <div className="grid grid-cols-[2fr_1fr_1fr] gap-5 items-stretch">
-                    <DashboardHero
-                      period={period}
-                      onPeriodChange={setPeriod}
-                      spent={heroNumbers.spent}
-                      saldo={heroNumbers.saldo}
-                      currency={currency}
-                      // Mismo tema que la AccountCard del carousel mobile —
-                      // resuelve la cuenta del chip activo y, como fallback,
-                      // la primera de la moneda actual (mismo criterio que
-                      // el efecto de selección por defecto). Sin esto el
-                      // hero quedaba siempre verde primary aunque el chip
-                      // dijera "Yape" / "BBVA".
-                      account={
-                        accounts.find((a) => a.id === selectedAccountId) ??
-                        carouselAccounts[0] ??
-                        null
-                      }
-                    />
-                    <StatTrendCard
-                      kind="expense"
-                      amount={spent}
-                      delta={isDemo ? 0.12 : window.spentDeltaVsPrevMonth}
-                      comparedTo="el mes anterior"
-                      series={expenseSeries}
-                      currency={currency}
-                    />
-                    <StatTrendCard
-                      kind="income"
-                      amount={income}
-                      delta={isDemo ? 0.08 : window.incomeDeltaVsPrevMonth}
-                      comparedTo="el mes anterior"
-                      series={incomeSeries}
-                      currency={currency}
-                    />
-                  </div>
+                {/* ─── DESKTOP LAYOUT — neobank-style (Yape / Nubank / Interbank) ─
+                    Estructura:
+                      1) AccountCardCarousel — tarjetas con gradiente del banco
+                      2) SummaryBar — barra fina con 3 KPIs (Ingresos / Gastos / Balance)
+                      3) QuickActions — FAB primario + 4 acciones secundarias
+                      4) Grid 3-col → Movimientos (col-span-2) + Donut/Advisor/Budgets/Goals (col-span-1)
+                      5) Tip bar
+                    Todas las hooks de datos (useTransactionsWindow,
+                    useAccountBalances, useAccountStats) quedan intactas. */}
+                <div className="hidden md:flex md:flex-col md:gap-6 md:mt-6">
+                  {/* ROW 1 — AccountCardCarousel.
+                      Mismo componente que mobile; lo restringimos a max-w-[640px]
+                      para que la tarjeta mantenga su aspect-ratio de tarjeta
+                      bancaria y no se estire por todo el viewport en lg+. */}
+                  {carouselAccounts.length > 0 && (
+                    <div className="w-full max-w-[640px]">
+                      <AccountCardCarousel
+                        accounts={carouselAccounts}
+                        balances={carouselBalances}
+                        currency={currency}
+                        loading={!accountsHydrated}
+                        onActiveAccountChange={setSelectedAccountId}
+                      />
+                    </div>
+                  )}
 
-                  {/* ROW 2: Quick actions */}
-                  <Card className="rounded-2xl border-border px-6 py-4">
-                    <div className="flex items-center justify-around">
-                      <button
-                        type="button"
-                        onClick={() => router.push("/capture")}
-                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
-                      >
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105 group-active:scale-95">
-                          <Plus size={22} aria-hidden strokeWidth={2.5} />
-                        </span>
-                        <span className="text-[12px] font-medium text-foreground">Agregar gasto</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/capture")}
-                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
-                      >
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
-                          <TrendingUp size={20} aria-hidden />
-                        </span>
-                        <span className="text-[12px] font-medium text-foreground">Agregar ingreso</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toast.info("Transferencias próximamente")}
-                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
-                      >
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
-                          <ArrowLeftRight size={20} aria-hidden />
-                        </span>
-                        <span className="text-[12px] font-medium text-foreground">Transferir</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toast.info("Presupuestos próximamente")}
-                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
-                      >
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
-                          <PieChart size={20} aria-hidden />
-                        </span>
-                        <span className="text-[12px] font-medium text-foreground">Crear presupuesto</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/insights")}
-                        className="flex flex-col items-center gap-2 group focus-visible:outline-none"
-                      >
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
-                          <BarChart2 size={20} aria-hidden />
-                        </span>
-                        <span className="text-[12px] font-medium text-foreground">Ver reportes</span>
-                      </button>
+                  {/* ROW 2 — SummaryBar.
+                      Barra horizontal compacta con 3 KPIs separados por
+                      borders verticales. Reemplaza al hero gigante + 2
+                      StatTrendCard del layout previo: la información clave
+                      (ingreso/gasto/balance del mes + delta vs mes anterior)
+                      se condensa en una sola fila legible. */}
+                  <Card className="rounded-2xl border-border p-0 overflow-hidden">
+                    <div className="grid grid-cols-3 divide-x divide-border">
+                      <SummaryCell
+                        label="Ingresos del mes"
+                        amount={income}
+                        currency={currency}
+                        tone="positive"
+                        delta={isDemo ? 0.08 : window.incomeDeltaVsPrevMonth}
+                      />
+                      <SummaryCell
+                        label="Gastos del mes"
+                        amount={spent}
+                        currency={currency}
+                        tone="negative"
+                        delta={isDemo ? 0.12 : window.spentDeltaVsPrevMonth}
+                        deltaInverted
+                      />
+                      <SummaryCell
+                        label="Balance del mes"
+                        amount={income - spent}
+                        currency={currency}
+                        tone="default"
+                        showSign
+                      />
                     </div>
                   </Card>
 
-                  {/* ROW 3: Transacciones (3fr) + columna derecha (2fr) */}
-                  <div className="grid grid-cols-[3fr_2fr] gap-5 items-start">
-                    {/* Últimos movimientos — desktop */}
-                    <Card className="rounded-2xl border-border p-0">
+                  {/* ROW 3 — QuickActions.
+                      FAB primario "+ Agregar gasto" prominente (h-14 w-14)
+                      separado por divider vertical de las 4 acciones
+                      secundarias. Mismo set de acciones que antes; solo
+                      cambia la jerarquía visual para que la acción más
+                      común sobresalga. */}
+                  <Card className="rounded-2xl border-border px-6 py-5">
+                    <div className="flex items-center gap-6">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/capture")}
+                        className="flex items-center gap-3 group focus-visible:outline-none"
+                      >
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform group-hover:scale-105 group-active:scale-95">
+                          <Plus size={26} aria-hidden strokeWidth={2.5} />
+                        </span>
+                        <span className="text-[14px] font-semibold text-foreground">Agregar gasto</span>
+                      </button>
+                      <div className="h-12 w-px bg-border" aria-hidden />
+                      <div className="flex flex-1 items-center justify-around">
+                        <button
+                          type="button"
+                          onClick={() => router.push("/capture")}
+                          className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                        >
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                            <TrendingUp size={20} aria-hidden />
+                          </span>
+                          <span className="text-[12px] font-medium text-foreground">Agregar ingreso</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toast.info("Transferencias próximamente")}
+                          className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                        >
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                            <ArrowLeftRight size={20} aria-hidden />
+                          </span>
+                          <span className="text-[12px] font-medium text-foreground">Transferir</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => router.push("/budgets")}
+                          className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                        >
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                            <PieChart size={20} aria-hidden />
+                          </span>
+                          <span className="text-[12px] font-medium text-foreground">Crear presupuesto</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => router.push("/insights")}
+                          className="flex flex-col items-center gap-2 group focus-visible:outline-none"
+                        >
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition-transform group-hover:scale-105 group-active:scale-95">
+                            <BarChart2 size={20} aria-hidden />
+                          </span>
+                          <span className="text-[12px] font-medium text-foreground">Ver reportes</span>
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* ROW 4 — Grid 3-col: Movimientos (col-span-2) + columna derecha. */}
+                  <div className="md:grid md:grid-cols-3 md:gap-6 items-start">
+                    {/* Últimos movimientos — col-span-2 */}
+                    <Card className="rounded-2xl border-border p-0 md:col-span-2">
                       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                         <span className="text-[15px] font-semibold text-foreground">Últimos movimientos</span>
                         <Link
@@ -2294,8 +2374,8 @@ export default function DashboardPage() {
                       </div>
                     </Card>
 
-                    {/* Columna derecha: Donut + Advisor + Budgets + Goals */}
-                    <div className="flex flex-col gap-5">
+                    {/* Columna derecha — col-span-1: Donut + Advisor + Budgets + Goals */}
+                    <div className="flex flex-col gap-6 md:col-span-1">
                       <CategoryDonut
                         variant="full"
                         items={donutItems}
