@@ -26,6 +26,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  ArrowLeftRight,
   Camera,
   Delete,
   UtensilsCrossed,
@@ -73,6 +74,7 @@ import {
 } from "@/lib/data/categories";
 import {
   createTransaction,
+  createTransfer,
   getTransactionById,
   updateTransaction,
   MAX_TRANSACTION_AMOUNT,
@@ -105,7 +107,15 @@ const SUPABASE_ENABLED =
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
-type Kind = "expense" | "income";
+/**
+ * UI-side mode for the capture screen. `transfer` is a third pseudo-kind
+ * that doesn't map to `TransactionKind` directly — at save time it
+ * fans out into TWO transactions (an expense on the source + an income
+ * on the destination, linked by a shared `transfer_group_id`). When the
+ * mode is `transfer`, callers should branch BEFORE building a normal
+ * `TransactionDraft` and use `createTransfer` instead.
+ */
+type Kind = "expense" | "income" | "transfer";
 
 // Category IDs are opaque strings — uuid in real mode, the mock keys in demo.
 type CategoryId = string;
@@ -576,6 +586,18 @@ function CapturePageInner() {
   // time — the `transactions.merchant_id` column is nullable.
   const [merchantId, setMerchantId] = React.useState<string | null>(null);
 
+  // Transfer destination account. Only relevant when `kind === "transfer"`;
+  // the source side reuses the existing `accountId` state so the keypad +
+  // saldo guards keep working uniformly. Picker drawer opens via
+  // `transferDestDrawerOpen`. `null` while the user hasn't picked yet —
+  // an effect below auto-selects the first compatible account when
+  // entering transfer mode (or after a currency / source change).
+  const [transferDestAccountId, setTransferDestAccountId] = React.useState<
+    AccountId | null
+  >(null);
+  const [transferDestDrawerOpen, setTransferDestDrawerOpen] =
+    React.useState(false);
+
   // Tx date — currently always "today" since the picker chip was
   // removed per UX feedback. Kept as state (not a constant) so the
   // existing save path still passes it through, and so we can
@@ -662,7 +684,12 @@ function CapturePageInner() {
       ? null
       : kind === "expense"
         ? currentBalance - amount
-        : currentBalance + amount;
+        : kind === "transfer"
+          // Transfer drains the source account just like an expense does;
+          // the chip in transfer mode points at the source so this is the
+          // correct projection for the user.
+          ? currentBalance - amount
+          : currentBalance + amount;
   // Saldo overdraft is handled by a HARD BLOCK at Save time (the
   // 'Saldo insuficiente' Drawer further down). No inline derivations
   // needed at the page level for the previous soft-warning chip.
@@ -686,6 +713,14 @@ function CapturePageInner() {
       if (!currentMatches) {
         setCategoryId(incomeCategories[0]?.id ?? null);
       }
+    } else if (kind === "transfer") {
+      // Transfers don't carry a merchant nor a category — both legs are
+      // booked against the user's own accounts, so clear merchantId so a
+      // later toggle back to expense doesn't resurrect a stale pick that
+      // doesn't belong to whatever category the user lands on. categoryId
+      // is left as-is; if the user toggles back to expense it stays
+      // valid (still an expense category).
+      if (merchantId !== null) setMerchantId(null);
     } else {
       const currentIsIncome = categories.find(
         (c) => c.id === categoryId && c.defaultKind === "income",
@@ -695,12 +730,42 @@ function CapturePageInner() {
           (c) => c.defaultKind === "expense",
         );
         setCategoryId(firstExpense?.id ?? null);
+      } else if (categoryId === null && categories.length > 0) {
+        // Coming back from transfer mode (or first paint) with no
+        // category picked — seed a default so the user doesn't have
+        // to open the picker before saving. Same heuristic as the
+        // initial-load branch.
+        const firstExpense = categories.find(
+          (c) => c.defaultKind === "expense",
+        );
+        if (firstExpense) setCategoryId(firstExpense.id);
       }
     }
     // We only react to kind / categories changes; the *Id reads inside the
     // body are intentional reconcile inputs and converge in a single pass.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, categories]);
+
+  // Transfer-mode destination defaulting + sanity check. Whenever:
+  //   - the user enters transfer mode, OR
+  //   - the source account flips, OR
+  //   - the active currency changes (which can hide the previous dest),
+  // pick the first OTHER active account in the same currency as a sensible
+  // default. If the previously-selected dest is no longer valid (same as
+  // source, archived, or wrong currency), clear it — the picker forces an
+  // explicit pick when there's no fallback.
+  React.useEffect(() => {
+    if (kind !== "transfer") return;
+    const candidates = accounts.filter(
+      (a) => a.currency === currency && a.id !== accountId,
+    );
+    const currentValid =
+      transferDestAccountId &&
+      candidates.some((a) => a.id === transferDestAccountId);
+    if (!currentValid) {
+      setTransferDestAccountId(candidates[0]?.id ?? null);
+    }
+  }, [kind, accounts, currency, accountId, transferDestAccountId]);
 
   // `account` may be null briefly while we wait for the first fetch tick.
   // The picker chip shows a skeleton in that window; downstream consumers
@@ -806,11 +871,9 @@ function CapturePageInner() {
   const handleSave = React.useCallback(async () => {
     if (!ready || submitting || hydrating) return;
 
-    // Category is mandatory — defense-in-depth in case the FAB is somehow
-    // triggered while categoryId is null (the bus also blocks this via the
-    // `ready` flag, but we mirror it here so the user gets a clear toast
-    // instead of silently saving into "ninguna categoría").
-    if (!categoryId) {
+    // Category is mandatory ONLY for expense / income — transfers don't
+    // attach to a category at all (both legs go in with category_id null).
+    if (kind !== "transfer" && !categoryId) {
       toast.error("Elige una categoría antes de guardar.");
       return;
     }
@@ -828,7 +891,16 @@ function CapturePageInner() {
 
     // Demo mode (no Supabase): keep the legacy success-banner behaviour so
     // the UI is still demo-able without env vars. Reset + delayed nav.
+    // Transfers are intentionally skipped in demo mode — the inline mock
+    // accounts have no balance state, so there's nothing meaningful to
+    // simulate. Show a friendly message instead of half-faking it.
     if (!SUPABASE_ENABLED) {
+      if (kind === "transfer") {
+        toast.error(
+          "Las transferencias requieren conexión con la base de datos.",
+        );
+        return;
+      }
       const ts = Date.now();
       setSaved({ ts });
       setAmountBuffer("");
@@ -857,7 +929,53 @@ function CapturePageInner() {
       toast.error("Sin conexión — podrás guardar cuando vuelva la red.");
       return;
     }
-    if (amount <= 0 || !categoryId) {
+    if (amount <= 0) {
+      toast.error("Completa monto y categoría para guardar.");
+      return;
+    }
+
+    // ── Transfer branch ─────────────────────────────────────────────
+    // Transfers run their own validation pipeline (createTransfer
+    // enforces same-currency + saldo). We skip the expense saldo guard
+    // and the no-account-yet "modal-on-check" flow because the transfer
+    // panel surfaces both pickers inline — the user always sees them.
+    if (kind === "transfer") {
+      if (!accountId) {
+        toast.error("Selecciona la cuenta de origen.");
+        return;
+      }
+      if (!transferDestAccountId) {
+        toast.error("Selecciona la cuenta de destino.");
+        return;
+      }
+      if (accountId === transferDestAccountId) {
+        toast.error("La cuenta de origen y la de destino deben ser distintas.");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await createTransfer({
+          sourceAccountId: accountId,
+          destAccountId: transferDestAccountId,
+          amount,
+          currency,
+          note: note.trim() ? note.trim() : null,
+        });
+        setActiveAccountId(accountId);
+        router.refresh();
+        router.push("/dashboard");
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "No pudimos completar la transferencia.",
+        );
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!categoryId) {
       toast.error("Completa monto y categoría para guardar.");
       return;
     }
@@ -958,6 +1076,7 @@ function CapturePageInner() {
     online,
     categoryId,
     accountId,
+    transferDestAccountId,
     amount,
     balances,
     balancesLoaded,
@@ -992,11 +1111,19 @@ function CapturePageInner() {
   // "Guardar gasto" button used (`!ready || submitting || hydrating || !online`),
   // so the FAB visually matches the same enabled/disabled state.
   React.useEffect(() => {
-    // Category is MANDATORY — a transaction with no category lands in
-    // "ninguna categoría" which breaks reporting. Force the user to pick
-    // before the FAB ✓ becomes active.
+    // Category is mandatory for expense / income (a transaction with no
+    // category lands in "ninguna categoría" which breaks reporting). For
+    // transfer the gating is different: source + destination must be
+    // picked and they must be distinct. Both branches share the
+    // amount > 0 / not-submitting / online preconditions.
+    const baseReady = !submitting && !hydrating && online && amount > 0;
     const ready =
-      !submitting && !hydrating && online && amount > 0 && categoryId !== null;
+      kind === "transfer"
+        ? baseReady &&
+          accountId !== null &&
+          transferDestAccountId !== null &&
+          accountId !== transferDestAccountId
+        : baseReady && categoryId !== null;
     captureActionBus.setSaveHandler(() => {
       handleSave();
     }, ready);
@@ -1005,7 +1132,17 @@ function CapturePageInner() {
       // a stale closure pointing at an unmounted handler.
       captureActionBus.setSaveHandler(null, false);
     };
-  }, [handleSave, submitting, hydrating, online, amount, categoryId]);
+  }, [
+    handleSave,
+    submitting,
+    hydrating,
+    online,
+    amount,
+    categoryId,
+    kind,
+    accountId,
+    transferDestAccountId,
+  ]);
 
   const handlePickCategory = React.useCallback(
     (id: CategoryId) => {
@@ -1041,9 +1178,21 @@ function CapturePageInner() {
     setPinnedCategoryId(null);
   }, [kind]);
 
+  // Compose the destination Account view for the transfer leg's chip and
+  // pickers. Same `availableAccounts` (currency-scoped) but excluding the
+  // source so the user can't pick A → A.
+  const transferDestAccount: Account | null =
+    accounts.find((a) => a.id === transferDestAccountId) ?? null;
+  const transferDestCandidates = React.useMemo(
+    () => availableAccounts.filter((a) => a.id !== accountId),
+    [availableAccounts, accountId],
+  );
+
   const saveAriaLabel = !ready
     ? "Ingrese un monto primero"
-    : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${accountDisplayLabel(account)}` : ""}`;
+    : kind === "transfer"
+      ? `Transferir ${formatMoney(amount, currency)}${selectedAccount ? ` desde ${accountDisplayLabel(selectedAccount)}` : ""}${transferDestAccount ? ` a ${accountDisplayLabel(transferDestAccount)}` : ""}`
+      : `Guardar ${kind === "income" ? "ingreso" : "gasto"} de ${formatMoney(amount, currency)}${category ? ` en ${category.label}` : ""}${account ? `, cuenta ${accountDisplayLabel(account)}` : ""}`;
 
   // Inline-abono confirm. Records an income transaction against the same
   // account the saldo modal was triggered for, refreshes the balances map
@@ -1132,12 +1281,17 @@ function CapturePageInner() {
             <ArrowLeft size={20} aria-hidden="true" />
           </button>
 
-          {/* Kind toggle — promoted to the title slot. Bigger pill, more
-              presence; this is the page's headline. */}
+          {/* Kind toggle — three-way pill: Gasto · Ingreso · Transferencia.
+              Edit mode only flips between expense / income (transferring an
+              existing single-leg row would be ill-defined), so the third
+              chip is hidden when `editId` is set. Sized down vs the
+              previous two-button layout (text-sm + min-w-0 + flex-1) so
+              the third chip fits on a 360px-wide viewport without
+              wrapping or pushing the back / camera icons off-screen. */}
           <div
             role="radiogroup"
             aria-label="Tipo de movimiento"
-            className="mx-auto inline-flex h-12 items-center gap-0.5 rounded-full bg-muted p-1"
+            className="mx-auto inline-flex h-12 max-w-[280px] flex-1 items-center gap-0.5 rounded-full bg-muted p-1"
           >
             <button
               type="button"
@@ -1145,7 +1299,7 @@ function CapturePageInner() {
               aria-checked={kind === "expense"}
               onClick={() => setKind("expense")}
               className={cn(
-                "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
+                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
                   ? "bg-red-500/15 text-red-700 shadow-[var(--shadow-xs)] dark:bg-red-500/25 dark:text-red-200"
@@ -1160,7 +1314,7 @@ function CapturePageInner() {
               aria-checked={kind === "income"}
               onClick={() => setKind("income")}
               className={cn(
-                "inline-flex h-10 min-w-[110px] items-center justify-center rounded-full text-base font-semibold transition-colors",
+                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
                   ? "bg-emerald-500/15 text-emerald-700 shadow-[var(--shadow-xs)] dark:bg-emerald-500/25 dark:text-emerald-200"
@@ -1169,6 +1323,24 @@ function CapturePageInner() {
             >
               Ingreso
             </button>
+            {!editId && (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={kind === "transfer"}
+                onClick={() => setKind("transfer")}
+                className={cn(
+                  "inline-flex h-10 flex-1 items-center justify-center gap-1 rounded-full px-2 text-sm font-semibold transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  kind === "transfer"
+                    ? "bg-sky-500/15 text-sky-700 shadow-[var(--shadow-xs)] dark:bg-sky-500/25 dark:text-sky-200"
+                    : "text-muted-foreground",
+                )}
+              >
+                <ArrowLeftRight size={14} aria-hidden />
+                <span>Transfer.</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -1262,7 +1434,12 @@ function CapturePageInner() {
           )}
 
           {/* Account chip — inline, with projected balance hint. Tapping
-              opens the existing accountDrawer (full picker). */}
+              opens the existing accountDrawer (full picker).
+              In transfer mode the label flips to "De" (the source account)
+              and a sibling "A" chip is rendered just below for the
+              destination. The amount the user typed is the gross drained
+              from De; we keep the existing "Te queda" hint logic so the
+              user sees exactly what stays in source after the transfer. */}
           <button
             type="button"
             onClick={() => setAccountDrawerOpen(true)}
@@ -1273,8 +1450,10 @@ function CapturePageInner() {
             )}
             aria-label={
               selectedAccount
-                ? `Cambiar cuenta. Actual: ${selectedAccount.label}`
-                : "Elige una cuenta"
+                ? `${kind === "transfer" ? "Cambiar cuenta de origen" : "Cambiar cuenta"}. Actual: ${selectedAccount.label}`
+                : kind === "transfer"
+                  ? "Elige la cuenta de origen"
+                  : "Elige una cuenta"
             }
           >
             <span
@@ -1285,10 +1464,14 @@ function CapturePageInner() {
             </span>
             <div className="min-w-0 flex-1 text-left">
               <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
-                Cuenta
+                {kind === "transfer" ? "De" : "Cuenta"}
               </p>
               <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
-                {selectedAccount ? selectedAccount.label : "Elige una cuenta"}
+                {selectedAccount
+                  ? selectedAccount.label
+                  : kind === "transfer"
+                    ? "Elige la cuenta de origen"
+                    : "Elige una cuenta"}
               </p>
             </div>
             {/* "Te queda" hint — only when the projection is strictly
@@ -1312,6 +1495,51 @@ function CapturePageInner() {
               aria-hidden
             />
           </button>
+
+          {/* Transfer destination chip — only rendered while the user is
+              in transfer mode. Reuses the same visual rhythm as the source
+              chip above so the pair reads as a "De → A" stack. Tapping
+              opens its own drawer (`transferDestDrawerOpen`) which lists
+              ONLY accounts in the active currency that are not the
+              source. */}
+          {kind === "transfer" && (
+            <button
+              type="button"
+              onClick={() => setTransferDestDrawerOpen(true)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2",
+                "transition-colors hover:bg-muted",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              )}
+              aria-label={
+                transferDestAccount
+                  ? `Cambiar cuenta de destino. Actual: ${transferDestAccount.label}`
+                  : "Elige la cuenta de destino"
+              }
+            >
+              <span
+                aria-hidden
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+              >
+                <ArrowLeftRight size={15} />
+              </span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
+                  A
+                </p>
+                <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
+                  {transferDestAccount
+                    ? transferDestAccount.label
+                    : "Elige la cuenta de destino"}
+                </p>
+              </div>
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+            </button>
+          )}
 
           {/* Date chip removed per user request — backfilling past
               dates was a low-frequency need. The state + helpers stay
@@ -1482,7 +1710,15 @@ function CapturePageInner() {
             type="button"
             onClick={() => void handleSave()}
             disabled={
-              !ready || submitting || hydrating || !online || !categoryId
+              !ready ||
+              submitting ||
+              hydrating ||
+              !online ||
+              (kind === "transfer"
+                ? !accountId ||
+                  !transferDestAccountId ||
+                  accountId === transferDestAccountId
+                : !categoryId)
             }
             aria-label={saveAriaLabel}
             className={cn(
@@ -1503,8 +1739,12 @@ function CapturePageInner() {
             )}
             <span>
               {submitting
-                ? "Guardando…"
-                : `Guardar ${kind === "income" ? "ingreso" : "gasto"}`}
+                ? kind === "transfer"
+                  ? "Transfiriendo…"
+                  : "Guardando…"
+                : kind === "transfer"
+                  ? "Confirmar transferencia"
+                  : `Guardar ${kind === "income" ? "ingreso" : "gasto"}`}
             </span>
           </button>
         </div>
@@ -1975,6 +2215,117 @@ function CapturePageInner() {
                   </span>
                 </button>
               </li>
+            )}
+          </ul>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Transfer destination drawer — only mounted when the user is in
+          transfer mode and taps the "A" chip. Mirrors the source picker
+          visually but its candidate list is restricted: same currency
+          AND not the source account. We keep the drawer instance light
+          (no balances column) — the user already sees the source's
+          balance on the De chip; for destination, what matters is the
+          identity, not the running total. */}
+      <Drawer
+        open={transferDestDrawerOpen}
+        onOpenChange={setTransferDestDrawerOpen}
+      >
+        <DrawerContent
+          aria-describedby="capture-transfer-dest-desc"
+          className="bg-background"
+        >
+          <DrawerHeader>
+            <DrawerTitle className="font-sans not-italic text-base font-semibold">
+              Cuenta de destino
+            </DrawerTitle>
+            <DrawerDescription id="capture-transfer-dest-desc">
+              Elige la cuenta donde se acreditará la transferencia.
+            </DrawerDescription>
+          </DrawerHeader>
+          <ul className="flex max-h-[65vh] flex-col gap-1 overflow-y-auto overscroll-contain px-2 pb-6">
+            {accountsLoading ? (
+              [0, 1, 2].map((i) => (
+                <li key={i}>
+                  <div className="flex h-16 w-full items-center gap-3 rounded-2xl px-3">
+                    <Skeleton className="h-9 w-9 flex-shrink-0 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="block h-3.5 w-1/3 rounded" />
+                      <Skeleton className="block h-3 w-1/4 rounded" />
+                    </div>
+                  </div>
+                </li>
+              ))
+            ) : transferDestCandidates.length === 0 ? (
+              <li className="py-6 text-center text-[13px] text-muted-foreground">
+                No tienes otra cuenta en {CURRENCY_LABEL[currency]} para
+                transferir. Crea una en Ajustes.
+              </li>
+            ) : (
+              transferDestCandidates.map((a) => {
+                const Icon = a.Icon;
+                const selected = transferDestAccountId === a.id;
+                const kindLabel =
+                  a.kind === "cash"
+                    ? "Efectivo"
+                    : a.kind === "card"
+                      ? "Tarjeta"
+                      : a.kind === "yape"
+                        ? "Yape"
+                        : a.kind === "plin"
+                          ? "Plin"
+                          : "Cuenta bancaria";
+                return (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTransferDestAccountId(a.id);
+                        setTransferDestDrawerOpen(false);
+                      }}
+                      aria-pressed={selected}
+                      aria-label={`${accountDisplayLabel(a)}, ${kindLabel}`}
+                      className={cn(
+                        "flex h-16 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        selected
+                          ? "bg-muted ring-1 ring-foreground/15"
+                          : "hover:bg-muted",
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+                          accountChipBgClass(a.label),
+                        )}
+                      >
+                        <AccountBrandIcon
+                          label={a.label}
+                          fallback={<Icon size={16} />}
+                          size={20}
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-semibold">
+                          {accountDisplayLabel(a)}
+                        </span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {kindLabel}
+                        </span>
+                      </span>
+                      {selected ? (
+                        <Check
+                          size={14}
+                          aria-hidden="true"
+                          strokeWidth={2.5}
+                          className="text-foreground"
+                        />
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })
             )}
           </ul>
         </DrawerContent>

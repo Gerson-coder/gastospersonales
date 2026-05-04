@@ -40,6 +40,7 @@ import {
   Briefcase,
   Circle,
   ArrowLeft,
+  ArrowLeftRight,
   X,
   Loader2,
   AlertCircle,
@@ -347,6 +348,20 @@ function TransactionRow({
   const sign = signed < 0 ? "– " : isIncome ? "+ " : "";
   const moneyText = `${sign}${formatMoney(Math.abs(signed), t.currency)}`;
 
+  // Transfer rows get a dedicated visual treatment so the user can tell
+  // them apart at a glance from a regular expense / income against an
+  // external party. The two legs (source = expense, dest = income) of
+  // the same transfer share a `transferGroupId` — we still render them
+  // as two separate rows in the timeline (kept simple per the design
+  // brief), but with:
+  //   - an `ArrowLeftRight` icon instead of a merchant logo / category
+  //     icon, so the eye groups them visually,
+  //   - a title that reads "Transferencia enviada" or "Transferencia
+  //     recibida" so the kind is unambiguous,
+  //   - the account NAME on the second line (subtitle) so the user can
+  //     still tell which side of the transfer this row represents.
+  const isTransfer = t.transferGroupId !== null;
+
   // Title language matches /dashboard rows:
   //   - Income: account name leads (the deposit's "where", more useful
   //     than the dim "Ahorro" category).
@@ -354,10 +369,19 @@ function TransactionRow({
   // Subtitle is the friendly relative date so the user always sees WHEN.
   const merchantOrCategory =
     t.merchantName ?? (t.categoryName ? t.categoryName : "Sin nombre");
-  const titleText = isIncome
-    ? (t.accountName ?? merchantOrCategory)
-    : merchantOrCategory;
-  const subtitle = formatTxDate(t.occurredAt);
+  const titleText = isTransfer
+    ? isIncome
+      ? "Transferencia recibida"
+      : "Transferencia enviada"
+    : isIncome
+      ? (t.accountName ?? merchantOrCategory)
+      : merchantOrCategory;
+  // Subtitle: for transfers we lead with the account name + date so the
+  // user can scan the two legs and see which account they touched. For
+  // regular rows we keep the existing relative-date-only subtitle.
+  const dateLabel = formatTxDate(t.occurredAt);
+  const subtitle =
+    isTransfer && t.accountName ? `${t.accountName} · ${dateLabel}` : dateLabel;
 
   const ariaLabel = `${titleText}, ${moneyText}, ${subtitle}`;
 
@@ -370,7 +394,17 @@ function TransactionRow({
       style={{ WebkitTouchCallout: "none" }}
       {...longPressHandlers}
     >
-      {isIncome && t.accountName ? (
+      {isTransfer ? (
+        // Transfers don't belong to a merchant or a real expense category,
+        // so we use a neutral "↔" icon on a muted chip. The same icon
+        // appears on both legs; the title disambiguates direction.
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]"
+        >
+          <ArrowLeftRight size={16} />
+        </span>
+      ) : isIncome && t.accountName ? (
         // Income rows lead with the account NAME — the icon should be the
         // account's brand logo (BCP, Interbank, Yape, Plin...) rather
         // than a generic category icon. Falls back to Landmark when the

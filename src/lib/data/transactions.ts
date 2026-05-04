@@ -93,6 +93,14 @@ export type TransactionView = {
   accountName: string | null;
   note: string | null;
   occurredAt: string;
+  /**
+   * When non-null, this row is one leg (expense or income) of an
+   * inter-account transfer. The matching counterpart row carries the
+   * same uuid. UI uses this as a flag to render the row with transfer
+   * affordances (icon, "Transferencia" label) instead of merchant /
+   * category framing.
+   */
+  transferGroupId: string | null;
 };
 
 /** Form-side draft from /capture. `occurredAt` defaults to server `now()`. */
@@ -160,6 +168,7 @@ export function toView(row: TransactionRow): TransactionView {
     accountName: row.accounts?.name ?? null,
     note: row.note,
     occurredAt: row.occurred_at,
+    transferGroupId: row.transfer_group_id,
   };
 }
 
@@ -553,6 +562,212 @@ export async function archiveAllUserTransactions(): Promise<number> {
     throw new Error(error.message || "No pudimos restablecer los movimientos.");
   }
   return (data ?? []).length;
+}
+
+// ─── Transfers ────────────────────────────────────────────────────────────
+
+/** Args for `createTransfer`. Same-currency only in v1 (see body). */
+export type CreateTransferInput = {
+  sourceAccountId: string;
+  destAccountId: string;
+  amount: number;
+  currency: Currency;
+  /** Optional ISO timestamp; defaults to DB `now()` on both legs. */
+  occurredAt?: string;
+  /** Optional shared note applied to both legs. */
+  note?: string | null;
+};
+
+/**
+ * Create a transfer between two accounts owned by the current user.
+ *
+ * Implementation: a transfer is two `transactions` rows linked by a shared
+ * `transfer_group_id` uuid. The source-account row is `kind: "expense"` and
+ * the destination-account row is `kind: "income"`. Same currency, same
+ * `occurred_at`, no category, no merchant.
+ *
+ * Atomicity: Supabase / PostgREST does not give us a transactional bundle
+ * for two independent inserts from the client. We insert sequentially and,
+ * if the second leg fails, soft-archive the first leg so the DB stays
+ * consistent (no orphan single-leg "ghost" expense). The RLS policy set
+ * grants UPDATE on own rows, so the rollback path works under normal
+ * permissions. If even the rollback fails (rare — network drop between
+ * the two writes), the user can manually archive the orphan from
+ * /movements.
+ *
+ * Validations (Spanish-neutral copy, surfaced via toasts):
+ *   - both account ids required and distinct
+ *   - amount > 0 and within MAX_TRANSACTION_AMOUNT
+ *   - both accounts must exist (and belong to the current user — RLS
+ *     enforces this anyway, but we check up front to give a clear message)
+ *   - same currency on both accounts (v1 limitation)
+ *   - source balance must cover the amount
+ *
+ * Returns `[expenseRow, incomeRow]` in that order so the caller can
+ * choose which leg to surface (e.g. show "Transferencia enviada" against
+ * the source).
+ */
+export async function createTransfer(
+  opts: CreateTransferInput,
+): Promise<[TransactionView, TransactionView]> {
+  if (!opts.sourceAccountId || !opts.destAccountId) {
+    throw new Error("Selecciona la cuenta de origen y la de destino.");
+  }
+  if (opts.sourceAccountId === opts.destAccountId) {
+    throw new Error("La cuenta de origen y la de destino deben ser distintas.");
+  }
+  if (typeof opts.amount !== "number" || !Number.isFinite(opts.amount)) {
+    throw new Error("El monto no es válido.");
+  }
+  if (opts.amount <= 0) {
+    throw new Error("El monto debe ser mayor a cero.");
+  }
+  if (opts.amount > MAX_TRANSACTION_AMOUNT) {
+    throw new Error(
+      `El monto no puede superar ${MAX_TRANSACTION_AMOUNT.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`,
+    );
+  }
+  if (opts.currency !== "PEN" && opts.currency !== "USD") {
+    throw new Error("Moneda inválida.");
+  }
+
+  const supabase = createSupabaseClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error("Inicia sesión para registrar la transferencia.");
+  }
+
+  // Verify both accounts: existence, ownership (RLS), and currency match.
+  // Two queries instead of one so a missing/foreign id surfaces a precise
+  // message ("origen" vs "destino") instead of a vague "una cuenta no existe".
+  const [{ data: sourceAcc, error: sourceErr }, { data: destAcc, error: destErr }] =
+    await Promise.all([
+      supabase
+        .from("accounts")
+        .select("id, currency, archived_at")
+        .eq("id", opts.sourceAccountId)
+        .is("archived_at", null)
+        .maybeSingle(),
+      supabase
+        .from("accounts")
+        .select("id, currency, archived_at")
+        .eq("id", opts.destAccountId)
+        .is("archived_at", null)
+        .maybeSingle(),
+    ]);
+
+  if (sourceErr) {
+    throw new Error(sourceErr.message || "No pudimos verificar la cuenta de origen.");
+  }
+  if (destErr) {
+    throw new Error(destErr.message || "No pudimos verificar la cuenta de destino.");
+  }
+  if (!sourceAcc) {
+    throw new Error("La cuenta de origen no existe o no es tuya.");
+  }
+  if (!destAcc) {
+    throw new Error("La cuenta de destino no existe o no es tuya.");
+  }
+  if (sourceAcc.currency !== opts.currency || destAcc.currency !== opts.currency) {
+    throw new Error(
+      "Por ahora solo se permiten transferencias entre cuentas de la misma moneda.",
+    );
+  }
+
+  // Saldo guard — checked against the active currency. `getAccountBalances`
+  // already filters by currency, so we only need to look up the source.
+  const balances = await getAccountBalances(opts.currency);
+  const sourceBalance = balances[opts.sourceAccountId] ?? 0;
+  if (sourceBalance < opts.amount) {
+    throw new Error("La cuenta de origen no tiene saldo suficiente para esta transferencia.");
+  }
+
+  const amountMinor = Math.round(opts.amount * 100);
+  if (amountMinor > BIGINT_MAX) {
+    throw new Error("El monto es demasiado grande para registrarlo.");
+  }
+
+  const transferGroupId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const sharedNote = opts.note?.trim() ? opts.note.trim() : null;
+
+  type TransferLeg = TransactionInsertPayload & { transfer_group_id: string };
+  const expenseLeg: TransferLeg = {
+    user_id: user.id,
+    account_id: opts.sourceAccountId,
+    category_id: null,
+    merchant_id: null,
+    kind: "expense",
+    amount_minor: amountMinor,
+    currency: opts.currency,
+    note: sharedNote,
+    source: "manual",
+    receipt_id: null,
+    transfer_group_id: transferGroupId,
+    ...(opts.occurredAt ? { occurred_at: opts.occurredAt } : {}),
+  };
+  const incomeLeg: TransferLeg = {
+    ...expenseLeg,
+    account_id: opts.destAccountId,
+    kind: "income",
+  };
+
+  // Leg 1 — source / expense.
+  const { data: expenseData, error: expenseErr } = await supabase
+    .from("transactions")
+    .insert(expenseLeg)
+    .select(SELECT_WITH_JOINS)
+    .single();
+
+  if (expenseErr || !expenseData) {
+    throw new Error(
+      expenseErr ? describeWriteError(expenseErr) : "No pudimos registrar la transferencia.",
+    );
+  }
+
+  // Leg 2 — destination / income. Same `occurred_at` to keep both legs
+  // grouped on the day timeline.
+  const expenseRow = expenseData as unknown as TransactionRow;
+  const incomeLegWithTs: TransferLeg = {
+    ...incomeLeg,
+    occurred_at: expenseRow.occurred_at,
+  };
+  const { data: incomeData, error: incomeErr } = await supabase
+    .from("transactions")
+    .insert(incomeLegWithTs)
+    .select(SELECT_WITH_JOINS)
+    .single();
+
+  if (incomeErr || !incomeData) {
+    // Best-effort rollback of leg 1 so the user doesn't end up with a
+    // dangling expense row. Soft-archive (RLS allows UPDATE) — there is
+    // no DELETE policy on `transactions`.
+    try {
+      await supabase
+        .from("transactions")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", expenseRow.id);
+    } catch {
+      // Swallow — we surface the original error to the user below; if
+      // the rollback also fails there's a stranded row in /movements
+      // they can archive manually. Rare.
+    }
+    throw new Error(
+      incomeErr ? describeWriteError(incomeErr) : "No pudimos completar la transferencia.",
+    );
+  }
+
+  emitTxUpserted();
+  return [
+    toView(expenseRow),
+    toView(incomeData as unknown as TransactionRow),
+  ];
 }
 
 /**

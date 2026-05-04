@@ -27,8 +27,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
-  ArrowDownLeft,
-  ArrowUpRight,
   Banknote,
   Camera,
   Check,
@@ -37,9 +35,12 @@ import {
   Image as ImageIcon,
   Landmark,
   Loader2,
+  Lock,
   Maximize2,
   PenLine,
+  Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
   Wallet,
   X,
@@ -87,7 +88,6 @@ import { useAccountBalances } from "@/hooks/use-account-balances";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
-import { CURRENCY_LABEL } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -145,6 +145,25 @@ const INITIAL_CONFIDENCE: ConfidenceMap = {
 };
 
 /**
+ * Result of resolving an OCR-classified source to a user account.
+ *
+ * `matched`     — A real account corresponding to the detected source was
+ *                 found. The caller auto-assigns it AND locks the picker
+ *                 (the photo says "this is Yape" → no reason to let the
+ *                 user pick something else).
+ * `unsupported` — The OCR identified a known source (yape / plin / bbva /
+ *                 bcp) but the user has no account for it. The caller
+ *                 surfaces a fallback CTA "create a {source} account".
+ * `unknown`     — The OCR could not classify the source (or returned
+ *                 something we don't auto-route, e.g. "unknown"). The
+ *                 caller leaves the picker open for the user to pick.
+ */
+type AccountMatchResult =
+  | { kind: "matched"; accountId: string; sourceLabel: string }
+  | { kind: "unsupported"; sourceLabel: string }
+  | { kind: "unknown" };
+
+/**
  * Pick the user's account that best matches the OCR-classified source.
  *
  * Matching strategy — tries in order:
@@ -154,40 +173,47 @@ const INITIAL_CONFIDENCE: ConfidenceMap = {
  *      "BCP Soles" or "BBVA Continental" account gets matched without
  *      a dedicated kind. Multiple needles allow brand variants
  *      (BCP / Crédito, BBVA / Continental).
- *   3. Fallback to the user's first account.
  *
- * Returns null when the user has no accounts at all (caller must handle).
+ * No fallback to the first account: if the OCR says "this is a Yape" but
+ * the user has no Yape, we surface a CTA so they can create one — silently
+ * routing the txn to a Soles checking account would mis-categorise the
+ * movement and erode trust in the OCR flow.
  */
 function suggestAccountIdForSource(
   source: string,
   accounts: Account[],
-): string | null {
-  if (accounts.length === 0) return null;
+): AccountMatchResult {
   const matchByLabel = (...needles: string[]) =>
     accounts.find((a) =>
       needles.some((n) => a.label.toLowerCase().includes(n.toLowerCase())),
     );
 
   let match: Account | undefined;
+  let sourceLabel: string | null = null;
   switch (source) {
     case "yape":
-      match =
-        accounts.find((a) => a.kind === "yape") ?? matchByLabel("yape");
+      match = accounts.find((a) => a.kind === "yape") ?? matchByLabel("yape");
+      sourceLabel = "Yape";
       break;
     case "plin":
-      match =
-        accounts.find((a) => a.kind === "plin") ?? matchByLabel("plin");
+      match = accounts.find((a) => a.kind === "plin") ?? matchByLabel("plin");
+      sourceLabel = "Plin";
       break;
     case "bbva":
       match = matchByLabel("bbva", "continental");
+      sourceLabel = "BBVA";
       break;
     case "bcp":
       match = matchByLabel("bcp", "crédito", "credito");
+      sourceLabel = "BCP";
       break;
     default:
-      match = undefined;
+      return { kind: "unknown" };
   }
-  return (match ?? accounts[0]).id;
+  if (match) {
+    return { kind: "matched", accountId: match.id, sourceLabel };
+  }
+  return { kind: "unsupported", sourceLabel };
 }
 
 /**
@@ -793,12 +819,28 @@ function ReceiptPageInner() {
   const [unprocessableReason, setUnprocessableReason] = React.useState<
     "invalid_image" | "model_failure"
   >("model_failure");
-  // Transaction kind comes from the OCR result (Yape recibido → income,
-  // everything else → expense). The user does NOT edit this in the form;
-  // it travels through to handleAccept untouched.
-  const [transactionKind, setTransactionKind] = React.useState<TransactionKind>(
-    "expense",
-  );
+  // Transaction kind is HARDCODED to "expense" for the receipt flow. If
+  // the user wants to register an income, /capture is the manual path —
+  // /receipt is exclusively for expense tickets so we avoid the OCR
+  // mis-classifying a "Yape recibido" share-screenshot as income and
+  // silently inflating the user's balance. The OCR result's `kind` is
+  // intentionally ignored.
+  const transactionKind: TransactionKind = "expense";
+
+  // When the OCR firmly classifies the receipt source (yape / plin / bbva
+  // / bcp) AND the user has the corresponding account, we auto-assign it
+  // and lock the picker. The string here is the pretty source label
+  // ("Yape", "Plin", "BBVA", "BCP") that the locked row surfaces as info.
+  // null = picker is unlocked (source = unknown, or auto-assign hasn't
+  // resolved yet).
+  const [lockedSourceLabel, setLockedSourceLabel] = React.useState<
+    string | null
+  >(null);
+  // Set when the OCR detected a known source but the user has no
+  // matching account. The form blocks save and surfaces a CTA to create
+  // the missing account. null = no missing-account warning.
+  const [missingAccountSourceLabel, setMissingAccountSourceLabel] =
+    React.useState<string | null>(null);
 
   // Real data loaded from Supabase on mount. Both list calls are gated by
   // SUPABASE_ENABLED inside their respective modules; if env is missing,
@@ -932,31 +974,53 @@ function ReceiptPageInner() {
           setAmount((d.amount.minor / 100).toFixed(2));
           setCurrency(d.amount.currency);
           setOccurredAt(d.occurredAt.slice(0, 10));
-          setTransactionKind(d.kind);
-          // Account suggestion priority:
-          //   1. `destinationApp` from the receipt's "Destino" row —
-          //      this is the wallet the recipient holds, which the
-          //      user often expects to record the txn against (e.g.
-          //      "I Yapeed but it landed in Plin → match Plin").
-          //   2. Fall back to the OCR-classified source (the format
-          //      of the screenshot itself).
+          // transactionKind is hardcoded to "expense" — we ignore d.kind
+          // on purpose (see state declaration above).
+          //
+          // Account auto-assign (firm-source only):
+          //   - Priority 1: `destinationApp` from the receipt's "Destino"
+          //     row (e.g. a Yape with "Destino: Plin" should pre-select
+          //     the user's Plin account — that's where the money landed).
+          //   - Priority 2: the OCR-classified source itself.
+          //   - Confidence floor: < 0.6 → skip auto-assign, let the user
+          //     pick from the drawer (the OCR isn't sure enough to
+          //     override the user's choice).
           const matchKey = d.destinationApp ?? d.source;
-          const suggestion = suggestAccountIdForSource(matchKey, accounts);
-          if (suggestion) setAccountId(suggestion);
+          if (d.confidence >= 0.6 && matchKey !== "unknown") {
+            const result = suggestAccountIdForSource(matchKey, accounts);
+            if (result.kind === "matched") {
+              setAccountId(result.accountId);
+              setLockedSourceLabel(result.sourceLabel);
+              setMissingAccountSourceLabel(null);
+            } else if (result.kind === "unsupported") {
+              // OCR knows the source but the user has no account for it
+              // — surface the create-account CTA and block save.
+              setAccountId(null);
+              setLockedSourceLabel(null);
+              setMissingAccountSourceLabel(result.sourceLabel);
+            } else {
+              // `unknown` — leave the default account selection.
+              setLockedSourceLabel(null);
+              setMissingAccountSourceLabel(null);
+            }
+          } else {
+            // Confidence too low or source = unknown → user picks.
+            setLockedSourceLabel(null);
+            setMissingAccountSourceLabel(null);
+          }
           // We don't infer category from OCR (a Yape can be rent, food,
           // a friend payback, a gift — impossible to guess). Score 0
           // hides the ring entirely so the row reads as a plain
           // "you pick this" field, not a low-confidence guess.
           //
-          // Kind confidence is intentionally a notch lower than the
-          // global score because the OCR can't tell whose phone the
-          // screenshot came from (sent vs shared-by-someone-else).
+          // `kind` confidence is no longer surfaced because the type is
+          // hardcoded to "expense" — the toggle UI is gone.
           setConfidences({
             merchant: d.confidence,
             amount: d.confidence,
             occurred_at: d.confidence,
             suggested_category: 0,
-            kind: Math.min(d.confidence, 0.75),
+            kind: 0,
           });
           setDirty(false);
           setStatus("review");
@@ -974,21 +1038,39 @@ function ReceiptPageInner() {
             setCurrency(p.amount.currency);
           }
           if (p.occurredAt) setOccurredAt(p.occurredAt.slice(0, 10));
-          if (p.kind) setTransactionKind(p.kind);
-          // Same priority as the success branch: Destino wins if
-          // visible, otherwise the screenshot source.
-          const matchKey = p.destinationApp ?? p.source;
-          if (matchKey) {
-            const suggestion = suggestAccountIdForSource(matchKey, accounts);
-            if (suggestion) setAccountId(suggestion);
-          }
+          // transactionKind stays hardcoded to "expense" — we ignore
+          // p.kind even on partials (see state declaration above).
+          //
+          // Auto-assign account only when the partial confidence is
+          // ≥ 0.6 AND the source is firmly classified. The 0.4 default
+          // for partials would have us routing on noise — better to let
+          // the user pick.
           const c = p.confidence ?? 0.4;
+          const matchKey = p.destinationApp ?? p.source;
+          if (matchKey && matchKey !== "unknown" && c >= 0.6) {
+            const result = suggestAccountIdForSource(matchKey, accounts);
+            if (result.kind === "matched") {
+              setAccountId(result.accountId);
+              setLockedSourceLabel(result.sourceLabel);
+              setMissingAccountSourceLabel(null);
+            } else if (result.kind === "unsupported") {
+              setAccountId(null);
+              setLockedSourceLabel(null);
+              setMissingAccountSourceLabel(result.sourceLabel);
+            } else {
+              setLockedSourceLabel(null);
+              setMissingAccountSourceLabel(null);
+            }
+          } else {
+            setLockedSourceLabel(null);
+            setMissingAccountSourceLabel(null);
+          }
           setConfidences({
             merchant: c,
             amount: c,
             occurred_at: c,
             suggested_category: 0,
-            kind: Math.min(c, 0.5),
+            kind: 0,
           });
           setDirty(false);
           toast.warning("Revisa los datos. No estoy del todo seguro.");
@@ -1141,6 +1223,12 @@ function ReceiptPageInner() {
 
   const handleAccept = React.useCallback(async () => {
     if (isSaving) return;
+    if (missingAccountSourceLabel) {
+      toast.error(
+        `Crea una cuenta de ${missingAccountSourceLabel} antes de guardar.`,
+      );
+      return;
+    }
     if (!accountId) {
       toast.error("Elige una cuenta antes de guardar.");
       setIsAccountOpen(true);
@@ -1221,10 +1309,10 @@ function ReceiptPageInner() {
     currency,
     isSaving,
     merchant,
+    missingAccountSourceLabel,
     occurredAt,
     receiptId,
     router,
-    transactionKind,
   ]);
 
   const handleDiscard = React.useCallback(() => {
@@ -1450,48 +1538,11 @@ function ReceiptPageInner() {
               </p>
             </FieldRow>
 
-            {/* Tipo (gasto/ingreso) — editable. The OCR pre-selects based
-                on the receipt phrasing ("Yapeaste" → gasto, "Yape recibido"
-                → ingreso) but the score is capped because it can't tell
-                whose phone the screenshot came from (e.g. someone might
-                share a "Yapeaste" by WhatsApp as proof they paid you,
-                which is income from the recipient's perspective). */}
-            <FieldRow label="Tipo" score={confidences.kind}>
-              <RadioGroup
-                value={transactionKind}
-                onValueChange={(v) => {
-                  setTransactionKind(v as TransactionKind);
-                  markDirty();
-                }}
-                className="flex gap-2"
-              >
-                {(
-                  [
-                    { value: "expense", label: "Gasto", Icon: ArrowDownLeft },
-                    { value: "income", label: "Ingreso", Icon: ArrowUpRight },
-                  ] as const
-                ).map(({ value, label, Icon }) => (
-                  <label
-                    key={value}
-                    className={cn(
-                      "flex h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border text-[13px] font-semibold transition-colors",
-                      "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-ring",
-                      transactionKind === value
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border bg-card text-muted-foreground hover:bg-muted",
-                    )}
-                  >
-                    <RadioGroupItem
-                      value={value}
-                      className="sr-only"
-                      aria-label={label}
-                    />
-                    <Icon size={14} aria-hidden />
-                    {label}
-                  </label>
-                ))}
-              </RadioGroup>
-            </FieldRow>
+            {/* Tipo: el flujo /receipt SOLO registra gastos. Si el
+                usuario quiere registrar un ingreso, debe ir a /capture
+                manualmente. La UI no muestra toggle: era una fuente de
+                errores cuando el OCR malclasificaba un "Yape recibido"
+                compartido por screenshot. */}
 
             {/* Fecha */}
             <FieldRow
@@ -1552,29 +1603,122 @@ function ReceiptPageInner() {
               </button>
             </FieldRow>
 
-            {/* Cuenta — opens drawer (no per-field confidence, OCR doesn't infer it) */}
-            <div className="rounded-xl bg-card p-3.5">
-              <div className="pb-1.5">
-                <span className="text-[12px] font-semibold text-foreground">Cuenta</span>
+            {/* Cuenta — tres estados:
+                  1. missingAccountSourceLabel: el OCR detectó la
+                     fuente (Yape/Plin/BBVA/BCP) pero el user no
+                     tiene esa cuenta. CTA inline para crearla,
+                     bloquea guardar.
+                  2. lockedSourceLabel: cuenta auto-asignada por la
+                     foto. Fila informativa con candado, no
+                     clickeable.
+                  3. default: picker normal — el user elige. */}
+            {missingAccountSourceLabel ? (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-50/50 p-3.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <div className="pb-1.5">
+                  <span className="text-[12px] font-semibold text-foreground">
+                    Cuenta
+                  </span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                  >
+                    <AlertTriangle size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-foreground">
+                      No encontramos tu cuenta de {missingAccountSourceLabel}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                      Crea una primero para registrar este movimiento.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => router.push("/accounts?create=1")}
+                      className="mt-2.5 h-9 rounded-full px-3 text-[12px] font-semibold"
+                    >
+                      <Plus size={14} aria-hidden="true" />
+                      Crear cuenta de {missingAccountSourceLabel}
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsAccountOpen(true)}
-                aria-haspopup="dialog"
-                aria-expanded={isAccountOpen}
-                className="flex h-11 w-full items-center gap-3 rounded-lg text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="flex-1 text-base font-semibold">
-                  {account ? accountDisplayLabel(account) : "Cargando..."}
-                </span>
-                {account && (
-                  <Badge variant="outline" className="h-7 rounded-full px-2 text-[11px] font-semibold">
-                    {account.currency}
-                  </Badge>
-                )}
-                <ChevronRight size={16} aria-hidden="true" className="text-muted-foreground" />
-              </button>
-            </div>
+            ) : lockedSourceLabel ? (
+              <div className="rounded-xl bg-card p-3.5">
+                <div className="pb-1.5">
+                  <span className="text-[12px] font-semibold text-foreground">
+                    Cuenta
+                  </span>
+                </div>
+                <div
+                  className="flex h-11 w-full items-center gap-3 rounded-lg"
+                  aria-label={`Cuenta detectada: ${
+                    account ? accountDisplayLabel(account) : ""
+                  }`}
+                >
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-base font-semibold">
+                      {account ? accountDisplayLabel(account) : "Cargando..."}
+                    </span>
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                      <Sparkles
+                        size={11}
+                        aria-hidden="true"
+                        className="text-primary"
+                      />
+                      Detectada de la foto
+                    </span>
+                  </span>
+                  {account && (
+                    <Badge
+                      variant="outline"
+                      className="h-7 rounded-full px-2 text-[11px] font-semibold"
+                    >
+                      {account.currency}
+                    </Badge>
+                  )}
+                  <Lock
+                    size={14}
+                    aria-hidden="true"
+                    className="text-muted-foreground"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-card p-3.5">
+                <div className="pb-1.5">
+                  <span className="text-[12px] font-semibold text-foreground">
+                    Cuenta
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAccountOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={isAccountOpen}
+                  className="flex h-11 w-full items-center gap-3 rounded-lg text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="flex-1 text-base font-semibold">
+                    {account ? accountDisplayLabel(account) : "Cargando..."}
+                  </span>
+                  {account && (
+                    <Badge
+                      variant="outline"
+                      className="h-7 rounded-full px-2 text-[11px] font-semibold"
+                    >
+                      {account.currency}
+                    </Badge>
+                  )}
+                  <ChevronRight
+                    size={16}
+                    aria-hidden="true"
+                    className="text-muted-foreground"
+                  />
+                </button>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -1650,7 +1794,9 @@ function ReceiptPageInner() {
               <Button
                 type="button"
                 onClick={handleAccept}
-                disabled={isSaving || !accountId}
+                disabled={
+                  isSaving || !accountId || Boolean(missingAccountSourceLabel)
+                }
                 className="h-12 rounded-full text-base font-bold md:flex-[2]"
                 style={{ boxShadow: "var(--shadow-fab)" }}
               >
