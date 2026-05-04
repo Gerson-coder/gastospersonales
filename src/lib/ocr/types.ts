@@ -46,6 +46,26 @@ export const OCR_SOURCES = [
 
 export const OCR_MODELS = ["gpt-4o-mini", "gpt-4o"] as const;
 
+// Hint conceptual de categoría — el modelo lo devuelve SOLO cuando el
+// merchant tiene una keyword inequívoca ("BUFFET" / "POLLERIA" → food,
+// "ET" / "TRANSPORTE" → transport, "BOTICA" / "FARMACIA" → health,
+// etc.). Si el merchant es ambiguo (ej. "Mercado Central" puede ser
+// abarrotes o comida), el modelo devuelve `null` y el form deja al
+// user elegir. El frontend mapea estos slugs a las categorías reales
+// del user (que pueden ser custom) — si no encuentra match, no
+// pre-selecciona y no rompe nada.
+export const CATEGORY_HINTS = [
+  "food",        // restaurantes, comida rápida, delivery
+  "transport",   // buses, taxis, gasolina
+  "groceries",   // supermercados, abarrotes, mercado
+  "health",      // farmacias, médicos, clínicas
+  "fun",         // entretenimiento, cine, suscripciones
+  "utilities",   // luz, agua, internet, teléfono
+  "education",   // colegios, universidades, libros
+  "work",        // gastos laborales
+  "other",       // cuando no encaja en ninguna anterior pero es claro
+] as const;
+
 // Reusing the project's `kind` convention (see src/lib/data/transactions.ts)
 // so the OCR output drops straight into the Capture form's draft state
 // without any remap step.
@@ -53,6 +73,7 @@ export const ocrSourceSchema = z.enum(OCR_SOURCES);
 export const ocrModelSchema = z.enum(OCR_MODELS);
 export const currencySchema = z.enum(["PEN", "USD"]);
 export const kindSchema = z.enum(["expense", "income"]);
+export const categoryHintSchema = z.enum(CATEGORY_HINTS);
 
 export const amountSchema = z.object({
   // Minor units (céntimos for PEN, cents for USD). Always int ≥ 0.
@@ -103,6 +124,12 @@ export const llmOutputSchema = z
     // in Plin. The UI uses this to pick the user's account (their Plin
     // wallet, in that case) regardless of the screenshot UI.
     destinationApp: z.enum(["yape", "plin"]).optional(),
+    // Sugerencia de categoría — opcional. El modelo solo lo devuelve
+    // con keyword inequívoca en el merchant. Si es ambiguo, omite el
+    // campo. El frontend usa esto para pre-seleccionar la categoría
+    // del form (matching contra las categorías del user). Si no hay
+    // hint o no matches, el user elige a mano como antes.
+    categoryHint: categoryHintSchema.optional(),
     rawText: z.string(),
   })
   .strict();
@@ -145,6 +172,7 @@ export type Currency = z.infer<typeof currencySchema>;
 export type TxKind = z.infer<typeof kindSchema>;
 export type Amount = z.infer<typeof amountSchema>;
 export type Counterparty = z.infer<typeof counterpartySchema>;
+export type CategoryHint = z.infer<typeof categoryHintSchema>;
 export type Classification = z.infer<typeof classificationSchema>;
 export type LlmOutput = z.infer<typeof llmOutputSchema>;
 export type ExtractedReceipt = z.infer<typeof extractedReceiptSchema>;
