@@ -2034,8 +2034,8 @@ export default function InsightsPage() {
     !win.loading && !win.error && win.rows.length === 0;
 
   return (
-    <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-8 md:pt-10">
+    <main className="relative min-h-dvh bg-background text-foreground">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-7xl md:space-y-10 md:px-8 md:pt-10">
         {/* Header */}
         <AppHeader
           eyebrow={
@@ -2048,8 +2048,8 @@ export default function InsightsPage() {
           className="px-0 pt-0"
         />
 
-        {/* Period selector */}
-        <div>
+        {/* Period selector — sticky on desktop so it stays visible while scrolling cards */}
+        <div className="md:sticky md:top-0 md:z-10 md:-mx-8 md:bg-background/95 md:px-8 md:py-3 md:backdrop-blur-sm">
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
 
@@ -2063,10 +2063,10 @@ export default function InsightsPage() {
         {!showError && showLoading && (
           <>
             <HeroSkeleton />
-            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0 lg:grid-cols-3">
               <CardSkeleton />
               <CardSkeleton />
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 lg:col-span-3">
                 <CardSkeleton height={220} />
               </div>
             </div>
@@ -2119,7 +2119,7 @@ export default function InsightsPage() {
             )}
 
             {/* Charts grid */}
-            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+            <div className="space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0 lg:grid-cols-3">
               {/* Cross-month comparison — gasto vs ingreso por mes.
                   Independent of the page-level period selector — these
                   cards always show the multi-month trend regardless of
@@ -2133,7 +2133,7 @@ export default function InsightsPage() {
                   in-progress month. Hidden for Q3 / Año where the daily
                   pace concept doesn't translate. */}
               {scope.supportsProjection && (
-                <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
+                <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6 lg:col-span-3">
                   <div className="flex items-baseline justify-between pb-3">
                     <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                       Velocidad de gasto
@@ -2172,7 +2172,7 @@ export default function InsightsPage() {
               )}
 
               {/* Category breakdown — period-scoped. */}
-              <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6">
+              <Card className="rounded-2xl border-border p-5 md:col-span-2 md:p-6 lg:col-span-3">
                 <div className="flex items-baseline justify-between pb-3">
                   <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Por categoría
@@ -2198,12 +2198,12 @@ export default function InsightsPage() {
               {insights.length > 0 && (
                 <section
                   aria-label="Observaciones del período"
-                  className="md:col-span-2"
+                  className="md:col-span-2 lg:col-span-3"
                 >
                   <div className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     Observaciones
                   </div>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                     {insights.map((it) => (
                       <InsightCard key={it.id} item={it} />
                     ))}
@@ -2214,7 +2214,7 @@ export default function InsightsPage() {
               {/* Top movements — period-scoped (top 3 expenses in the
                   active period). */}
               {scopedTopMovements.length > 0 && (
-                <Card className="rounded-2xl border-border p-0 md:col-span-2">
+                <Card className="rounded-2xl border-border p-0 md:col-span-2 lg:col-span-3">
                   <div className="flex items-baseline justify-between px-4 pb-1.5 pt-3">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                       Top movimientos

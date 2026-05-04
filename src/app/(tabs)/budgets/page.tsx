@@ -271,13 +271,28 @@ export default function BudgetsPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
-        <AppHeader
-          eyebrow="Tu dinero"
-          title="Presupuestos"
-          titleStyle="page"
-          className="px-0 pt-0"
-        />
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-6xl md:space-y-10 md:px-8 md:pt-10">
+        <div className="md:flex md:items-end md:justify-between">
+          <AppHeader
+            eyebrow="Tu dinero"
+            title="Presupuestos"
+            titleStyle="page"
+            className="px-0 pt-0"
+          />
+          {!budgetsAuthError ? (
+            <div className="hidden md:block">
+              <Button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                aria-label="Agregar presupuesto"
+                className="h-10 rounded-xl text-[13px] font-semibold"
+              >
+                <Plus size={14} aria-hidden="true" />
+                <span className="ml-1">Agregar presupuesto</span>
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
         <section aria-labelledby="budgets-month">
           <h2
@@ -288,9 +303,22 @@ export default function BudgetsPage() {
           </h2>
 
           {!budgetsLoaded ? (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <BudgetsSkeleton />
-            </Card>
+            <>
+              {/* Mobile skeleton: single card */}
+              <div className="md:hidden">
+                <Card className="overflow-hidden rounded-2xl border-border p-0">
+                  <BudgetsSkeleton />
+                </Card>
+              </div>
+              {/* Desktop skeleton: grid of cards */}
+              <div className="hidden md:grid md:grid-cols-2 md:gap-4 lg:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <Card key={i} className="overflow-hidden rounded-2xl border-border p-0">
+                    <BudgetsSkeleton count={1} />
+                  </Card>
+                ))}
+              </div>
+            </>
           ) : showEmptyState ? (
             <Card className="rounded-2xl border-dashed border-border p-5 text-sm">
               <p className="text-muted-foreground">
@@ -311,8 +339,104 @@ export default function BudgetsPage() {
               ) : null}
             </Card>
           ) : (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <ul className="divide-y divide-border" role="list">
+            <>
+              {/* Mobile: single list card */}
+              <Card className="overflow-hidden rounded-2xl border-border p-0 md:hidden">
+                <ul className="divide-y divide-border" role="list">
+                  {visibleBudgets.map((b) => {
+                    const cat = categoryById.get(b.category_id);
+                    const Icon: LucideIconLike = cat
+                      ? getCategoryIcon(cat.icon ?? DEFAULT_CATEGORY_ICON)
+                      : getCategoryIcon(DEFAULT_CATEGORY_ICON);
+                    const name = cat?.name ?? "Categoría eliminada";
+                    const spentMinor = totalsByCategory.get(b.category_id) ?? 0;
+                    const percent =
+                      b.limit_minor > 0
+                        ? Math.round((spentMinor / b.limit_minor) * 100)
+                        : 0;
+                    const barColor =
+                      percent > 100
+                        ? "bg-destructive"
+                        : percent >= 80
+                          ? "bg-[var(--color-warning)]"
+                          : "bg-primary";
+                    const textColor =
+                      percent > 100
+                        ? "text-destructive"
+                        : percent >= 80
+                          ? "text-[var(--color-warning)]"
+                          : "text-muted-foreground";
+                    return (
+                      <li key={b.id}>
+                        <button
+                          type="button"
+                          onClick={() => setEditing(b)}
+                          aria-label={`Editar presupuesto de ${name}`}
+                          className={cn(
+                            "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
+                            "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              aria-hidden="true"
+                              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+                            >
+                              <Icon size={18} aria-hidden />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[14px] font-semibold">{name}</div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {showSpend ? (
+                                  aggregatesLoading ? (
+                                    <span className="opacity-70">
+                                      Calculando… de {formatMoney(b.limit_minor, b.currency)}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      {formatMoney(spentMinor, b.currency)} de{" "}
+                                      {formatMoney(b.limit_minor, b.currency)}
+                                    </>
+                                  )
+                                ) : (
+                                  <>— de {formatMoney(b.limit_minor, b.currency)}</>
+                                )}
+                              </div>
+                            </div>
+                            {showSpend ? (
+                              <span
+                                className={cn(
+                                  "ml-2 flex-shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums",
+                                  textColor,
+                                )}
+                              >
+                                {percent}%
+                              </span>
+                            ) : null}
+                            <Pencil
+                              size={14}
+                              aria-hidden="true"
+                              className="ml-2 flex-shrink-0 text-muted-foreground"
+                            />
+                          </div>
+                          <div
+                            className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                            aria-hidden="true"
+                          >
+                            <div
+                              className={cn("h-full rounded-full transition-all", barColor)}
+                              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                            />
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+
+              {/* Desktop: grid of individual cards */}
+              <div className="hidden md:grid md:grid-cols-2 md:gap-4 lg:grid-cols-3" role="list">
                 {visibleBudgets.map((b) => {
                   const cat = categoryById.get(b.category_id);
                   const Icon: LucideIconLike = cat
@@ -336,15 +460,14 @@ export default function BudgetsPage() {
                       : percent >= 80
                         ? "text-[var(--color-warning)]"
                         : "text-muted-foreground";
-
                   return (
-                    <li key={b.id}>
+                    <Card key={b.id} className="rounded-2xl border-border p-0 overflow-hidden" role="listitem">
                       <button
                         type="button"
                         onClick={() => setEditing(b)}
                         aria-label={`Editar presupuesto de ${name}`}
                         className={cn(
-                          "flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors",
+                          "flex w-full flex-col gap-2 px-4 py-4 text-left transition-colors",
                           "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
                         )}
                       >
@@ -356,9 +479,7 @@ export default function BudgetsPage() {
                             <Icon size={18} aria-hidden />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-[14px] font-semibold">
-                              {name}
-                            </div>
+                            <div className="truncate text-[14px] font-semibold">{name}</div>
                             <div className="truncate text-xs text-muted-foreground">
                               {showSpend ? (
                                 aggregatesLoading ? (
@@ -402,11 +523,11 @@ export default function BudgetsPage() {
                           />
                         </div>
                       </button>
-                    </li>
+                    </Card>
                   );
                 })}
-              </ul>
-            </Card>
+              </div>
+            </>
           )}
 
           {!showSpend && budgetsLoaded && visibleBudgets.length > 0 ? (
@@ -417,12 +538,12 @@ export default function BudgetsPage() {
         </section>
 
         {!budgetsAuthError ? (
-          <div className="mt-2">
+          <div className="mt-2 md:hidden">
             <Button
               type="button"
               onClick={() => setCreateOpen(true)}
               aria-label="Agregar presupuesto"
-              className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
+              className="h-12 w-full rounded-xl text-[14px] font-semibold"
             >
               <Plus size={16} aria-hidden="true" />
               <span className="ml-1">Agregar presupuesto</span>
@@ -463,8 +584,9 @@ export default function BudgetsPage() {
 }
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────
-function BudgetsSkeleton() {
-  const widths = ["w-28", "w-36", "w-24"];
+function BudgetsSkeleton({ count }: { count?: number } = {}) {
+  const allWidths = ["w-28", "w-36", "w-24"];
+  const widths = count !== undefined ? allWidths.slice(0, count) : allWidths;
   return (
     <ul
       className="divide-y divide-border"

@@ -67,7 +67,7 @@ import { AppHeader } from "@/components/kane/AppHeader";
 import { CurrencySwitch } from "@/components/kane/CurrencySwitch";
 import { DashboardHero, type Period } from "@/components/kane/DashboardHero";
 import { AccountCardCarousel } from "@/components/kane/AccountCardCarousel";
-import { useAccountStats } from "@/hooks/use-account-stats";
+import { useAccountBalances } from "@/hooks/use-account-balances";
 import { StatTrendCard } from "@/components/kane/StatTrendCard";
 import {
   MobileTodayCard,
@@ -1446,17 +1446,21 @@ export default function DashboardPage() {
   // ── Mobile carousel — accounts of the active currency ─────────────────
   // We feed the carousel the MRU-sorted, currency-scoped list. The first
   // card the user lands on is decided by `kane-prefs:activeAccountId` (per
-  // AccountCardCarousel). Stats are computed once over the full window via
-  // useAccountStats and looked up per-card.
+  // AccountCardCarousel).
+  //
+  // Saldo per cuenta viene de `useAccountBalances` (mismo hook que /accounts)
+  // — es la fuente canónica all-time, currency-scoped, soft-delete aware.
+  // Antes el carousel derivaba el saldo desde `useAccountStats(window.rows)`,
+  // que solo veía 6 meses y divergía del modal de cuentas para usuarios con
+  // historial más antiguo. Single source of truth = no drift.
   const carouselAccounts = React.useMemo(
     () => orderedAccounts.filter((a) => a.currency === currency),
     [orderedAccounts, currency],
   );
-  const carouselAccountIds = React.useMemo(
-    () => carouselAccounts.map((a) => a.id),
-    [carouselAccounts],
-  );
-  const accountStats = useAccountStats(window.rows, carouselAccountIds);
+  const { balances: carouselBalances, reload: reloadBalances } =
+    useAccountBalances(currency, {
+      skip: !SUPABASE_ENABLED,
+    });
 
   // Account-filter selector — currency-aware. Two responsibilities folded
   // into one effect:
@@ -1564,16 +1568,33 @@ export default function DashboardPage() {
     },
     [router],
   );
+  // Red de seguridad: tras archive, además de los eventos `tx:upserted`
+  // y el realtime websocket, llamamos refetch + reloadBalances directos.
+  // En PWA mobile (producción) hay reportes de KPIs que no se actualizan
+  // tras eliminar — el SW + cache del App Router pueden enmascarar el
+  // evento. Esta capa síncrona garantiza que los hooks vuelven a leer
+  // contra Supabase apenas el ACK del UPDATE llega. Idempotente: si los
+  // listeners también disparan, los hooks debouncean y refetchean una vez.
+  const windowRefetchRef = React.useRef(window.refetch);
+  windowRefetchRef.current = window.refetch;
+  const reloadBalancesRef = React.useRef(reloadBalances);
+  reloadBalancesRef.current = reloadBalances;
   const handleDetailArchive = React.useCallback(async (tx: TransactionView) => {
     setDetailTx(null);
     try {
       await archiveTransaction(tx.id);
+      // Red de seguridad — refetch directo además del evento.
+      windowRefetchRef.current();
+      void reloadBalancesRef.current();
       toast("Movimiento archivado", {
         action: {
           label: "Deshacer",
           onClick: async () => {
             try {
               await unarchiveTransaction(tx.id);
+              // Mismo respaldo en el undo path.
+              windowRefetchRef.current();
+              void reloadBalancesRef.current();
               toast.success("Restaurado.");
             } catch (undoErr) {
               toast.error(
@@ -1986,7 +2007,7 @@ export default function DashboardPage() {
               <div className="mt-4 md:hidden">
                 <AccountCardCarousel
                   accounts={carouselAccounts}
-                  stats={accountStats}
+                  balances={carouselBalances}
                   currency={currency}
                   loading={!accountsHydrated}
                   onActiveAccountChange={setSelectedAccountId}
@@ -2262,7 +2283,7 @@ export default function DashboardPage() {
                       </div>
                     </Card>
 
-                    {/* Columna derecha: Donut + Advisor */}
+                    {/* Columna derecha: Donut + Advisor + Budgets + Goals */}
                     <div className="flex flex-col gap-5">
                       <CategoryDonut
                         variant="full"
@@ -2277,6 +2298,11 @@ export default function DashboardPage() {
                           })
                         }
                       />
+                      <DashboardBudgetsSection
+                        currency={currency}
+                        byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                      />
+                      <DashboardGoalsSection currency={currency} />
                     </div>
                   </div>
 

@@ -390,7 +390,7 @@ function TransactionRow({
   return (
     <article
       aria-label={ariaLabel}
-      className="flex min-h-14 select-none items-center gap-3.5 px-4 py-3.5 touch-manipulation"
+      className="flex min-h-14 select-none items-center gap-3.5 px-4 py-3.5 touch-manipulation md:min-h-[60px] md:gap-4 md:px-5 md:py-4"
       style={{ WebkitTouchCallout: "none" }}
       {...longPressHandlers}
     >
@@ -400,7 +400,7 @@ function TransactionRow({
         // appears on both legs; the title disambiguates direction.
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)] md:h-10 md:w-10"
         >
           <ArrowLeftRight size={16} />
         </span>
@@ -413,7 +413,7 @@ function TransactionRow({
         <span
           aria-hidden="true"
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground md:h-10 md:w-10",
             accountChipBgClass(t.accountName),
           )}
         >
@@ -425,7 +425,7 @@ function TransactionRow({
       ) : t.merchantLogoSlug ? (
         <span
           aria-hidden="true"
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted md:h-10 md:w-10"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny static SVGs in /public */}
           <img
@@ -440,7 +440,7 @@ function TransactionRow({
         <div
           aria-hidden="true"
           className={cn(
-            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full",
+            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full md:h-10 md:w-10",
             tint.bg,
             tint.text,
           )}
@@ -448,11 +448,11 @@ function TransactionRow({
           <Icon size={18} />
         </div>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 md:flex md:items-center md:justify-between md:gap-4">
         <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
           {titleText}
         </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
+        <div className="mt-0.5 text-xs text-muted-foreground md:mt-0 md:shrink-0 md:text-[13px]">
           {subtitle}
         </div>
       </div>
@@ -806,7 +806,7 @@ function MovementsContent() {
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
-      <div className="mx-auto w-full max-w-3xl md:px-8 md:py-8">
+      <div className="mx-auto w-full max-w-3xl md:max-w-4xl md:px-8 md:py-8">
         {/* Header — swaps between AppHeader (idle) and an inline search input. */}
         {isSearching ? (
           <header className="flex min-h-[64px] items-center gap-2 px-5 pt-3 transition-all duration-200 md:px-0 md:pt-0">
@@ -870,7 +870,7 @@ function MovementsContent() {
         )}
 
         {/* Filter chips */}
-        <div className="px-4 pb-3 pt-4 md:px-0 md:pt-6">
+        <div className="px-4 pb-3 pt-4 md:px-0 md:pt-6 md:pb-4">
           <FilterChips value={filter} onChange={setFilter} />
         </div>
 
@@ -1072,8 +1072,8 @@ function DayGroupSection({
   const netSign = group.net < 0 ? "– " : "+ ";
   const netText = `${netSign}${formatMoney(Math.abs(group.net), currency)}`;
   return (
-    <section className="mt-5 first:mt-0">
-      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between border-b border-border/40 bg-background/95 px-5 py-2.5 shadow-[0_4px_12px_-8px_rgba(0,0,0,0.18)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:-mx-0 md:px-1">
+    <section className="mt-5 first:mt-0 md:mt-6 md:first:mt-0">
+      <h2 className="sticky top-0 z-10 -mx-4 flex items-baseline justify-between border-b border-border/40 bg-background/95 px-5 py-2.5 shadow-[0_4px_12px_-8px_rgba(0,0,0,0.18)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75 md:-mx-0 md:rounded-t-lg md:px-4 md:py-3">
         <span className="text-[13px] font-semibold tracking-tight text-foreground">
           {group.label}
         </span>
@@ -1094,7 +1094,7 @@ function DayGroupSection({
         </span>
       </h2>
 
-      <Card className="overflow-hidden rounded-2xl border-border p-0">
+      <Card className="overflow-hidden rounded-2xl border-border p-0 md:shadow-sm">
         {group.items.map((t, i) => (
           <div key={t.id} className={i ? "border-t border-border" : ""}>
             <TransactionRow

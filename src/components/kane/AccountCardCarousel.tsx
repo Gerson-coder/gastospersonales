@@ -35,17 +35,19 @@ import type { Account } from "@/lib/data/accounts";
 import { getAccountCardStyle, getAccountBankSlug } from "@/lib/account-card-theme";
 import { AccountCard } from "@/components/kane/AccountCard";
 import { AccountSwitcherDrawer } from "@/components/kane/AccountSwitcherDrawer";
-import {
-  type AccountStats,
-  getStatsFor,
-} from "@/hooks/use-account-stats";
 import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import { useHideBalances } from "@/hooks/use-hide-balances";
 import { ACCOUNT_SUBTYPE_LABEL } from "@/lib/data/accounts";
 
 export type AccountCardCarouselProps = {
   accounts: Account[];
-  stats: Map<string, AccountStats>;
+  /**
+   * All-time saldo per accountId (major units, currency-scoped). Single
+   * source of truth shared with /accounts via `useAccountBalances` so the
+   * card on the dashboard NEVER drifts from the modal de cuentas. Absence
+   * of an id => treat as 0.
+   */
+  balances: Record<string, number>;
   /**
    * Active currency from `useActiveCurrency()`. Passed in (instead of read
    * from the hook directly here) so the carousel re-renders synchronously
@@ -67,7 +69,7 @@ export type AccountCardCarouselProps = {
 // ─── Component ────────────────────────────────────────────────────────────
 export function AccountCardCarousel({
   accounts,
-  stats,
+  balances,
   currency,
   loading = false,
   className,
@@ -202,7 +204,7 @@ export function AccountCardCarousel({
       <div className="overflow-hidden" ref={emblaRef}>
         <div className="flex touch-pan-y">
           {accounts.map((account, idx) => {
-            const s = getStatsFor(stats, account.id);
+            const saldo = balances[account.id] ?? 0;
             const subtypeLabel = account.subtype
               ? ACCOUNT_SUBTYPE_LABEL[account.subtype]
               : null;
@@ -224,7 +226,7 @@ export function AccountCardCarousel({
                   bankLabel={account.label}
                   subtypeLabel={subtypeLabel}
                   currency={currency}
-                  saldoActual={s.saldoActual}
+                  saldoActual={saldo}
                   hideAmounts={hideAmounts}
                   onToggleHide={toggleHideBalances}
                   variant="full"
@@ -299,7 +301,7 @@ export function AccountCardCarousel({
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         accounts={accounts}
-        stats={stats}
+        balances={balances}
         currency={currency}
         activeIndex={activeIndex}
         onSelectAccount={handleSelectAccount}

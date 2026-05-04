@@ -368,7 +368,7 @@ function CapturePageFallback() {
     <div
       aria-busy="true"
       aria-live="polite"
-      className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8"
+      className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:mx-auto md:w-full md:max-w-6xl md:px-8 md:py-8 md:pb-8"
     >
       <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col items-center justify-center gap-3 px-6 text-muted-foreground">
         <Loader2 size={20} aria-hidden="true" className="animate-spin" />
@@ -1265,8 +1265,11 @@ function CapturePageInner() {
   }
 
   return (
-    <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-card md:overflow-hidden md:pb-8">
-      <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col">
+    <div className="relative flex min-h-dvh flex-col bg-background pb-32 text-foreground md:min-h-0 md:mx-auto md:w-full md:max-w-6xl md:px-8 md:py-8 md:pb-8">
+      {/* Desktop two-column wrapper: form (left) + summary sidebar (right) */}
+      <div className="flex flex-1 flex-col md:grid md:grid-cols-[3fr_2fr] md:items-start md:gap-8">
+      {/* Left column: header + amount + meta + keypad */}
+      <div className="flex flex-1 flex-col md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {/* Header — back + camera flank a centered kind-toggle TITLE.
             The kind toggle replaces the old "Cuánto gastaste/entró" eyebrow
             (now removed) so the very first thing the user sees is the
@@ -1702,10 +1705,105 @@ function CapturePageInner() {
           {saveAriaLabel}
         </p>
 
-        {/* Desktop save button — md+ only. Mirrors the FAB ready rules so
-            both UIs feel synchronised (e.g. amount typed without a category
-            picked keeps both disabled). */}
-        <div className="mt-5 hidden px-4 md:block">
+        {/* Save hint — wayfinding for the mobile flow: with the in-page
+            "Guardar gasto" button gone on touch, point the user to the
+            central ✓ FAB in the bottom TabBar. Mobile-only porque el
+            boton desktop arriba ya carga la accion canonica. mt-3
+            en lugar de mt-6: en mobile el chevron + label ya estan
+            cerca del save FAB del TabBar, mas distancia solo come
+            espacio vertical y empuja el keypad fuera de viewports
+            cortos. */}
+        <div
+          aria-hidden="true"
+          className="mt-3 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
+        >
+          <span className="text-[12px] font-medium">Guardar</span>
+          <ChevronDown
+            className="h-5 w-5 animate-bounce [animation-duration:1.6s]"
+            aria-hidden="true"
+          />
+        </div>
+      </div>
+      {/* /Left column */}
+
+      {/* Right column — desktop only: summary card + primary save button.
+          Hidden on mobile (md:block). The mobile save flow uses the TabBar FAB.
+          We deliberately keep this dumb (display-only derived from state) so
+          zero logic lives here — single source of truth stays in state above. */}
+      <aside className="hidden md:block md:self-start md:sticky md:top-8">
+        <div className="rounded-3xl border border-border bg-card shadow-[var(--shadow-card)] p-6 flex flex-col gap-5">
+          {/* Amount summary */}
+          <div className="text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {kind === "transfer" ? "Transferencia" : kind === "income" ? "Ingreso" : "Gasto"}
+            </p>
+            <p
+              className={cn(
+                "mt-1 text-4xl font-bold tabular-nums leading-none",
+                amountBuffer === "" ? "text-muted-foreground" : "text-foreground",
+              )}
+              style={{ fontFeatureSettings: '"tnum","lnum"' }}
+            >
+              {display}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {/* Category row */}
+            {kind !== "transfer" && (
+              <div className="flex items-center gap-3 rounded-2xl border border-border bg-background px-3 py-2.5">
+                <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+                  {category?.Icon ? <category.Icon size={15} aria-hidden /> : <Circle size={15} aria-hidden />}
+                </span>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">Categoría</p>
+                  <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
+                    {categoriesLoading ? "Cargando…" : (category?.label ?? "Sin categoría")}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Account row */}
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-background px-3 py-2.5">
+              <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+                <Wallet size={15} />
+              </span>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">
+                  {kind === "transfer" ? "De" : "Cuenta"}
+                </p>
+                <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
+                  {selectedAccount ? selectedAccount.label : "Sin seleccionar"}
+                </p>
+              </div>
+            </div>
+
+            {/* Transfer destination row */}
+            {kind === "transfer" && (
+              <div className="flex items-center gap-3 rounded-2xl border border-border bg-background px-3 py-2.5">
+                <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+                  <ArrowLeftRight size={15} />
+                </span>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">A</p>
+                  <p className="mt-0.5 truncate text-[13px] font-semibold leading-tight text-foreground">
+                    {transferDestAccount ? transferDestAccount.label : "Sin seleccionar"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Note row — only when there's content */}
+            {note.trim().length > 0 && (
+              <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
+                <p className="text-[10px] font-medium uppercase leading-none tracking-wider text-muted-foreground">Nota</p>
+                <p className="mt-1 text-[13px] text-foreground line-clamp-2">{note}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Primary save button — desktop only */}
           <button
             type="button"
             onClick={() => void handleSave()}
@@ -1729,45 +1827,23 @@ function CapturePageInner() {
             )}
           >
             {submitting ? (
-              <Loader2
-                size={16}
-                aria-hidden="true"
-                className="animate-spin"
-              />
+              <Loader2 size={16} aria-hidden="true" className="animate-spin" />
             ) : (
               <Check size={16} aria-hidden="true" />
             )}
             <span>
               {submitting
-                ? kind === "transfer"
-                  ? "Transfiriendo…"
-                  : "Guardando…"
+                ? kind === "transfer" ? "Transfiriendo…" : "Guardando…"
                 : kind === "transfer"
                   ? "Confirmar transferencia"
                   : `Guardar ${kind === "income" ? "ingreso" : "gasto"}`}
             </span>
           </button>
         </div>
-
-        {/* Save hint — wayfinding for the mobile flow: with the in-page
-            "Guardar gasto" button gone on touch, point the user to the
-            central ✓ FAB in the bottom TabBar. Mobile-only porque el
-            boton desktop arriba ya carga la accion canonica. mt-3
-            en lugar de mt-6: en mobile el chevron + label ya estan
-            cerca del save FAB del TabBar, mas distancia solo come
-            espacio vertical y empuja el keypad fuera de viewports
-            cortos. */}
-        <div
-          aria-hidden="true"
-          className="mt-3 flex flex-col items-center gap-1 text-muted-foreground md:hidden"
-        >
-          <span className="text-[12px] font-medium">Guardar</span>
-          <ChevronDown
-            className="h-5 w-5 animate-bounce [animation-duration:1.6s]"
-            aria-hidden="true"
-          />
-        </div>
+      </aside>
+      {/* /Right column */}
       </div>
+      {/* /Desktop two-column wrapper */}
 
       {/* Saving veil — fixed full-viewport overlay (matches accounts /
           categories / settings UX). Replaces the inline absolute overlay +

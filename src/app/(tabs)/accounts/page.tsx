@@ -198,7 +198,7 @@ function AccountsPageFallback() {
       aria-live="polite"
       className="relative min-h-dvh bg-background pb-32 text-foreground"
     >
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-10 md:pt-10">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-32 w-full rounded-2xl" />
         <Skeleton className="h-12 w-full rounded-xl" />
@@ -340,7 +340,7 @@ function AccountsPageInner() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-10 md:pt-10">
         {/* Page heading */}
         <AppHeader
           eyebrow="Tu dinero"
@@ -349,13 +349,17 @@ function AccountsPageInner() {
           className="px-0 pt-0"
         />
 
+        {/* Desktop: balance card on the left rail, accounts grid on the right.
+            Mobile: stacked vertically (default). */}
+        <div className="md:grid md:grid-cols-[260px_1fr] md:items-start md:gap-8">
+
         {/* Saldo total — suma de los balances de todas las cuentas en la
             moneda activa. Mostramos el monto en major units a traves de
             `formatMoney(...*100)` (la helper espera minor units). Mientras
             balancesLoaded sea false dejamos un skeleton para no parpadear
             con un "S/ 0.00" engañoso. Cuando el usuario aun no tiene
             cuentas en la moneda activa mantenemos el hint original. */}
-        <section aria-labelledby="accounts-balances" className="mt-2">
+        <section aria-labelledby="accounts-balances" className="mt-2 md:mt-0">
           <h2
             id="accounts-balances"
             className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
@@ -393,14 +397,15 @@ function AccountsPageInner() {
         </section>
 
         {/* Accounts list */}
-        <section aria-labelledby="accounts-list" className="mt-8">
+        <section aria-labelledby="accounts-list" className="mt-8 md:mt-0">
           <h2
             id="accounts-list"
             className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
           >
             Tus cuentas
           </h2>
-          <Card className="overflow-hidden rounded-2xl border-border p-0">
+          {/* Mobile: single card with divided rows. Desktop: borderless grid of card tiles. */}
+          <Card className="overflow-hidden rounded-2xl border-border p-0 md:border-0 md:bg-transparent md:shadow-none">
             {loading ? (
               <AccountsSkeleton />
             ) : accounts.length === 0 ? (
@@ -408,11 +413,11 @@ function AccountsPageInner() {
                 Todavía no tienes cuentas. Toca <span className="font-semibold">Agregar cuenta</span> para crear una.
               </div>
             ) : (
-              <ul className="divide-y divide-border" role="list">
+              <ul className="divide-y divide-border md:grid md:grid-cols-2 md:divide-y-0 md:gap-3 lg:grid-cols-3" role="list">
                 {accounts.map((account) => {
                   const KindIcon = ACCOUNT_KIND_ICON[account.kind];
                   return (
-                    <li key={account.id}>
+                    <li key={account.id} className="md:rounded-2xl md:border md:border-border md:bg-card md:overflow-hidden">
                       <button
                         type="button"
                         onClick={() => handleEditAccount(account)}
@@ -420,12 +425,14 @@ function AccountsPageInner() {
                         className={cn(
                           "flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left transition-colors",
                           "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+                          "md:min-h-[80px] md:px-5 md:py-4",
                         )}
                       >
                         <div
                           aria-hidden="true"
                           className={cn(
                             "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-foreground",
+                            "md:h-12 md:w-12 md:rounded-2xl",
                             // Neutral theme-aware chip for every brand;
                             // Interbank keeps a colored bg because its
                             // SVG is a green-with-white-cutouts wordmark
@@ -479,16 +486,18 @@ function AccountsPageInner() {
           ) : null}
         </section>
 
+        </div>{/* end md:grid two-col */}
+
         {/* Add account — disabled when the user hits the 10-account ceiling.
             The DB-level guard in createAccount is still the source of truth;
             this just stops the unfriendly toast experience for users at cap. */}
-        <div className="mt-6">
+        <div className="mt-6 md:mt-8">
           <Button
             type="button"
             onClick={handleAddAccount}
             aria-label="Agregar cuenta"
             disabled={accounts.length >= MAX_ACTIVE_ACCOUNTS}
-            className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
+            className="h-12 w-full rounded-xl text-[14px] font-semibold md:w-auto md:min-w-[200px]"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="ml-1">Agregar cuenta</span>
@@ -539,14 +548,14 @@ function AccountsSkeleton() {
   const widths = ["w-28", "w-36", "w-24"];
   return (
     <ul
-      className="divide-y divide-border"
+      className="divide-y divide-border md:grid md:grid-cols-2 md:divide-y-0 md:gap-3 lg:grid-cols-3"
       role="list"
       aria-busy="true"
       aria-label="Cargando cuentas"
     >
       {widths.map((w, i) => (
-        <li key={i}>
-          <div className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3">
+        <li key={i} className="md:rounded-2xl md:border md:border-border md:bg-card md:overflow-hidden">
+          <div className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3 md:min-h-[80px] md:px-5 md:py-4">
             <Skeleton className="h-10 w-10 flex-shrink-0 rounded-xl" />
             <div className="min-w-0 flex-1 space-y-2">
               <Skeleton className={cn("h-3.5 rounded", w)} />

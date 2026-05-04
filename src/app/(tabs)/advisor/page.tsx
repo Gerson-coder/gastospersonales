@@ -373,7 +373,7 @@ export default function AdvisorPage(): React.ReactElement {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:px-8 md:pt-10">
         <AppHeader
           eyebrow="Tu dinero"
           title="Asesor IA"

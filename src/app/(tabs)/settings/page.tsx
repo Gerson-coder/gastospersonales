@@ -318,7 +318,7 @@ export default function SettingsPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-5xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
         <header className="flex items-start gap-3">
           <Link
@@ -346,153 +346,159 @@ export default function SettingsPage() {
             for now as dead code so the change is one-shot and reversible;
             a follow-up sweep can prune the unused functions + imports. */}
 
-        {/* Preferencias */}
-        <SettingsSection title="Preferencias" headingId="settings-preferences">
-          <Card className="rounded-2xl border-border p-5">
-            {/* Currency */}
-            <fieldset>
-              <legend className="text-[13px] font-semibold">
-                Moneda principal
-              </legend>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                La moneda default para mostrar y registrar.
-              </p>
-              <RadioGroup
-                value={prefs.currency}
-                onValueChange={handleCurrencyChange}
-                aria-label="Moneda principal"
-                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
-              >
-                <PrefRadio value="PEN" label="Sol peruano" hint="S/" />
-                <PrefRadio value="USD" label="Dólar" hint="$" />
-              </RadioGroup>
-            </fieldset>
-
-            <Separator className="my-5" />
-
-            {/* Theme */}
-            <fieldset>
-              <legend className="text-[13px] font-semibold">Tema</legend>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Sistema sigue lo que tienes configurado en tu dispositivo
-                {themeMounted && prefs.theme === "system" && resolvedTheme
-                  ? ` (ahora: ${resolvedTheme === "dark" ? "oscuro" : "claro"})`
-                  : ""}
-                .
-              </p>
-              <RadioGroup
-                value={prefs.theme}
-                onValueChange={handleThemeChange}
-                aria-label="Tema de la aplicación"
-                className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
-              >
-                <PrefRadio value="system" label="Sistema" />
-                <PrefRadio value="light" label="Claro" />
-                <PrefRadio value="dark" label="Oscuro" />
-              </RadioGroup>
-            </fieldset>
-
-            <Separator className="my-5" />
-
-            {/* Locale + Timezone (read-only) */}
-            <dl className="grid gap-3">
-              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
-                <div className="flex items-center gap-3">
-                  <Globe
-                    size={16}
-                    className="text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <dt className="text-[13px] font-semibold">Idioma</dt>
-                </div>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
-                  es-PE
-                </dd>
-              </div>
-              <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
-                <div className="flex items-center gap-3">
-                  <Clock
-                    size={16}
-                    className="text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <dt className="text-[13px] font-semibold">Zona horaria</dt>
-                </div>
-                <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
-                  America/Lima
-                </dd>
-              </div>
-            </dl>
-          </Card>
-        </SettingsSection>
-
-        {/* Sobre la app */}
-        <SettingsSection title="Sobre la app" headingId="settings-about">
-          <Card className="overflow-hidden rounded-2xl border-border p-0">
-            <div className="flex items-center gap-3 px-4 py-4">
-              <Info
-                size={16}
-                className="text-muted-foreground"
-                aria-hidden="true"
-              />
-              <span className="text-[13px] font-semibold">Versión</span>
-              <span className="ml-auto text-[13px] tabular-nums text-muted-foreground">
-                {APP_VERSION}
-              </span>
-            </div>
-            <Separator />
-            <ul className="divide-y divide-border" role="list">
-              <li>
-                <Link
-                  href="/legal/terms"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toast("Próximamente", {
-                      description: "Los términos llegan en la próxima fase.",
-                    });
-                  }}
-                  className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+        {/* Top two sections: Preferencias + Sobre la app — side by side on desktop */}
+        <div className="md:grid md:grid-cols-2 md:items-start md:gap-8">
+          {/* Preferencias */}
+          <SettingsSection title="Preferencias" headingId="settings-preferences">
+            <Card className="rounded-2xl border-border p-5">
+              {/* Currency */}
+              <fieldset>
+                <legend className="text-[13px] font-semibold">
+                  Moneda principal
+                </legend>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  La moneda default para mostrar y registrar.
+                </p>
+                <RadioGroup
+                  value={prefs.currency}
+                  onValueChange={handleCurrencyChange}
+                  aria-label="Moneda principal"
+                  className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
                 >
-                  Términos y condiciones
-                  <ChevronRight
-                    size={16}
-                    className="ml-auto text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/legal/privacy"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toast("Próximamente", {
-                      description: "La política llega en la próxima fase.",
-                    });
-                  }}
-                  className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  <PrefRadio value="PEN" label="Sol peruano" hint="S/" />
+                  <PrefRadio value="USD" label="Dólar" hint="$" />
+                </RadioGroup>
+              </fieldset>
+
+              <Separator className="my-5" />
+
+              {/* Theme */}
+              <fieldset>
+                <legend className="text-[13px] font-semibold">Tema</legend>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Sistema sigue lo que tienes configurado en tu dispositivo
+                  {themeMounted && prefs.theme === "system" && resolvedTheme
+                    ? ` (ahora: ${resolvedTheme === "dark" ? "oscuro" : "claro"})`
+                    : ""}
+                  .
+                </p>
+                <RadioGroup
+                  value={prefs.theme}
+                  onValueChange={handleThemeChange}
+                  aria-label="Tema de la aplicación"
+                  className="mt-3 grid gap-2 md:flex md:flex-wrap md:gap-3"
                 >
-                  Política de privacidad
-                  <ChevronRight
-                    size={16}
-                    className="ml-auto text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                </Link>
-              </li>
-            </ul>
-          </Card>
-        </SettingsSection>
+                  <PrefRadio value="system" label="Sistema" />
+                  <PrefRadio value="light" label="Claro" />
+                  <PrefRadio value="dark" label="Oscuro" />
+                </RadioGroup>
+              </fieldset>
 
-        {/* Tus datos — export safety net */}
-        <SettingsSection title="Tus datos" headingId="settings-data">
-          <DataExportCard />
-        </SettingsSection>
+              <Separator className="my-5" />
 
-        {/* Zona de peligro — destructive resets */}
-        <SettingsSection title="Zona de peligro" headingId="settings-danger">
-          <DangerZoneCard />
-        </SettingsSection>
+              {/* Locale + Timezone (read-only) */}
+              <dl className="grid gap-3">
+                <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
+                  <div className="flex items-center gap-3">
+                    <Globe
+                      size={16}
+                      className="text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <dt className="text-[13px] font-semibold">Idioma</dt>
+                  </div>
+                  <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
+                    es-PE
+                  </dd>
+                </div>
+                <div className="flex items-center gap-3 md:grid md:grid-cols-[180px_1fr] md:gap-x-6">
+                  <div className="flex items-center gap-3">
+                    <Clock
+                      size={16}
+                      className="text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <dt className="text-[13px] font-semibold">Zona horaria</dt>
+                  </div>
+                  <dd className="ml-auto text-[13px] text-muted-foreground tabular-nums md:ml-0">
+                    America/Lima
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          </SettingsSection>
+
+          {/* Sobre la app */}
+          <SettingsSection title="Sobre la app" headingId="settings-about">
+            <Card className="overflow-hidden rounded-2xl border-border p-0">
+              <div className="flex items-center gap-3 px-4 py-4">
+                <Info
+                  size={16}
+                  className="text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <span className="text-[13px] font-semibold">Versión</span>
+                <span className="ml-auto text-[13px] tabular-nums text-muted-foreground">
+                  {APP_VERSION}
+                </span>
+              </div>
+              <Separator />
+              <ul className="divide-y divide-border" role="list">
+                <li>
+                  <Link
+                    href="/legal/terms"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toast("Próximamente", {
+                        description: "Los términos llegan en la próxima fase.",
+                      });
+                    }}
+                    className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  >
+                    Términos y condiciones
+                    <ChevronRight
+                      size={16}
+                      className="ml-auto text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/legal/privacy"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toast("Próximamente", {
+                        description: "La política llega en la próxima fase.",
+                      });
+                    }}
+                    className="flex min-h-[48px] w-full items-center gap-3 px-4 py-3 text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  >
+                    Política de privacidad
+                    <ChevronRight
+                      size={16}
+                      className="ml-auto text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </li>
+              </ul>
+            </Card>
+          </SettingsSection>
+        </div>
+
+        {/* Bottom two sections: Tus datos + Zona de peligro — side by side on desktop */}
+        <div className="md:grid md:grid-cols-2 md:items-start md:gap-8">
+          {/* Tus datos — export safety net */}
+          <SettingsSection title="Tus datos" headingId="settings-data">
+            <DataExportCard />
+          </SettingsSection>
+
+          {/* Zona de peligro — destructive resets */}
+          <SettingsSection title="Zona de peligro" headingId="settings-danger">
+            <DangerZoneCard />
+          </SettingsSection>
+        </div>
 
         {/* Sign out */}
         <div className="mt-8">

@@ -219,7 +219,7 @@ export default function ProfilePage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-4xl md:space-y-10 md:px-8 md:pt-10">
         <AppHeader
           eyebrow="Tu cuenta"
           title="Perfil"
@@ -227,6 +227,8 @@ export default function ProfilePage() {
           className="px-0 pt-0"
         />
 
+        {/* Identity + metadata — stacked on mobile, 2-col grid on desktop when metadata is present */}
+        <div className={SUPABASE_ENABLED ? "md:grid md:grid-cols-[1fr_340px] md:items-start md:gap-8" : undefined}>
         {/* Identity */}
         <section aria-labelledby="profile-identity" className="mt-2">
           <h2
@@ -353,7 +355,7 @@ export default function ProfilePage() {
             exists. In demo mode there is no DB row to read, so we hide it
             entirely rather than render placeholder noise. */}
         {SUPABASE_ENABLED ? (
-          <section aria-labelledby="profile-meta" className="mt-8">
+          <section aria-labelledby="profile-meta" className="mt-8 md:mt-2">
             <h2
               id="profile-meta"
               className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
@@ -403,6 +405,7 @@ export default function ProfilePage() {
             <Separator className="mt-6 opacity-0" aria-hidden="true" />
           </section>
         ) : null}
+        </div>{/* end 2-col grid wrapper */}
       </div>
 
       {/* Edit name Sheet */}

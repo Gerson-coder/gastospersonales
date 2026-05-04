@@ -33,17 +33,18 @@ import type { Account } from "@/lib/data/accounts";
 import { ACCOUNT_SUBTYPE_LABEL } from "@/lib/data/accounts";
 import { getAccountCardStyle, getAccountBankSlug } from "@/lib/account-card-theme";
 import { AccountCard } from "@/components/kane/AccountCard";
-import {
-  type AccountStats,
-  getStatsFor,
-} from "@/hooks/use-account-stats";
 import { cn } from "@/lib/utils";
 
 export type AccountSwitcherDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: Account[];
-  stats: Map<string, AccountStats>;
+  /**
+   * All-time saldo per accountId (major units, currency-scoped). Mismo mapa
+   * que recibe el carousel; ambos derivan de `useAccountBalances` para que
+   * la cifra coincida con /accounts. Absence => 0.
+   */
+  balances: Record<string, number>;
   currency: "PEN" | "USD";
   activeIndex: number;
   onSelectAccount: (idx: number) => void;
@@ -59,7 +60,7 @@ export function AccountSwitcherDrawer({
   open,
   onOpenChange,
   accounts,
-  stats,
+  balances,
   currency,
   activeIndex,
   onSelectAccount,
@@ -77,7 +78,7 @@ export function AccountSwitcherDrawer({
 
         <div className="grid grid-cols-2 gap-3 px-4 pb-6 overflow-y-auto">
           {accounts.map((account, idx) => {
-            const s = getStatsFor(stats, account.id);
+            const saldo = balances[account.id] ?? 0;
             const isActive = idx === activeIndex;
             const subtypeLabel = account.subtype
               ? ACCOUNT_SUBTYPE_LABEL[account.subtype]
@@ -100,7 +101,7 @@ export function AccountSwitcherDrawer({
                   bankLabel={account.label}
                   subtypeLabel={subtypeLabel}
                   currency={currency}
-                  saldoActual={s.saldoActual}
+                  saldoActual={saldo}
                   hideAmounts={hideAmounts}
                   variant="mini"
                   onClick={() => onSelectAccount(idx)}

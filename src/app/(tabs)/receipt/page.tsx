@@ -69,7 +69,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { CATEGORY_ICONS, getCategoryIcon } from "@/lib/category-icons";
+import { getCategoryIcon } from "@/lib/category-icons";
 import {
   type Account,
   accountDisplayLabel,
@@ -123,17 +123,16 @@ const INITIAL_FORM: {
   amount: string;
   currency: Currency;
   occurred_at: () => string;
-  category_icon: string;
+  category_id: string | null;
 } = {
   merchant: "",
   amount: "0.00",
   currency: "PEN",
   occurred_at: () => new Date().toISOString().slice(0, 10),
-  // Empty string = no category selected. The OCR pipeline does NOT
-  // infer category — guessing why someone Yapeed (rent? friend payback?
-  // food? gift?) is impossible from the screenshot alone. We force the
-  // user to pick manually instead of pre-selecting something wrong.
-  category_icon: "",
+  // null = no category selected. El picker muestra la lista REAL del user
+  // (mismas categorías que ve en /capture); el OCR sólo pre-selecciona si
+  // el `categoryHint` resuelve a una categoría que el user ya tiene.
+  category_id: null,
 };
 
 const INITIAL_CONFIDENCE: ConfidenceMap = {
@@ -219,30 +218,11 @@ function suggestAccountIdForSource(
 }
 
 /**
- * Map an icon name (the picker UI value) to a real category id from the
- * user's category list. Strategy: prefer an exact `category.icon` match;
- * fall back to the first user/system category whose `kind` matches the
- * transaction kind; finally null (uncategorized).
- */
-function mapIconToCategoryId(
-  iconName: string,
-  categories: Category[],
-  kind: TransactionKind,
-): string | null {
-  const byIcon = categories.find(
-    (c) => c.icon === iconName && c.kind === kind && !c.archived_at,
-  );
-  if (byIcon) return byIcon.id;
-  const byKind = categories.find((c) => c.kind === kind && !c.archived_at);
-  return byKind?.id ?? null;
-}
-
-/**
  * Mapea el `categoryHint` del OCR (slug conceptual) al nombre del icono
  * Lucide que las categorías del usuario usan en la DB. El downstream
- * `mapIconToCategoryId` toma este icono y lo matchea contra las
- * categorías reales (incluyendo customs); si no encuentra una, cae al
- * fallback "primera categoría del kind".
+ * `resolveCategoryIdFromHint` toma este icono y lo matchea contra las
+ * categorías reales (incluyendo customs); si no encuentra una, devuelve
+ * null y el user elige manualmente.
  *
  * Sin este mapper, el OCR pre-llenaba todo menos la categoría → el
  * user reportaba todos los gastos saliendo como "Sin categoría".
@@ -268,6 +248,27 @@ function categoryHintToIconName(hint: string | undefined): string {
     default:
       return "";
   }
+}
+
+/**
+ * Resuelve el `categoryHint` del OCR a un id de categoría real del user.
+ * Estrategia: traducimos el hint a un nombre de icono Lucide y buscamos
+ * la primera categoría (system o user-owned) cuyo `icon` matchee y cuyo
+ * `kind` sea expense. Si no hay match, devolvemos null para que el user
+ * elija manualmente — así el picker NUNCA pre-selecciona una categoría
+ * "inventada" que no esté en su lista real.
+ */
+function resolveCategoryIdFromHint(
+  hint: string | undefined,
+  categories: Category[],
+  kind: TransactionKind,
+): string | null {
+  const iconName = categoryHintToIconName(hint);
+  if (!iconName) return null;
+  const match = categories.find(
+    (c) => c.icon === iconName && c.kind === kind && !c.archived_at,
+  );
+  return match?.id ?? null;
 }
 
 // Pretty-print the OCR-classified source for use as a fallback merchant
@@ -848,8 +849,8 @@ function ReceiptPageInner() {
   const [occurredAtIso, setOccurredAtIso] = React.useState<string | null>(
     null,
   );
-  const [categoryIcon, setCategoryIcon] = React.useState<string>(
-    INITIAL_FORM.category_icon,
+  const [categoryId, setCategoryId] = React.useState<string | null>(
+    INITIAL_FORM.category_id,
   );
   // Real account id (uuid). Populated from listAccounts() on mount; the
   // first account is the default until OCR routes to a source-matching
@@ -1072,15 +1073,17 @@ function ReceiptPageInner() {
           }
           // categoryHint es una sugerencia conceptual del OCR cuando el
           // merchant tiene keyword inequívoca ("BUFFET" → food, "E.T."
-          // → transport, "INKAFARMA" → health). Mapeamos el slug a un
-          // icono Lucide y dejamos que mapIconToCategoryId encuentre la
-          // categoría real del user (custom o sistema). Si no hay hint
-          // o el merchant es ambiguo, dejamos categoryIcon vacío y el
-          // user elige manualmente — score 0 oculta el ring de
-          // sugerencia para evitar la apariencia de "guess malo".
-          const hintIcon = categoryHintToIconName(d.categoryHint);
-          if (hintIcon) {
-            setCategoryIcon(hintIcon);
+          // → transport, "INKAFARMA" → health). Resolvemos el hint a un
+          // category id REAL del user (system o custom) — si no hay match
+          // dejamos null y el user elige manualmente desde el picker
+          // (que ahora muestra la misma lista que /capture).
+          const hintCategoryId = resolveCategoryIdFromHint(
+            d.categoryHint,
+            categories,
+            transactionKind,
+          );
+          if (hintCategoryId) {
+            setCategoryId(hintCategoryId);
           }
           //
           // `kind` confidence is no longer surfaced because the type is
@@ -1089,7 +1092,7 @@ function ReceiptPageInner() {
             merchant: d.confidence,
             amount: d.confidence,
             occurred_at: d.confidence,
-            suggested_category: hintIcon ? d.confidence : 0,
+            suggested_category: hintCategoryId ? d.confidence : 0,
             kind: 0,
           });
           setDirty(false);
@@ -1112,8 +1115,12 @@ function ReceiptPageInner() {
             setOccurredAtIso(p.occurredAt);
           }
           if (p.categoryHint) {
-            const hintIcon = categoryHintToIconName(p.categoryHint);
-            if (hintIcon) setCategoryIcon(hintIcon);
+            const hintCategoryId = resolveCategoryIdFromHint(
+              p.categoryHint,
+              categories,
+              transactionKind,
+            );
+            if (hintCategoryId) setCategoryId(hintCategoryId);
           }
           // transactionKind stays hardcoded to "expense" — we ignore
           // p.kind even on partials (see state declaration above).
@@ -1198,7 +1205,7 @@ function ReceiptPageInner() {
   React.useEffect(() => {
     if (discardArmed) setDiscardArmed(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [merchant, amount, currency, occurredAt, categoryIcon, accountId]);
+  }, [merchant, amount, currency, occurredAt, categoryId, accountId]);
 
   const markDirty = React.useCallback(() => setDirty(true), []);
 
@@ -1337,11 +1344,9 @@ function ReceiptPageInner() {
     setIsSaving(true);
     try {
       const trimmedMerchant = merchant.trim();
-      // Empty categoryIcon = user didn't pick. Save uncategorized;
-      // the dashboard's "Otros" bucket will pick it up.
-      const categoryId = categoryIcon
-        ? mapIconToCategoryId(categoryIcon, categories, transactionKind)
-        : null;
+      // categoryId puede ser null = user no eligió + el hint del OCR no
+      // matcheó ninguna categoría real. La tx queda uncategorized; el
+      // dashboard la mete en el bucket "Otros".
 
       // Cuando el OCR detectó hora real en el receipt, preservamos el
       // ISO completo para que el row aparezca ordenado por la hora
@@ -1438,8 +1443,7 @@ function ReceiptPageInner() {
     amount,
     balances,
     balancesLoaded,
-    categories,
-    categoryIcon,
+    categoryId,
     currency,
     isSaving,
     merchant,
@@ -1493,7 +1497,7 @@ function ReceiptPageInner() {
   // ─── Render dispatch ──────────────────────────────────────────────────
   if (status === "idle") {
     return (
-      <div className="relative min-h-dvh bg-background text-foreground">
+      <div className="relative min-h-dvh bg-background text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {hiddenInputs}
         <IdleState
           onPickCamera={triggerCamera}
@@ -1506,7 +1510,7 @@ function ReceiptPageInner() {
 
   if (status === "preview" && imageUrl) {
     return (
-      <div className="relative min-h-dvh bg-background text-foreground">
+      <div className="relative min-h-dvh bg-background text-foreground md:min-h-0 md:max-w-2xl md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {hiddenInputs}
         <PreviewState
           imageUrl={imageUrl}
@@ -1519,7 +1523,7 @@ function ReceiptPageInner() {
 
   if (status === "loading" && imageUrl) {
     return (
-      <div className="relative min-h-dvh bg-background text-foreground">
+      <div className="relative min-h-dvh bg-background text-foreground md:min-h-0 md:max-w-2xl md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {hiddenInputs}
         <LoadingState
           imageUrl={imageUrl}
@@ -1532,7 +1536,7 @@ function ReceiptPageInner() {
 
   if (status === "failed") {
     return (
-      <div className="relative min-h-dvh bg-background text-foreground">
+      <div className="relative min-h-dvh bg-background text-foreground md:min-h-0 md:max-w-md md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {hiddenInputs}
         <FailedState
           onRetry={handleRetry}
@@ -1548,43 +1552,64 @@ function ReceiptPageInner() {
   // `account` may be null while `listAccounts` is still loading on a slow
   // network — the picker label below renders "Cargando..." in that case.
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0] ?? null;
-  // categoryIcon === "" means the user hasn't picked yet (OCR doesn't
-  // infer category). hasCategory drives the empty-state look in the
-  // picker row below.
-  const hasCategory = categoryIcon !== "";
+  // categoryId === null means the user hasn't picked yet (OCR may
+  // pre-seleccionar via hint si matchea una categoría real del user).
+  // hasCategory drives the empty-state look in the picker row below.
+  const selectedCategory =
+    categoryId !== null
+      ? categories.find((c) => c.id === categoryId) ?? null
+      : null;
+  const hasCategory = selectedCategory !== null;
   const categoryLabel = hasCategory
-    ? (CATEGORY_ICONS.find((c) => c.name === categoryIcon)?.label ?? "Otros")
+    ? selectedCategory.name
     : "Elegir categoría";
-  const CategoryIcon = hasCategory ? getCategoryIcon(categoryIcon) : null;
+  const CategoryIcon = hasCategory
+    ? getCategoryIcon(selectedCategory.icon)
+    : null;
+  // Picker drawer source — same as /capture: real user + system
+  // categories from Supabase, filtered to expense-kind (OCR is hardcoded
+  // a expense). Antes usábamos CATEGORY_ICONS (lista hardcoded de 16
+  // iconos Lucide) y eso divergía de la lista que el user veía en
+  // /capture: las categorías custom no aparecían y los nombres podían
+  // ser distintos. Ahora ambos flows leen exactamente lo mismo.
+  const pickerCategories = categories.filter(
+    (c) => c.kind === transactionKind && !c.archived_at,
+  );
 
   return (
     <div className="relative min-h-dvh bg-background pb-36 text-foreground md:pb-0">
       {hiddenInputs}
-      <div className="mx-auto w-full max-w-2xl px-4 md:px-8 md:py-8">
-        {/* Receipt photo — small banner at the top so the user can sanity-check
-            the OCR against the source without scrolling away. Tap → zoom. */}
+      {/* Desktop two-column layout: image left + form right */}
+      <div className="mx-auto w-full max-w-6xl px-4 md:grid md:grid-cols-[2fr_3fr] md:items-start md:gap-8 md:px-8 md:py-8">
+
+        {/* ── Left column: image (desktop only full view) ───────────────── */}
         {imageUrl && (
-          <div className="relative mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] md:mt-0">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local blob URL, not optimisable */}
-            <img
-              src={imageUrl}
-              alt="Foto del ticket cargado"
-              className="block h-[120px] w-full object-cover bg-[oklch(0.94_0.005_95)] dark:bg-[oklch(0.22_0.005_95)]"
-            />
-            <button
-              type="button"
-              onClick={() => setIsZoomOpen(true)}
-              aria-label="Ver foto del ticket en grande"
-              className="absolute bottom-2 right-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-foreground/85 px-3 text-[11px] font-semibold text-background backdrop-blur-sm transition-colors hover:bg-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Maximize2 size={12} aria-hidden="true" />
-              Ver
-            </button>
+          <div className="md:sticky md:top-8">
+            {/* Mobile: compact banner strip */}
+            <div className="relative mt-4 overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] md:mt-0">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local blob URL, not optimisable */}
+              <img
+                src={imageUrl}
+                alt="Foto del ticket cargado"
+                className="block h-[120px] w-full object-cover bg-[oklch(0.94_0.005_95)] dark:bg-[oklch(0.22_0.005_95)] md:h-auto md:max-h-[75vh] md:object-contain"
+              />
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(true)}
+                aria-label="Ver foto del ticket en grande"
+                className="absolute bottom-2 right-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-foreground/85 px-3 text-[11px] font-semibold text-background backdrop-blur-sm transition-colors hover:bg-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Maximize2 size={12} aria-hidden="true" />
+                Ver
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ── Right column: header + form + CTA ────────────────────────── */}
+        <div className="md:min-w-0">
         {/* Header copy */}
-        <div className="pt-5">
+        <div className="pt-5 md:pt-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Lo que leí del ticket
           </div>
@@ -1868,12 +1893,11 @@ function ReceiptPageInner() {
             )}
           </div>
         </Card>
-      </div>
 
       {/* Sticky CTA bar — soft gradient backdrop so it floats above the form
           without a hard divider. On md+ it slots inline at the bottom of the
-          page flow. */}
-      <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background via-background/95 to-transparent px-4 pt-10 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:relative md:inset-auto md:bottom-auto md:z-auto md:mx-auto md:mt-6 md:max-w-2xl md:bg-none md:px-8 md:pt-0">
+          right column. */}
+      <div className="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-background via-background/95 to-transparent px-4 pt-10 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:relative md:inset-auto md:bottom-auto md:z-auto md:mt-6 md:bg-none md:px-0 md:pt-0">
         <div className="mx-auto flex w-full max-w-md flex-col gap-2 md:max-w-none md:flex-row">
           {discardArmed ? (
             // Inline confirm — first Descartar tap arms this row; the user can
@@ -1933,6 +1957,10 @@ function ReceiptPageInner() {
           )}
         </div>
       </div>
+      </div>
+      {/* /Right column */}
+      </div>
+      {/* /Outer grid */}
 
       {/* Zoom modal — full-screen sheet, ESC-closeable + focus-trapped. */}
       <Sheet open={isZoomOpen} onOpenChange={setIsZoomOpen}>
@@ -1972,8 +2000,12 @@ function ReceiptPageInner() {
         </SheetContent>
       </Sheet>
 
-      {/* Category Drawer — same icon grid pattern as CategoryFormSheet's
-          icon picker, but for SELECTION only (not creating a category). */}
+      {/* Category Drawer — fuente unificada con /capture. Renderiza las
+          categorías reales del user (system + custom) cargadas desde
+          Supabase, filtradas a kind=expense (el flujo OCR es siempre
+          gasto). Antes mostraba CATEGORY_ICONS (lista hardcoded de
+          iconos Lucide) y por eso la lista divergía entre captura
+          manual y captura por foto. */}
       <Drawer open={isCategoryOpen} onOpenChange={setIsCategoryOpen}>
         <DrawerContent
           aria-describedby="receipt-category-desc"
@@ -1985,40 +2017,51 @@ function ReceiptPageInner() {
               Elige la que mejor describe el gasto.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="grid grid-cols-4 gap-2 px-4 pb-2">
-            {CATEGORY_ICONS.map(({ name, label, Icon }) => {
-              const selected = categoryIcon === name;
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => {
-                    setCategoryIcon(name);
-                    markDirty();
-                    setIsCategoryOpen(false);
-                  }}
-                  aria-pressed={selected}
-                  className={cn(
-                    "flex min-h-[80px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border bg-card text-foreground hover:bg-muted",
-                  )}
-                >
-                  <span
-                    aria-hidden="true"
+          <div className="grid max-h-[65vh] grid-cols-3 gap-2 overflow-y-auto overscroll-contain px-4 pb-6">
+            {pickerCategories.length === 0 ? (
+              <p className="col-span-3 py-6 text-center text-[13px] text-muted-foreground">
+                No tienes categorías de gasto. Crea una en Ajustes.
+              </p>
+            ) : (
+              pickerCategories.map((c) => {
+                const Icon = getCategoryIcon(c.icon);
+                const selected = categoryId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setCategoryId(c.id);
+                      markDirty();
+                      setIsCategoryOpen(false);
+                    }}
+                    aria-pressed={selected}
                     className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full",
-                      selected ? "bg-background/20 text-current" : "bg-muted text-foreground",
+                      "flex min-h-[88px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      selected
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-card text-foreground hover:bg-muted",
                     )}
                   >
-                    <Icon size={18} />
-                  </span>
-                  <span className="text-[11px] font-semibold leading-tight">{label}</span>
-                </button>
-              );
-            })}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-full",
+                        selected
+                          ? "bg-background/20 text-current"
+                          : "bg-muted text-foreground",
+                      )}
+                    >
+                      <Icon size={20} />
+                    </span>
+                    <span className="text-xs font-semibold leading-tight">
+                      {c.name}
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
           <DrawerFooter>
             <DrawerClose asChild>

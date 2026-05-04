@@ -244,19 +244,34 @@ export default function GoalsPage() {
 
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
-        <AppHeader
-          eyebrow="Tus sueños"
-          title="Metas"
-          titleStyle="page"
-          className="px-0 pt-0"
-        />
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-6xl md:space-y-10 md:px-8 md:pt-10">
+        <div className="md:flex md:items-end md:justify-between">
+          <AppHeader
+            eyebrow="Tus sueños"
+            title="Metas"
+            titleStyle="page"
+            className="px-0 pt-0"
+          />
+          {loaded && !showEmpty && !authError ? (
+            <div className="hidden md:block">
+              <Button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                aria-label="Agregar meta"
+                className="h-10 rounded-xl text-[13px] font-semibold"
+              >
+                <Plus size={14} aria-hidden="true" />
+                <span className="ml-1">Agregar meta</span>
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
         {/* Skeleton while loading */}
         {!loaded ? (
           <section aria-label="Cargando metas">
-            <div className="grid grid-cols-1 gap-3">
-              {[0, 1].map((i) => (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
                 <Card key={i} className="rounded-2xl border-border p-4">
                   <div className="flex items-start gap-3">
                     <Skeleton className="h-10 w-10 flex-shrink-0 rounded-xl" />
@@ -322,7 +337,7 @@ export default function GoalsPage() {
                 ) : null}
               </Card>
             ) : (
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
                 {goals.map((goal) => (
                   <GoalCard
                     key={goal.id}
@@ -336,14 +351,14 @@ export default function GoalsPage() {
           </section>
         ) : null}
 
-        {/* Add goal */}
+        {/* Add goal — mobile only (desktop CTA is in the header row) */}
         {loaded && !showEmpty && !authError ? (
-          <div className="mt-6">
+          <div className="mt-6 md:hidden">
             <Button
               type="button"
               onClick={() => setCreateOpen(true)}
               aria-label="Agregar meta"
-              className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
+              className="h-12 w-full rounded-xl text-[14px] font-semibold"
             >
               <Plus size={16} aria-hidden="true" />
               <span className="ml-1">Agregar meta</span>

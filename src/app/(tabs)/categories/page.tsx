@@ -323,14 +323,27 @@ export default function CategoriesPage() {
   return (
     <main className="relative min-h-dvh bg-background pb-32 text-foreground">
       <SavingOverlay open={submitting} label={overlayLabel} />
-      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-3xl md:space-y-10 md:px-8 md:pt-10">
+      <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-6xl md:space-y-10 md:px-8 md:pt-10">
         {/* Page heading */}
-        <AppHeader
-          eyebrow="Tu dinero"
-          title="Categorías"
-          titleStyle="page"
-          className="px-0 pt-0"
-        />
+        <div className="md:flex md:items-end md:justify-between">
+          <AppHeader
+            eyebrow="Tu dinero"
+            title="Categorías"
+            titleStyle="page"
+            className="px-0 pt-0"
+          />
+          <div className="hidden md:block">
+            <Button
+              type="button"
+              onClick={handleAdd}
+              aria-label="Agregar categoría"
+              className="h-10 rounded-xl text-[13px] font-semibold"
+            >
+              <Plus size={14} aria-hidden="true" />
+              <span className="ml-1">Agregar categoría</span>
+            </Button>
+          </div>
+        </div>
 
         {/* Kind toggle — pill segmented control. Filters the lists below. */}
         <section aria-label="Filtrar por tipo">
@@ -352,87 +365,90 @@ export default function CategoriesPage() {
           </div>
         </section>
 
-        {/* User categories */}
-        <section aria-labelledby="user-categories-heading">
-          <h2
-            id="user-categories-heading"
-            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
-          >
-            Tus categorías
-          </h2>
-          {loading ? (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <CategoriesSkeleton />
-            </Card>
-          ) : userCategories.length === 0 ? (
-            <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
-              <p className="mb-3 text-center">
-                Aún no tienes categorías propias.
-              </p>
-              <Button
-                type="button"
-                onClick={handleAdd}
-                aria-label="Agregar categoría"
-                className="h-10 w-full rounded-xl text-[13px] font-semibold"
-              >
-                <Plus size={14} aria-hidden="true" />
-                <span className="ml-1">Agregar categoría</span>
-              </Button>
-            </Card>
-          ) : (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <ul className="divide-y divide-border" role="list">
-                {userCategories.map((cat) => (
-                  <CategoryRow
-                    key={cat.id}
-                    category={cat}
-                    onClick={() => handleRowClick(cat)}
-                  />
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
+        {/* User + System categories — single column on mobile, two columns on desktop */}
+        <div className="md:grid md:grid-cols-2 md:gap-6 lg:grid-cols-2">
+          {/* User categories */}
+          <section aria-labelledby="user-categories-heading">
+            <h2
+              id="user-categories-heading"
+              className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+            >
+              Tus categorías
+            </h2>
+            {loading ? (
+              <Card className="overflow-hidden rounded-2xl border-border p-0">
+                <CategoriesSkeleton />
+              </Card>
+            ) : userCategories.length === 0 ? (
+              <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
+                <p className="mb-3 text-center">
+                  Aún no tienes categorías propias.
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleAdd}
+                  aria-label="Agregar categoría"
+                  className="h-10 w-full rounded-xl text-[13px] font-semibold"
+                >
+                  <Plus size={14} aria-hidden="true" />
+                  <span className="ml-1">Agregar categoría</span>
+                </Button>
+              </Card>
+            ) : (
+              <Card className="overflow-hidden rounded-2xl border-border p-0">
+                <ul className="divide-y divide-border" role="list">
+                  {userCategories.map((cat) => (
+                    <CategoryRow
+                      key={cat.id}
+                      category={cat}
+                      onClick={() => handleRowClick(cat)}
+                    />
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </section>
 
-        {/* System categories */}
-        <section aria-labelledby="system-categories-heading">
-          <h2
-            id="system-categories-heading"
-            className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
-          >
-            Predeterminadas
-          </h2>
-          {loading ? (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <CategoriesSkeleton />
-            </Card>
-          ) : systemCategories.length === 0 ? (
-            <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
-              No hay categorías predeterminadas para este tipo.
-            </Card>
-          ) : (
-            <Card className="overflow-hidden rounded-2xl border-border p-0">
-              <ul className="divide-y divide-border" role="list">
-                {systemCategories.map((cat) => (
-                  <CategoryRow
-                    key={cat.id}
-                    category={cat}
-                    onClick={() => handleRowClick(cat)}
-                    locked
-                  />
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
+          {/* System categories */}
+          <section aria-labelledby="system-categories-heading">
+            <h2
+              id="system-categories-heading"
+              className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground md:mt-0 mt-6"
+            >
+              Predeterminadas
+            </h2>
+            {loading ? (
+              <Card className="overflow-hidden rounded-2xl border-border p-0">
+                <CategoriesSkeleton />
+              </Card>
+            ) : systemCategories.length === 0 ? (
+              <Card className="rounded-2xl border-dashed border-border p-5 text-sm text-muted-foreground">
+                No hay categorías predeterminadas para este tipo.
+              </Card>
+            ) : (
+              <Card className="overflow-hidden rounded-2xl border-border p-0">
+                <ul className="divide-y divide-border" role="list">
+                  {systemCategories.map((cat) => (
+                    <CategoryRow
+                      key={cat.id}
+                      category={cat}
+                      onClick={() => handleRowClick(cat)}
+                      locked
+                    />
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </section>
+        </div>
 
-        {/* Add category */}
-        <div className="mt-6">
+        {/* Add category — mobile only (desktop CTA is in the header row) */}
+        <div className="mt-6 md:hidden">
           <Button
             type="button"
             onClick={handleAdd}
             aria-label="Agregar categoría"
-            className="h-12 w-full rounded-xl text-[14px] font-semibold md:max-w-xs"
+            className="h-12 w-full rounded-xl text-[14px] font-semibold"
           >
             <Plus size={16} aria-hidden="true" />
             <span className="ml-1">Agregar categoría</span>
