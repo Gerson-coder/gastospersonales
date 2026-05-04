@@ -9,7 +9,9 @@ import { llmOutputSchema, type LlmOutput, type OcrModel } from "../types";
  *
  * BCP "Constancia" screens have the same density as BBVA constancias —
  * full account context plus operation metadata. Same tuning as BBVA
- * (auto detail, 800 tokens, 25s) for parity.
+ * (low detail, 800 tokens, 25s) for parity. La imagen ya se pre-
+ * comprime client-side a 1024×1024, asi que `low` es suficiente para
+ * que el modelo lea la fuente del banco sin bloat de tokens.
  *
  * Note: Yape inside the BCP app classifies upstream as "yape" and
  * routes to extractYape, NOT here. This extractor only handles native
@@ -27,7 +29,7 @@ export async function extractBcp(
     userPrompt: BCP_PROMPT,
     imageBase64,
     schema: llmOutputSchema,
-    imageDetail: "auto",
+    imageDetail: "low",
     maxTokens: 800,
     timeoutMs: 25_000,
     onUsage: opts.onUsage,

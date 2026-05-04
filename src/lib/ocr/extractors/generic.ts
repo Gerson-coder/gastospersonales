@@ -13,9 +13,13 @@ import { llmOutputSchema, type LlmOutput, type OcrModel } from "../types";
  * so the pipeline routes most of these through the LOW_CONFIDENCE path
  * — user reviews + confirms manually.
  *
- * Tuning is more generous than the specialized extractors:
- *   - `imageDetail: "auto"` — paper receipts can have small text;
- *     can't risk losing detail with `low`.
+ * Tuning:
+ *   - `imageDetail: "low"` — el client comprime las fotos a 1024×1024
+ *     JPEG q80 antes de subirlas, asi que la version que llega al modelo
+ *     ya esta normalizada. `low` cuts cost ~3× y para imagenes
+ *     pre-comprimidas la perdida de detalle es minima. Si caen muchos
+ *     parses con LOW_CONFIDENCE en recibos densos, considerar volver a
+ *     `auto` solo para `unknown` (no para Yape/Plin/etc).
  *   - `maxTokens: 1000` — paper receipts/invoices may have many line
  *     items; we want the rawText to capture them in case the user
  *     wants to look at the verbatim text.
@@ -34,7 +38,7 @@ export async function extractGeneric(
     userPrompt: GENERIC_PROMPT,
     imageBase64,
     schema: llmOutputSchema,
-    imageDetail: "auto",
+    imageDetail: "low",
     maxTokens: 1000,
     timeoutMs: 30_000,
     onUsage: opts.onUsage,

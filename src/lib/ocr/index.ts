@@ -131,40 +131,26 @@ export async function extractFromImage(
     }
   };
 
-  let raw = await runExtract("gpt-4o-mini");
-  let modelUsed: OcrModel = "gpt-4o-mini";
+  const raw = await runExtract("gpt-4o-mini");
+  const modelUsed: OcrModel = "gpt-4o-mini";
 
-  // If mini failed entirely, escalate straight to 4o.
+  // Eliminado el fallback / escalate a gpt-4o. El cap de costo por foto
+  // ahora es predecible (~$0.005 mini con detail:low). Antes una foto
+  // borrosa podia disparar dos llamadas extra a gpt-4o (~$0.05 por foto)
+  // sin mejorar materialmente el output — la mayoria de "low confidence"
+  // son fotos donde ningun modelo va a acertar y el user igual termina
+  // editando los campos a mano. Mejor devolver el parse parcial rapido
+  // y dejar que el user complete vs gastar 10x para casi el mismo
+  // resultado.
   if (!raw) {
-    raw = await runExtract("gpt-4o");
-    modelUsed = "gpt-4o";
-    if (!raw) {
-      return {
-        ok: false,
-        error: { kind: "MODEL_FAILURE", retryable: false },
-      };
-    }
+    return {
+      ok: false,
+      error: { kind: "MODEL_FAILURE", retryable: false },
+    };
   }
 
   // ─── Stage 3: validate → adjust confidence ──────────────────────────
-  let validated = validateExtraction(raw);
-
-  // ─── Stage 4: escalate to 4o if mini's result is low-confidence ─────
-  if (
-    validated.output.confidence < OCR_CONFIDENCE_THRESHOLD &&
-    modelUsed === "gpt-4o-mini"
-  ) {
-    const second = await runExtract("gpt-4o");
-    if (second) {
-      const secondValidated = validateExtraction(second);
-      // Only adopt 4o's result if it's genuinely better — otherwise we
-      // pay for the upgrade without improving the user's UX.
-      if (secondValidated.output.confidence > validated.output.confidence) {
-        validated = secondValidated;
-        modelUsed = "gpt-4o";
-      }
-    }
-  }
+  const validated = validateExtraction(raw);
 
   // ─── Stage 5: final decision ────────────────────────────────────────
   if (validated.output.confidence < OCR_CONFIDENCE_THRESHOLD) {
