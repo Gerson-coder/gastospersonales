@@ -1359,28 +1359,35 @@ function ReceiptPageInner() {
         receiptId: receiptId ?? null,
       });
 
-      // `createTransaction()` ya emitió `tx:upserted`, pero el listener del
-      // dashboard puede no estar montado todavía (el usuario sigue en
-      // /receipt). Para que /dashboard y /movements muestren la nueva
-      // transacción sin refresh manual:
-      //   1. `router.refresh()` invalida el cache de segmentos del App
-      //      Router para que la próxima navegación remonte el árbol y
-      //      dispare las queries del cliente desde cero. Mismo patrón
-      //      que /capture (ver capture/page.tsx).
-      //   2. Re-emitir `tx:upserted` justo antes de navegar cubre el
-      //      caso en que el dashboard SÍ esté en cache (re-visita): el
-      //      listener mounted recibe el evento y refetcha sin esperar
-      //      al broadcast realtime (500-1500ms).
-      // Sin esto, el usuario tenía que refrescar la página manualmente
-      // tras guardar desde la foto.
-      router.refresh();
-
-      // Show the inline "Guardado" banner, then navigate. 900ms is just
-      // enough for the user to register the confirmation without
-      // feeling stuck on the page.
+      // El bug previo: refresh() afuera del setTimeout y push adentro
+      // dejaba 900ms en los que el cache podía regenerarse, y el
+      // emitTxUpserted dentro del setTimeout disparaba "al vacío" si
+      // /dashboard estaba descargado. Tres redundancias para garantizar
+      // que la nueva transacción aparezca al instante:
+      //
+      // 1) sessionStorage flag — leído por el listener `useDirtyOnReturn`
+      //    del dashboard al montar. Es la señal MÁS confiable: síncrona,
+      //    read-once, sobrevive a cualquier tipo de cache. Si todos los
+      //    otros mecanismos fallan, este garantiza el refetch.
+      // 2) emitTxUpserted() — para el caso en que /dashboard YA esté
+      //    montado (revisita rápida): el listener recibe el evento y
+      //    refetcha sin esperar el realtime broadcast (500-1500ms).
+      // 3) router.refresh() — invalida el cache de segmentos del App
+      //    Router justo antes del push, para que el remontaje fuerce
+      //    queries de servidor frescas.
+      //
+      // Show the inline "Guardado" banner, then navigate. 900ms es
+      // suficiente para que el user registre la confirmación sin
+      // sentirse atascado en la página.
+      try {
+        window.sessionStorage.setItem("kane:tx-just-created", String(Date.now()));
+      } catch {
+        // private mode / quota — los mecanismos 2 y 3 igual cubren la mayoría.
+      }
       setSaved(true);
       window.setTimeout(() => {
         emitTxUpserted();
+        router.refresh();
         router.push("/dashboard");
       }, 900);
     } catch (err) {

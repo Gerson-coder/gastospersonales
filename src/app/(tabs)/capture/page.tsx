@@ -1331,18 +1331,13 @@ function CapturePageInner() {
                 aria-checked={kind === "transfer"}
                 onClick={() => setKind("transfer")}
                 className={cn(
-                  "relative inline-flex h-10 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                  "inline-flex h-10 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   kind === "transfer"
                     ? "bg-sky-500/15 text-sky-700 shadow-[var(--shadow-xs)] dark:bg-sky-500/25 dark:text-sky-200"
                     : "text-muted-foreground",
                 )}
               >
-                <ArrowLeftRight
-                  size={10}
-                  aria-hidden
-                  className="absolute right-1.5 top-1.5 opacity-70"
-                />
                 Transferencia
               </button>
             )}

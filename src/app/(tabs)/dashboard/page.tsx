@@ -1338,6 +1338,24 @@ export default function DashboardPage() {
     };
   }, [window.refetch]);
 
+  // sessionStorage flag set by /receipt y /capture justo antes del push
+  // a /dashboard. Cubre el caso en que el dashboard remonte fresh: el
+  // useEffect lee el flag, lo limpia, y dispara refetch. Es la red de
+  // seguridad más confiable porque no depende del segment cache ni del
+  // timing del evento (synchronous read en el primer render post-mount).
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    try {
+      const flag = globalThis.sessionStorage?.getItem("kane:tx-just-created");
+      if (flag) {
+        globalThis.sessionStorage.removeItem("kane:tx-just-created");
+        window.refetch();
+      }
+    } catch {
+      // private mode / quota — los listeners de focus/event igual cubren.
+    }
+  }, [window.refetch]);
+
   // Account list — feeds the carousel + the desktop chip strip. Refetched
   // on mount AND on the `account:upserted` event so a new account created
   // in /accounts shows up immediately when the user navigates back here
