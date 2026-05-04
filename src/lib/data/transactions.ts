@@ -422,7 +422,17 @@ export async function getAccountBalances(
  * after an archive triggered from /dashboard's detail drawer.
  */
 export const TX_UPSERTED_EVENT = "tx:upserted";
-function emitTxUpserted(): void {
+/**
+ * Re-emite el evento `tx:upserted` para que el dashboard y /movements
+ * refetcheen. Las funciones de escritura (`createTransaction`,
+ * `updateTransaction`, `archiveTransaction`, `createTransfer`) ya lo
+ * disparan internamente; exponer esta función permite a flujos con
+ * navegación retrasada (ej. /receipt con su banner "Guardado" de 900ms)
+ * re-emitir el evento justo antes de `router.push()` para cubrir el caso
+ * en que el listener del destino aún no estaba montado cuando el write
+ * resolvió.
+ */
+export function emitTxUpserted(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(TX_UPSERTED_EVENT));
 }

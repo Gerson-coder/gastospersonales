@@ -377,6 +377,12 @@ type RecentRowItem = {
    *  category-icon / initials fallback. Null when the merchant has no
    *  hand-prepared logo or no merchant at all. */
   merchantLogoSlug?: string | null;
+  /** When non-null this row is one leg of an inter-account transfer.
+   *  Both legs (source = expense, destination = income) share the same
+   *  uuid. Drives a dedicated visual treatment in the recent list:
+   *  ArrowLeftRight icon + "Transferencia enviada/recibida" title +
+   *  account-name subtitle, mirroring /movements. */
+  transferGroupId?: string | null;
 };
 
 function TransactionRow({
@@ -389,11 +395,28 @@ function TransactionRow({
   const Icon = CATEGORY_ICONS[t.iconKey];
   const tint = CATEGORY_TINT[t.iconKey];
   const isIncome = t.kind === "income";
+  // Transfer rows (both legs) get a dedicated treatment: the category +
+  // merchant fields are null at the DB level, so without this branch
+  // the row would render as "Sin categoría" and a generic icon, which
+  // misleads the user into thinking they had a real expense/income.
+  // Mirrors the visual language of /movements so transfers read the
+  // same across screens.
+  const isTransfer = (t.transferGroupId ?? null) !== null;
+  const dateLabel = formatTxDate(t.occurredAt);
   // Mobile parity — income leads with the account name, expense keeps
   // the merchant/category as title. Subtitle is the friendly relative
   // date (Hoy / Ayer / DD MMM) in muted text.
-  const title = isIncome ? (t.accountName ?? t.merchant) : t.merchant;
-  const subtitle = formatTxDate(t.occurredAt);
+  const title = isTransfer
+    ? isIncome
+      ? "Transferencia recibida"
+      : "Transferencia enviada"
+    : isIncome
+      ? (t.accountName ?? t.merchant)
+      : t.merchant;
+  // For transfers we lead the subtitle with the account name so the user
+  // can tell the two legs (Yape → Plin) apart at a glance.
+  const subtitle =
+    isTransfer && t.accountName ? `${t.accountName} · ${dateLabel}` : dateLabel;
   // When the row's merchant has a hand-prepared logo (e.g. KFC, Starbucks),
   // we swap the category icon circle for the SVG; the surrounding bg-muted
   // chip keeps the visual rhythm of the list. Otherwise the existing
@@ -418,7 +441,14 @@ function TransactionRow({
           : undefined
       }
     >
-      {isIncome && t.accountName ? (
+      {isTransfer ? (
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]"
+        >
+          <ArrowLeftRight size={16} />
+        </span>
+      ) : isIncome && t.accountName ? (
         // Income rows lead with the account NAME as their title — so the
         // icon should be the account's brand logo (BCP, Interbank, etc.),
         // not a generic piggy-bank category icon. Falls back to the
@@ -483,14 +513,29 @@ function TransactionRowMobile({
   onTap?: () => void;
 }) {
   const isIncome = t.kind === "income";
+  // Transfer rows render the same neutral "↔" treatment as /movements:
+  // ArrowLeftRight icon + "Transferencia enviada/recibida" title +
+  // account-name subtitle. Without this branch the row fell back to
+  // MerchantAvatar with empty initials and the title read as "Sin
+  // categoría", which made transfers invisible in the recent list.
+  const isTransfer = (t.transferGroupId ?? null) !== null;
   // Income: title = account name (the user's mental model is "I deposited
   // 270 to BCP Ahorro" — the account is the meaningful label, not the
   // category which is a dim "Ahorro"). Expense: keep merchant/category.
-  const title = isIncome ? (t.accountName ?? t.merchant) : t.merchant;
+  const title = isTransfer
+    ? isIncome
+      ? "Transferencia recibida"
+      : "Transferencia enviada"
+    : isIncome
+      ? (t.accountName ?? t.merchant)
+      : t.merchant;
   // Subtitle = friendly date ("Hoy 12:30" / "Ayer 09:15" / "20 Abr 11:10").
   // Subtle muted color carries the timestamp without competing with the
-  // amount on the right column.
-  const subtitle = formatTxDate(t.occurredAt);
+  // amount on the right column. For transfers we lead with the account
+  // name so the user can read the two legs (Yape → Plin) at a glance.
+  const dateLabel = formatTxDate(t.occurredAt);
+  const subtitle =
+    isTransfer && t.accountName ? `${t.accountName} · ${dateLabel}` : dateLabel;
   return (
     <div
       className={cn(
@@ -516,7 +561,14 @@ function TransactionRowMobile({
           the merchant initials of "BCP Sueldo" reading as "BS". For expense
           rows MerchantAvatar still wins — KFC / Starbucks / Inkafarma logos
           live there with deterministic-initials fallback. */}
-      {isIncome && t.accountName ? (
+      {isTransfer ? (
+        <span
+          aria-hidden="true"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[oklch(0.92_0.03_220)] text-[oklch(0.45_0.10_220)]"
+        >
+          <ArrowLeftRight size={16} />
+        </span>
+      ) : isIncome && t.accountName ? (
         <span
           aria-hidden="true"
           className={cn(
@@ -574,6 +626,7 @@ function viewToRecent(t: TransactionView): RecentRowItem {
     occurredAt: t.occurredAt,
     accountName: t.accountName,
     merchantLogoSlug: t.merchantLogoSlug,
+    transferGroupId: t.transferGroupId,
   };
 }
 

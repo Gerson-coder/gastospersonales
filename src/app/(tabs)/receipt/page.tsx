@@ -78,6 +78,7 @@ import {
 import { type Category, listCategories } from "@/lib/data/categories";
 import {
   createTransaction,
+  emitTxUpserted,
   type TransactionKind,
 } from "@/lib/data/transactions";
 import {
@@ -1284,11 +1285,28 @@ function ReceiptPageInner() {
         receiptId: receiptId ?? null,
       });
 
+      // `createTransaction()` ya emitió `tx:upserted`, pero el listener del
+      // dashboard puede no estar montado todavía (el usuario sigue en
+      // /receipt). Para que /dashboard y /movements muestren la nueva
+      // transacción sin refresh manual:
+      //   1. `router.refresh()` invalida el cache de segmentos del App
+      //      Router para que la próxima navegación remonte el árbol y
+      //      dispare las queries del cliente desde cero. Mismo patrón
+      //      que /capture (ver capture/page.tsx).
+      //   2. Re-emitir `tx:upserted` justo antes de navegar cubre el
+      //      caso en que el dashboard SÍ esté en cache (re-visita): el
+      //      listener mounted recibe el evento y refetcha sin esperar
+      //      al broadcast realtime (500-1500ms).
+      // Sin esto, el usuario tenía que refrescar la página manualmente
+      // tras guardar desde la foto.
+      router.refresh();
+
       // Show the inline "Guardado" banner, then navigate. 900ms is just
       // enough for the user to register the confirmation without
       // feeling stuck on the page.
       setSaved(true);
       window.setTimeout(() => {
+        emitTxUpserted();
         router.push("/dashboard");
       }, 900);
     } catch (err) {
