@@ -29,15 +29,19 @@ import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
+  Banknote,
   Camera,
   Check,
   ChevronRight,
+  CreditCard,
   Image as ImageIcon,
+  Landmark,
   Loader2,
   Maximize2,
   PenLine,
   RotateCcw,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -81,6 +85,9 @@ import {
 } from "@/lib/data/balances";
 import { useAccountBalances } from "@/hooks/use-account-balances";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
+import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
+import { accountChipBgClass } from "@/lib/account-brand-slug";
+import { CURRENCY_LABEL } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -773,6 +780,19 @@ function ReceiptPageInner() {
   const [noBalanceReason, setNoBalanceReason] = React.useState<
     "empty" | "insufficient"
   >("empty");
+  // Modal "no pudimos procesar la foto" — se abre cuando el OCR
+  // devuelve INVALID_IMAGE o MODEL_FAILURE no-retryable (es decir,
+  // cuando el modelo definitivamente no pudo leer la foto). El user
+  // antes recibía solo un toast efímero y el flujo se quedaba en
+  // status "failed" sin mas indicación de qué hacer. Ahora un modal
+  // claro explica el problema y ofrece "Ingresar manualmente" → push
+  // a /capture donde llena los datos a mano. MODEL_FAILURE retryable
+  // (5xx, timeout) se sigue surfacing como toast — son transitorios y
+  // un modal seria fricción innecesaria.
+  const [unprocessableOpen, setUnprocessableOpen] = React.useState(false);
+  const [unprocessableReason, setUnprocessableReason] = React.useState<
+    "invalid_image" | "model_failure"
+  >("model_failure");
   // Transaction kind comes from the OCR result (Yape recibido → income,
   // everything else → expense). The user does NOT edit this in the form;
   // it travels through to handleAccept untouched.
@@ -977,17 +997,22 @@ function ReceiptPageInner() {
         }
 
         if (json.error.kind === "INVALID_IMAGE") {
-          toast.error("La imagen no se pudo leer. Intenta con otra foto.");
+          setUnprocessableReason("invalid_image");
+          setUnprocessableOpen(true);
           setStatus("failed");
           return;
         }
 
-        // MODEL_FAILURE
-        toast.error(
-          json.error.retryable
-            ? "El servicio no respondió. Reintenta en unos segundos."
-            : "No pudimos procesar el ticket. Intenta otra imagen.",
-        );
+        // MODEL_FAILURE — los retryable (5xx, timeout) van por toast
+        // porque son transitorios; el user reintenta y suele andar.
+        // Los no-retryable (parse imposible, schema reject) abren el
+        // modal "no pudimos procesar" con CTA a ingresar manualmente.
+        if (json.error.retryable) {
+          toast.error("El servicio no respondió. Reintenta en unos segundos.");
+        } else {
+          setUnprocessableReason("model_failure");
+          setUnprocessableOpen(true);
+        }
         setStatus("failed");
       } catch (err) {
         if (cancelled) return;
@@ -1737,7 +1762,15 @@ function ReceiptPageInner() {
         </DrawerContent>
       </Drawer>
 
-      {/* Account Drawer — list selector (mock data; data-layer wiring later). */}
+      {/* Account Drawer — list selector con icono + saldo + tipo, mismo
+          patron visual que /capture para que el user reconozca la
+          superficie. Cada fila muestra:
+            - chip con AccountBrandIcon (logo del banco / yape / plin /
+              fallback al icono del kind)
+            - label + tipo (Efectivo / Tarjeta / Banco / Yape / Plin)
+            - saldo formateado al lado derecho con tone segun positivo /
+              cero / negativo
+          Asi el user decide con la misma información que en capture. */}
       <Drawer open={isAccountOpen} onOpenChange={setIsAccountOpen}>
         <DrawerContent
           aria-describedby="receipt-account-desc"
@@ -1749,7 +1782,7 @@ function ReceiptPageInner() {
               ¿De dónde salió el dinero?
             </DrawerDescription>
           </DrawerHeader>
-          <ul className="flex flex-col gap-1 px-2 pb-2">
+          <ul className="flex max-h-[65vh] flex-col gap-1 overflow-y-auto overscroll-contain px-2 pb-2">
             {accounts.length === 0 && (
               <li className="px-3 py-4 text-center text-[13px] text-muted-foreground">
                 Aún no tienes cuentas. Crea una desde Cuentas.
@@ -1757,6 +1790,33 @@ function ReceiptPageInner() {
             )}
             {accounts.map((a) => {
               const selected = accountId === a.id;
+              const balance = balances[a.id] ?? 0;
+              const balanceTone =
+                !balancesLoaded
+                  ? "text-muted-foreground"
+                  : balance > 0
+                    ? "text-foreground"
+                    : balance < 0
+                      ? "text-destructive"
+                      : "text-muted-foreground";
+              const KindIcon =
+                a.kind === "cash"
+                  ? Banknote
+                  : a.kind === "card"
+                    ? CreditCard
+                    : a.kind === "yape" || a.kind === "plin"
+                      ? Wallet
+                      : Landmark;
+              const kindLabel =
+                a.kind === "cash"
+                  ? "Efectivo"
+                  : a.kind === "card"
+                    ? "Tarjeta"
+                    : a.kind === "yape"
+                      ? "Yape"
+                      : a.kind === "plin"
+                        ? "Plin"
+                        : "Cuenta bancaria";
               return (
                 <li key={a.id}>
                   <button
@@ -1767,21 +1827,64 @@ function ReceiptPageInner() {
                       setIsAccountOpen(false);
                     }}
                     aria-pressed={selected}
+                    aria-label={`${accountDisplayLabel(a)}, ${kindLabel}, saldo ${formatMoney(balance, a.currency)}`}
                     className={cn(
-                      "flex h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
+                      "flex h-16 w-full items-center gap-3 rounded-2xl px-3 text-left transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      selected ? "bg-muted" : "hover:bg-muted",
+                      selected ? "bg-muted ring-1 ring-foreground/15" : "hover:bg-muted",
                     )}
                   >
-                    <span className="flex-1">
-                      <span className="block text-[13px] font-semibold">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-foreground",
+                        accountChipBgClass(a.label),
+                      )}
+                    >
+                      <AccountBrandIcon
+                        label={a.label}
+                        fallback={<KindIcon size={16} />}
+                        size={20}
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold">
                         {accountDisplayLabel(a)}
                       </span>
-                      <span className="block text-[11px] text-muted-foreground">
-                        {a.currency}
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {kindLabel}
                       </span>
                     </span>
-                    {selected && <Check size={16} aria-hidden="true" />}
+                    <span className="ml-2 flex flex-col items-end">
+                      <span className="flex items-center gap-1">
+                        {selected ? (
+                          <Check
+                            size={12}
+                            aria-hidden="true"
+                            strokeWidth={2.5}
+                            className="text-foreground"
+                          />
+                        ) : null}
+                        {balancesLoaded ? (
+                          <span
+                            className={cn(
+                              "text-[13px] font-semibold tabular-nums whitespace-nowrap",
+                              balanceTone,
+                            )}
+                            style={{ fontFeatureSettings: '"tnum","lnum"' }}
+                          >
+                            {formatMoney(balance, a.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">
+                            …
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-[0.05em] text-muted-foreground/80">
+                        {balancesLoaded && balance <= 0 ? "sin saldo" : "saldo"}
+                      </span>
+                    </span>
                   </button>
                 </li>
               );
@@ -1814,6 +1917,59 @@ function ReceiptPageInner() {
         }
         closeLabel="Entendido"
       />
+
+      {/* Modal "no pudimos procesar la foto" — se abre con
+          INVALID_IMAGE o MODEL_FAILURE no-retryable. Da al user 2
+          opciones: cerrar el modal (queda en /receipt y puede tomar
+          otra foto), o "Ingresar manualmente" que navega a /capture
+          para llenar los datos a mano sin OCR. El status del receipt
+          queda en "failed" hasta que cierre o reintente. */}
+      <Drawer open={unprocessableOpen} onOpenChange={setUnprocessableOpen}>
+        <DrawerContent
+          aria-describedby="receipt-unprocessable-desc"
+          className="bg-background"
+        >
+          <DrawerHeader className="text-center">
+            <div
+              aria-hidden="true"
+              className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_70)] text-[oklch(0.45_0.14_70)] dark:bg-[oklch(0.30_0.06_70)] dark:text-[oklch(0.85_0.14_70)]"
+            >
+              <AlertTriangle size={28} aria-hidden strokeWidth={2.4} />
+            </div>
+            <DrawerTitle className="font-sans not-italic text-lg font-semibold">
+              No pudimos procesar la foto
+            </DrawerTitle>
+            <DrawerDescription
+              id="receipt-unprocessable-desc"
+              className="text-[13px] leading-relaxed"
+            >
+              {unprocessableReason === "invalid_image"
+                ? "La imagen no se pudo leer. Verifica que esté enfocada y bien iluminada, o ingresa los datos de forma manual."
+                : "No logramos extraer los datos de esta foto. Puedes reintentar con otra imagen o ingresar los datos de forma manual."}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="flex flex-col gap-2 px-4 pb-6">
+            <Button
+              type="button"
+              onClick={() => {
+                setUnprocessableOpen(false);
+                router.push("/capture");
+              }}
+              className="h-11 w-full rounded-xl text-[14px] font-semibold"
+            >
+              Ingresar manualmente
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setUnprocessableOpen(false)}
+              className="h-11 w-full rounded-xl text-[14px] font-semibold"
+            >
+              Reintentar con otra foto
+            </Button>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }
