@@ -85,6 +85,8 @@ import {
   BALANCE_GUARD_TITLE,
 } from "@/lib/data/balances";
 import { useAccountBalances } from "@/hooks/use-account-balances";
+import { useActiveAccountId } from "@/hooks/use-active-account-id";
+import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
@@ -824,8 +826,19 @@ function ReceiptPageInner() {
   // the review state. Once OCR resolves, every field below is overwritten.
   const [merchant, setMerchant] = React.useState(INITIAL_FORM.merchant);
   const [amount, setAmount] = React.useState(INITIAL_FORM.amount);
-  const [currency, setCurrency] = React.useState<Currency>(INITIAL_FORM.currency);
+  // Currency unificada con kane-prefs (mismo store que /capture y el
+  // dashboard). Antes era useState local — si el OCR detectaba una
+  // moneda distinta a la activa, la tx se insertaba en esa moneda pero
+  // el dashboard la filtraba server-side por su `currency` activo, así
+  // que quedaba invisible. Compartir el store evita el desfase y
+  // garantiza que /dashboard muestre la moneda usada en el OCR.
+  const { currency, setCurrency } = useActiveCurrency();
   const [occurredAt, setOccurredAt] = React.useState(INITIAL_FORM.occurred_at);
+  // Setter del activeAccountId para sincronizar con el dashboard al
+  // navegar — el carousel arranca en esta cuenta y `selectedAccountId`
+  // queda alineado, lo que permite que la nueva tx OCR pase el filtro
+  // de `recentTransactions` en useTransactionsWindow.
+  const { setActiveAccountId } = useActiveAccountId();
   // ISO completo del OCR (con HORA + ZONA). Cuando viene del OCR
   // queremos preservar la hora real del receipt para que el row aparezca
   // ordenado correctamente en /movements y /dashboard. Si el user
@@ -1379,6 +1392,18 @@ function ReceiptPageInner() {
       //   3) emitTxUpserted() — ya disparado dentro de `createTransaction`,
       //      cubre el caso donde el dashboard ya esté montado.
       //   4) router.refresh() + router.push("/dashboard") — sin demora.
+      // CRÍTICO — alinear el activeAccountId con la cuenta usada en el
+      // OCR. /capture lo hace siempre antes de navegar al dashboard;
+      // /receipt lo omitía y por eso el carousel del dashboard
+      // aterrizaba en una cuenta antigua, dejando `selectedAccountId`
+      // mal alineado. Esto hacía que el filter
+      // `filteredRows = rows.filter(r => r.accountId === selectedAccountId)`
+      // dentro de useTransactionsWindow excluyera la nueva tx OCR de
+      // `recentTransactions` — el saldo total seguía actualizándose
+      // (useAccountStats consume `rows` sin filtrar) pero la fila no
+      // aparecía en "Últimos movimientos". Bug confirmado por 5
+      // agentes investigadores en paralelo.
+      setActiveAccountId(accountId);
       try {
         window.sessionStorage.setItem("kane:tx-just-created", String(Date.now()));
       } catch {
