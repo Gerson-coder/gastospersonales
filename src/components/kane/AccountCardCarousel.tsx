@@ -40,6 +40,7 @@ import {
   getStatsFor,
 } from "@/hooks/use-account-stats";
 import { useActiveAccountId } from "@/hooks/use-active-account-id";
+import { useHideBalances } from "@/hooks/use-hide-balances";
 import { ACCOUNT_SUBTYPE_LABEL } from "@/lib/data/accounts";
 
 export type AccountCardCarouselProps = {
@@ -99,7 +100,11 @@ export function AccountCardCarousel({
   });
 
   const [activeIndex, setActiveIndex] = React.useState(initialIndex);
-  const [hideAmounts, setHideAmounts] = React.useState(false);
+  // Toggle "ocultar saldos" persistido en kane-prefs.hideBalances. Antes
+  // era useState local; al navegar fuera del dashboard y volver, el
+  // carousel se desmontaba y arrancaba en visible — el user reportaba
+  // que su preferencia se reseteaba sola.
+  const { hideBalances: hideAmounts, toggleHideBalances } = useHideBalances();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
   // Latest callback ref — keeps the embla `select` effect's deps minimal so
@@ -221,7 +226,7 @@ export function AccountCardCarousel({
                   currency={currency}
                   saldoActual={s.saldoActual}
                   hideAmounts={hideAmounts}
-                  onToggleHide={() => setHideAmounts((h) => !h)}
+                  onToggleHide={toggleHideBalances}
                   variant="full"
                   // Subtle scale-pulse on the active card — kicks in on snap
                   // via the `kane-account-card--snap` modifier toggled by

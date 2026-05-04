@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Eye, EyeOff, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useHideBalances } from "@/hooks/use-hide-balances";
 
 export type Period = "today" | "week" | "month";
 
@@ -50,7 +51,11 @@ export function DashboardHero({
   currency,
   className,
 }: DashboardHeroProps) {
-  const [hidden, setHidden] = React.useState(false);
+  // hideBalances persistido en kane-prefs — comparte el mismo flag que
+  // el AccountCardCarousel mobile, así si el user oculta saldos en uno
+  // u otro la preferencia respeta el switch entre breakpoints (desktop
+  // ↔ mobile).
+  const { hideBalances: hidden, toggleHideBalances } = useHideBalances();
 
   const formatter = React.useMemo(
     () =>
@@ -101,7 +106,7 @@ export function DashboardHero({
         </div>
         <button
           type="button"
-          onClick={() => setHidden((h) => !h)}
+          onClick={toggleHideBalances}
           aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
           className="text-primary-foreground/60 hover:text-primary-foreground transition-colors focus-visible:outline-none"
         >
