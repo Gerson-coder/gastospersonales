@@ -236,6 +236,39 @@ function mapIconToCategoryId(
   return byKind?.id ?? null;
 }
 
+/**
+ * Mapea el `categoryHint` del OCR (slug conceptual) al nombre del icono
+ * Lucide que las categorías del usuario usan en la DB. El downstream
+ * `mapIconToCategoryId` toma este icono y lo matchea contra las
+ * categorías reales (incluyendo customs); si no encuentra una, cae al
+ * fallback "primera categoría del kind".
+ *
+ * Sin este mapper, el OCR pre-llenaba todo menos la categoría → el
+ * user reportaba todos los gastos saliendo como "Sin categoría".
+ */
+function categoryHintToIconName(hint: string | undefined): string {
+  switch (hint) {
+    case "food":
+      return "utensils-crossed";
+    case "transport":
+      return "car";
+    case "groceries":
+      return "shopping-cart";
+    case "health":
+      return "heart-pulse";
+    case "fun":
+      return "film";
+    case "utilities":
+      return "zap";
+    case "education":
+      return "graduation-cap";
+    case "work":
+      return "briefcase";
+    default:
+      return "";
+  }
+}
+
 // Pretty-print the OCR-classified source for use as a fallback merchant
 // label when the receipt has no counterparty (e.g. a Yape with the name
 // cropped). "yape" → "Yape", "bcp" → "BCP", etc.
@@ -726,6 +759,11 @@ type OcrApiResponse =
         // wins over `source` for account suggestion (e.g. a Yape with
         // "Destino: Plin" should pre-select the user's Plin account).
         destinationApp?: "yape" | "plin";
+        // Sugerencia de categoría conceptual del OCR (food/transport/
+        // groceries/health/fun/utilities/education/work/other). El
+        // frontend la mapea a un icono Lucide y luego a una categoría
+        // real del user via mapIconToCategoryId.
+        categoryHint?: string;
         rawText: string;
         modelUsed: string;
       };
@@ -747,6 +785,7 @@ type OcrApiResponse =
               occurredAt?: string;
               counterparty?: { name: string; document?: string };
               destinationApp?: "yape" | "plin";
+              categoryHint?: string;
               rawText?: string;
               modelUsed?: string;
             };
@@ -788,6 +827,15 @@ function ReceiptPageInner() {
   const [amount, setAmount] = React.useState(INITIAL_FORM.amount);
   const [currency, setCurrency] = React.useState<Currency>(INITIAL_FORM.currency);
   const [occurredAt, setOccurredAt] = React.useState(INITIAL_FORM.occurred_at);
+  // ISO completo del OCR (con HORA + ZONA). Cuando viene del OCR
+  // queremos preservar la hora real del receipt para que el row aparezca
+  // ordenado correctamente en /movements y /dashboard. Si el user
+  // edita la fecha (input type=date solo cambia YYYY-MM-DD), perdemos
+  // la asociación y caemos al fallback noon-Lima en handleAccept.
+  // null = manual o user editó la fecha → noon.
+  const [occurredAtIso, setOccurredAtIso] = React.useState<string | null>(
+    null,
+  );
   const [categoryIcon, setCategoryIcon] = React.useState<string>(
     INITIAL_FORM.category_icon,
   );
@@ -975,6 +1023,11 @@ function ReceiptPageInner() {
           setAmount((d.amount.minor / 100).toFixed(2));
           setCurrency(d.amount.currency);
           setOccurredAt(d.occurredAt.slice(0, 10));
+          // Preserve the FULL ISO con hora del OCR — el row aparece en
+          // /movements y /dashboard ordenado por la hora real del
+          // receipt, no por noon. Si el user después edita la fecha,
+          // markDirty() limpia este iso (ver onChange del input date).
+          setOccurredAtIso(d.occurredAt);
           // transactionKind is hardcoded to "expense" — we ignore d.kind
           // on purpose (see state declaration above).
           //
@@ -1009,10 +1062,18 @@ function ReceiptPageInner() {
             setLockedSourceLabel(null);
             setMissingAccountSourceLabel(null);
           }
-          // We don't infer category from OCR (a Yape can be rent, food,
-          // a friend payback, a gift — impossible to guess). Score 0
-          // hides the ring entirely so the row reads as a plain
-          // "you pick this" field, not a low-confidence guess.
+          // categoryHint es una sugerencia conceptual del OCR cuando el
+          // merchant tiene keyword inequívoca ("BUFFET" → food, "E.T."
+          // → transport, "INKAFARMA" → health). Mapeamos el slug a un
+          // icono Lucide y dejamos que mapIconToCategoryId encuentre la
+          // categoría real del user (custom o sistema). Si no hay hint
+          // o el merchant es ambiguo, dejamos categoryIcon vacío y el
+          // user elige manualmente — score 0 oculta el ring de
+          // sugerencia para evitar la apariencia de "guess malo".
+          const hintIcon = categoryHintToIconName(d.categoryHint);
+          if (hintIcon) {
+            setCategoryIcon(hintIcon);
+          }
           //
           // `kind` confidence is no longer surfaced because the type is
           // hardcoded to "expense" — the toggle UI is gone.
@@ -1020,7 +1081,7 @@ function ReceiptPageInner() {
             merchant: d.confidence,
             amount: d.confidence,
             occurred_at: d.confidence,
-            suggested_category: 0,
+            suggested_category: hintIcon ? d.confidence : 0,
             kind: 0,
           });
           setDirty(false);
@@ -1038,7 +1099,14 @@ function ReceiptPageInner() {
             setAmount((p.amount.minor / 100).toFixed(2));
             setCurrency(p.amount.currency);
           }
-          if (p.occurredAt) setOccurredAt(p.occurredAt.slice(0, 10));
+          if (p.occurredAt) {
+            setOccurredAt(p.occurredAt.slice(0, 10));
+            setOccurredAtIso(p.occurredAt);
+          }
+          if (p.categoryHint) {
+            const hintIcon = categoryHintToIconName(p.categoryHint);
+            if (hintIcon) setCategoryIcon(hintIcon);
+          }
           // transactionKind stays hardcoded to "expense" — we ignore
           // p.kind even on partials (see state declaration above).
           //
@@ -1267,11 +1335,17 @@ function ReceiptPageInner() {
         ? mapIconToCategoryId(categoryIcon, categories, transactionKind)
         : null;
 
-      // Compose a stable noon-Lima `occurred_at` ISO so the dashboard's
-      // by-day grouping doesn't oscillate on UTC/Lima crossings. The
-      // form holds a YYYY-MM-DD; we anchor it at 12:00 Lima (= 17:00
-      // UTC) to land in the same day everywhere.
-      const occurredIso = `${occurredAt}T12:00:00-05:00`;
+      // Cuando el OCR detectó hora real en el receipt, preservamos el
+      // ISO completo para que el row aparezca ordenado por la hora
+      // efectiva en /movements y /dashboard (antes caían a noon-Lima
+      // siempre y se desordenaban contra movimientos manuales). Si
+      // el user editó la fecha, occurredAtIso se invalidó (ver el
+      // onChange del input date) y caemos a noon como fallback estable
+      // — el form solo permite editar YYYY-MM-DD, no hora.
+      const occurredIso =
+        occurredAtIso && occurredAtIso.slice(0, 10) === occurredAt
+          ? occurredAtIso
+          : `${occurredAt}T12:00:00-05:00`;
 
       await createTransaction({
         amount: numericAmount,
@@ -1329,6 +1403,7 @@ function ReceiptPageInner() {
     merchant,
     missingAccountSourceLabel,
     occurredAt,
+    occurredAtIso,
     receiptId,
     router,
   ]);
@@ -1343,6 +1418,9 @@ function ReceiptPageInner() {
     setDirty(false);
     setDiscardArmed(false);
     setStatus("idle");
+    // Reset estado del OCR para que la siguiente foto arranque limpia
+    // (evita que la hora del receipt anterior contamine la nueva).
+    setOccurredAtIso(null);
   }, [dirty, discardArmed, imageUrl]);
 
   // Hidden inputs — rendered always so the refs are available across states.
@@ -1573,7 +1651,16 @@ function ReceiptPageInner() {
                 type="date"
                 value={occurredAt}
                 onChange={(e) => {
-                  setOccurredAt(e.target.value || new Date().toISOString().slice(0, 10));
+                  const next =
+                    e.target.value || new Date().toISOString().slice(0, 10);
+                  setOccurredAt(next);
+                  // Si el user cambió la fecha respecto al ISO original
+                  // del OCR, descartamos el ISO (vamos a noon-Lima en
+                  // handleAccept). Si no cambió (re-eligió la misma
+                  // fecha), preservamos la hora.
+                  if (occurredAtIso && next !== occurredAtIso.slice(0, 10)) {
+                    setOccurredAtIso(null);
+                  }
                   markDirty();
                 }}
                 className="h-11 border-0 bg-transparent px-0 text-base font-semibold shadow-none focus-visible:ring-0"
