@@ -85,13 +85,18 @@ export function MerchantFormSheet(props: Props) {
     }
     setShowError(false);
     setArchiveArmed(false);
-    // Focus the name input once the portal mounts. autoFocus is unreliable
-    // inside Base UI's portaled Dialog, so we drive it manually.
-    const id = window.requestAnimationFrame(() => {
+    // Focus the name input once the portal mounts AND the sheet's
+    // slide-in animation finishes. requestAnimationFrame fired too
+    // early — the input was technically focused but the Base UI Dialog
+    // was still mid-transition (data-starting-style:opacity-0,
+    // duration-200), so on mobile the keyboard never came up and the
+    // user had to tap the input again to "wake it up". setTimeout with
+    // a 250ms delay covers the Sheet's 200ms animation + a small buffer.
+    const id = window.setTimeout(() => {
       inputRef.current?.focus();
       if (props.mode === "edit") inputRef.current?.select();
-    });
-    return () => window.cancelAnimationFrame(id);
+    }, 250);
+    return () => window.clearTimeout(id);
     // We intentionally re-run when the sheet opens or the initial values change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open]);
@@ -205,12 +210,20 @@ export function MerchantFormSheet(props: Props) {
           </SheetHeader>
 
           <div className="mt-2 flex flex-col gap-4 px-0 pb-2">
-            {/* Name */}
-            <div>
+            {/* Name — wrapper completo es clickable y delega focus al
+                input. Sin esto, el user reportaba tener que tap en un
+                pixel exacto del input (h-11 dejaba un area chica). El
+                onClick redirige cualquier tap dentro del bloque al
+                input, asi tap en el label, en la fila del counter o
+                cerca del borde dispara teclado igual. */}
+            <div
+              onClick={() => inputRef.current?.focus()}
+              className="cursor-text"
+            >
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <Label
                   htmlFor="merchant-name-input"
-                  className="block text-[13px] font-semibold"
+                  className="block cursor-text text-[13px] font-semibold"
                 >
                   Nombre
                 </Label>
@@ -243,6 +256,7 @@ export function MerchantFormSheet(props: Props) {
                 }}
                 maxLength={NAME_MAX_LENGTH}
                 autoComplete="off"
+                inputMode="text"
                 placeholder="Ej. KFC"
                 disabled={submitting}
                 aria-invalid={showError && nameInvalid}
@@ -250,7 +264,11 @@ export function MerchantFormSheet(props: Props) {
                   showError && nameInvalid ? errorId : undefined
                 }
                 className={cn(
-                  "h-11 text-[15px]",
+                  // h-12 (48px) en lugar de h-11 — el min-tap-target
+                  // recomendado por iOS/Android es 44-48px. h-11 quedaba
+                  // justo en el borde y en pantallas con DPI alto el
+                  // user perdia el target con facilidad.
+                  "h-12 text-[15px]",
                   showError && nameInvalid && "border-destructive focus-visible:ring-destructive",
                 )}
               />
