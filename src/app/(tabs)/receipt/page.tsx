@@ -1384,9 +1384,22 @@ function ReceiptPageInner() {
       } catch {
         // private mode / quota — el push + el evento siguen cubriendo la mayoría.
       }
-      toast.success("Movimiento guardado");
-      router.refresh();
-      router.push("/dashboard");
+      // HARD NAVIGATION en lugar de router.push("/dashboard").
+      //
+      // Tres intentos previos de "router.push + invalidate cache" no
+      // alcanzaron en mobile PWA porque el segment cache de App Router
+      // se restauraba antes que el client-side refetch tomara la red.
+      // window.location.assign hace full page load: el árbol de React
+      // se desmonta, el App Router cache se descarta, el dashboard
+      // remonta desde cero, y el `useEffect` lector del flag de
+      // sessionStorage corre garantizado en el primer render —
+      // disparando el refetch que sí ve la nueva transacción.
+      //
+      // Trade-off: ~300-800ms extra de page load vs ~50ms de soft
+      // navigation. Para un flujo "guardé, quiero verlo", priorizamos
+      // correctness sobre velocidad. /capture sigue con router.push
+      // porque NO sube imagen y la red no se satura.
+      window.location.assign("/dashboard");
     } catch (err) {
       const message =
         err instanceof Error
