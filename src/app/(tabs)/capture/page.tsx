@@ -1281,17 +1281,18 @@ function CapturePageInner() {
             <ArrowLeft size={20} aria-hidden="true" />
           </button>
 
-          {/* Kind toggle — three-way pill: Gasto · Ingreso · Transferencia.
-              Edit mode only flips between expense / income (transferring an
-              existing single-leg row would be ill-defined), so the third
-              chip is hidden when `editId` is set. Sized down vs the
-              previous two-button layout (text-sm + min-w-0 + flex-1) so
-              the third chip fits on a 360px-wide viewport without
-              wrapping or pushing the back / camera icons off-screen. */}
+          {/* Kind toggle — three-way pill: GASTO · INGRESO · TRANSFERENCIA.
+              Edit mode oculta el tercer chip (transfer no aplica a edit).
+              Padding reducido (px-1.5 / text-[11px] / uppercase tracking)
+              para que la palabra "TRANSFERENCIA" completa quepa sin
+              wrappar en viewports de 360px. La flecha del transfer chip
+              vive en la esquina superior derecha (absolute) en lugar de
+              competir con el texto inline — el icono pasa a ser un
+              accent visual y el texto queda totalmente legible. */}
           <div
             role="radiogroup"
             aria-label="Tipo de movimiento"
-            className="mx-auto inline-flex h-12 max-w-[280px] flex-1 items-center gap-0.5 rounded-full bg-muted p-1"
+            className="mx-auto inline-flex h-11 w-full max-w-[340px] flex-1 items-center gap-0.5 rounded-full bg-muted p-0.5"
           >
             <button
               type="button"
@@ -1299,7 +1300,7 @@ function CapturePageInner() {
               aria-checked={kind === "expense"}
               onClick={() => setKind("expense")}
               className={cn(
-                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors",
+                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "expense"
                   ? "bg-red-500/15 text-red-700 shadow-[var(--shadow-xs)] dark:bg-red-500/25 dark:text-red-200"
@@ -1314,7 +1315,7 @@ function CapturePageInner() {
               aria-checked={kind === "income"}
               onClick={() => setKind("income")}
               className={cn(
-                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-2 text-sm font-semibold transition-colors",
+                "inline-flex h-10 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 kind === "income"
                   ? "bg-emerald-500/15 text-emerald-700 shadow-[var(--shadow-xs)] dark:bg-emerald-500/25 dark:text-emerald-200"
@@ -1330,15 +1331,19 @@ function CapturePageInner() {
                 aria-checked={kind === "transfer"}
                 onClick={() => setKind("transfer")}
                 className={cn(
-                  "inline-flex h-10 flex-1 items-center justify-center gap-1 rounded-full px-2 text-sm font-semibold transition-colors",
+                  "relative inline-flex h-10 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   kind === "transfer"
                     ? "bg-sky-500/15 text-sky-700 shadow-[var(--shadow-xs)] dark:bg-sky-500/25 dark:text-sky-200"
                     : "text-muted-foreground",
                 )}
               >
-                <ArrowLeftRight size={14} aria-hidden />
-                <span>Transfer.</span>
+                <ArrowLeftRight
+                  size={10}
+                  aria-hidden
+                  className="absolute right-1.5 top-1.5 opacity-70"
+                />
+                Transferencia
               </button>
             )}
           </div>

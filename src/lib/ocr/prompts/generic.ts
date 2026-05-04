@@ -203,4 +203,25 @@ Expected JSON (use Importe Operación = S/ 10.00, NOT Entregado/Devuelto. Public
   "rawText": "METRO DE LIMA - LINEA 1 | ATU-RUC: 20604932964 | Estacion San Martin | CARGA | Fecha: 19/04/2026 Hora: 10:34:58 | Turno Nro: 9485 Terminal: 2402001 | Operador: MARILUZ GUILLEN FLORES (7290) | Nro. Ticket: 80398 | Saldo anterior: S/. 0.50 | Nuevo Saldo: S/. 10.50 | Importe Operacion: S/. 10.00 | Importe Entregado: S/. 20.00 | Importe Devuelto: S/. 10.00 | Monedero Pasaje Adulto | Nro. Tarjeta: 15774048 | Cargas Exon. IGV. Fondos cedidos a Pat en Fideicomiso de la Fiduciaria"
 }
 
-Notice in Example C: counterparty.document is the merchant's RUC (20603838751), NOT something from Culqi. And in Example D: we omit the cashier name (operator) and irrelevant terminal/turn numbers from the structured fields — they live in rawText if the user wants to see them, but they don't deserve their own field.`;
+Notice in Example C: counterparty.document is the merchant's RUC (20603838751), NOT something from Culqi. And in Example D: we omit the cashier name (operator) and irrelevant terminal/turn numbers from the structured fields — they live in rawText if the user wants to see them, but they don't deserve their own field.
+
+## Example E — Interbank "Constancia de pago" (no specialized extractor yet)
+
+Receipt text (Interbank app shareable constancia):
+"Interbank | Constancia de pago | 01 Nov 2022 06:46 PM | Código de operación: 1466620 | Cuenta cargo: Cuenta Simple Soles | 898 3248814235 | Empresa: PAYVALIDA | ABONO CLIENTES | Datos: 90933671043 | Moneda y monto: S/ 49.50"
+
+Expected JSON. Date "01 Nov 2022 06:46 PM" Lima → UTC: 2022-11-01T23:46:00Z. "Empresa: PAYVALIDA ABONO CLIENTES" is the merchant — clean to "PayValida" (drop "ABONO CLIENTES" since it's a service description, not the brand name). "Datos: 90933671043" is the consumer code at PayValida (looks like a phone) — goes to memo for the user's reference. The masked account "898 3248814235" is the user's source account, not a counterparty — keep it in rawText only:
+
+{
+  "source": "unknown",
+  "confidence": 0.65,
+  "kind": "expense",
+  "amount": { "minor": 4950, "currency": "PEN" },
+  "occurredAt": "2022-11-01T23:46:00Z",
+  "counterparty": { "name": "PayValida" },
+  "reference": "1466620",
+  "memo": "Datos: 90933671043",
+  "rawText": "Interbank | Constancia de pago | 01 Nov 2022 06:46 PM | Código de operación: 1466620 | Cuenta cargo: Cuenta Simple Soles | 898 3248814235 | Empresa: PAYVALIDA | ABONO CLIENTES | Datos: 90933671043 | Moneda y monto: S/ 49.50"
+}
+
+Notice in Example E: 12-hour clock "06:46 PM" → 18:46 local → 23:46Z UTC. The cuenta cargo (user's own account) does NOT become counterparty — that's only for paper-trace receipts where you know who the OTHER party is. The "Empresa" line is who got paid.`;
