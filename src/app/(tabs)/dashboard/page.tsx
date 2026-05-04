@@ -663,12 +663,23 @@ function EmptyDashboardCard({
   const secondaryLabel = needsAccount ? null : "Abonar saldo";
 
   return (
-    <Card className="mx-4 mt-4 rounded-2xl border-border bg-[var(--color-card)] p-8 text-center md:mx-0 md:mt-6 md:p-12">
+    <Card
+      className={cn(
+        "rounded-2xl border-border bg-[var(--color-card)] text-center",
+        // Variante "Empieza a registrar movimientos" (no needsAccount):
+        // padding y margins reducidos en mobile para que los botones
+        // queden visibles arriba del TabBar (pb-24=96px) sin scroll.
+        // Con padding p-8 + carousel + currency switch arriba el boton
+        // primario quedaba parcialmente tapado en pantallas chicas.
+        needsAccount
+          ? "mx-4 mt-4 p-8 md:mx-0 md:mt-6 md:p-12"
+          : "mx-4 mt-3 p-5 md:mx-0 md:mt-6 md:p-10",
+      )}
+    >
       <div className="mx-auto flex flex-col items-center">
-        {/* Icon-tile solo en el caso "Crear cuenta" — el user pidió
-            quitar el Sparkles de la variante "Empieza a registrar
-            movimientos" para que la card sea mas compacta y el copy
-            respire mejor. */}
+        {/* Icon-tile solo en el caso "Crear cuenta" — quitado de la
+            variante "Empieza a registrar movimientos" para que la card
+            sea mas compacta y los CTAs queden visibles sin scroll. */}
         {needsAccount ? (
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.94_0.05_162)] text-primary dark:bg-[oklch(0.30_0.06_162)]">
             <Wallet size={22} aria-hidden="true" strokeWidth={2.2} />
@@ -683,7 +694,12 @@ function EmptyDashboardCard({
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted-foreground">
           {body}
         </p>
-        <div className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center">
+        <div
+          className={cn(
+            "flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:justify-center",
+            needsAccount ? "mt-6" : "mt-4",
+          )}
+        >
           <Link
             href={primaryHref}
             className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
