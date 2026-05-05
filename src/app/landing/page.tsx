@@ -270,7 +270,7 @@ function KaneMark() {
 function Hero() {
   return (
     <section className="relative">
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-16 px-6 py-16 md:px-10 md:py-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-28">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-16 px-6 py-16 md:px-10 md:py-24 lg:grid-cols-[1fr_1.3fr] lg:gap-10 lg:py-28">
         <HeroCopy />
         <HeroVisual />
       </div>
@@ -387,7 +387,7 @@ function ScrollHint() {
 // FlowCurve, SignalIcon, WifiIcon, BatteryIcon) were removed.
 function HeroVisual() {
   return (
-    <div className="relative mx-auto w-full max-w-[640px] lg:max-w-none">
+    <div className="relative mx-auto w-full max-w-[820px] lg:max-w-none">
       {/* Soft emerald halo behind the image — kept from the previous
           layout so the artwork "sits" on a glow instead of pure black. */}
       <div
