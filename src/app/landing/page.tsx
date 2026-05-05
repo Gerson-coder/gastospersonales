@@ -21,26 +21,19 @@ import * as React from "react";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import {
-  ArrowDown,
-  ArrowLeftRight,
   ArrowRight,
-  ArrowUp,
   Banknote,
   BarChart3,
-  Bell,
   Camera,
   Check,
   ChevronRight,
-  CreditCard,
-  Globe,
-  Home,
-  Plus,
   Receipt,
   ShieldCheck,
   Sparkles,
   Star,
-  User,
-  Wallet,
+  Store,
+  UtensilsCrossed,
+  X,
 } from "lucide-react";
 
 import { APP_NAME } from "@/lib/brand";
@@ -445,7 +438,7 @@ function AvatarStack() {
 // ─── Hero visual: phone + floating cards + flow lines ────────────────────
 function HeroVisual() {
   return (
-    <div className="relative mx-auto w-full max-w-[520px] lg:max-w-none">
+    <div className="relative mx-auto h-[640px] w-full max-w-[560px] lg:max-w-none">
       {/* Connection flow lines (decorative) */}
       <FlowLines />
 
@@ -454,9 +447,32 @@ function HeroVisual() {
         <PhoneMockup />
       </div>
 
-      {/* Floating cards */}
+      {/* Floating narrative cards — tell the OCR flow:
+          Tomas foto → IA procesa → Se guarda → Gasto registrado. */}
       <FloatingReceipt />
+
+      <FloatingStep
+        icon={<Camera size={16} aria-hidden />}
+        title="Tomas foto"
+        body="Captura tu boleta al instante."
+        className="-left-6 bottom-44 -rotate-[3deg]"
+      />
+
+      <FloatingStep
+        icon={<Sparkles size={16} aria-hidden />}
+        title="IA procesa"
+        body="Extrae comercio, monto y fecha automáticamente."
+        className="left-[28%] -bottom-2 rotate-[3deg]"
+      />
+
       <FloatingConfirmation />
+
+      <FloatingStep
+        icon={<Check size={16} strokeWidth={3} aria-hidden />}
+        title="Se guarda"
+        body="Listo, tu gasto queda registrado."
+        className="-right-6 top-[55%] rotate-[4deg]"
+      />
     </div>
   );
 }
@@ -466,6 +482,7 @@ function FlowLines() {
     <svg
       aria-hidden
       viewBox="0 0 600 700"
+      preserveAspectRatio="none"
       className="pointer-events-none absolute inset-0 z-0 hidden h-full w-full md:block"
       fill="none"
     >
@@ -480,25 +497,41 @@ function FlowLines() {
           <stop offset="100%" stopColor="oklch(0.78 0.16 162)" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {/* Receipt → phone */}
+      {/* Receipt → phone (top-left into screen) */}
       <path
-        d="M 130 300 Q 200 130 320 200"
+        d="M 130 280 Q 200 100 320 180"
         stroke="url(#flow-grad)"
         strokeWidth="1.5"
         strokeDasharray="4 6"
       />
-      {/* Phone → confirmation */}
+      {/* Phone → "Se guarda" (right side mid) */}
       <path
-        d="M 460 360 Q 540 320 540 460"
+        d="M 460 360 Q 540 360 540 470"
         stroke="url(#flow-grad)"
         strokeWidth="1.5"
         strokeDasharray="4 6"
       />
-      {/* Sparkle marks */}
+      {/* "Tomas foto" → "IA procesa" curve under phone */}
+      <path
+        d="M 110 540 Q 230 660 310 620"
+        stroke="url(#flow-grad)"
+        strokeWidth="1.5"
+        strokeDasharray="4 6"
+      />
+      {/* IA procesa → confirmation (bottom-center → top-right) */}
+      <path
+        d="M 360 560 Q 500 400 540 220"
+        stroke="url(#flow-grad)"
+        strokeWidth="1.5"
+        strokeDasharray="4 6"
+        opacity="0.5"
+      />
+      {/* Sparkle marks at endpoints */}
       <g fill="oklch(0.78 0.16 162)" opacity="0.85">
-        <circle cx="320" cy="200" r="3" />
-        <circle cx="540" cy="460" r="3" />
-        <circle cx="130" cy="300" r="2" />
+        <circle cx="320" cy="180" r="3" />
+        <circle cx="540" cy="470" r="3" />
+        <circle cx="130" cy="280" r="2" />
+        <circle cx="310" cy="620" r="2" />
       </g>
     </svg>
   );
@@ -517,8 +550,7 @@ function PhoneMockup() {
         }}
       />
 
-      {/* Hardware buttons (volume up/down + silent on left, power on right).
-          Positioned absolutely so they peek out from behind the chassis. */}
+      {/* Hardware buttons */}
       <span
         aria-hidden
         className="absolute -left-[3px] top-[112px] h-3 w-[3px] rounded-l bg-gradient-to-r from-[#1a1a1a] to-[#0a0a0a]"
@@ -556,8 +588,7 @@ function PhoneMockup() {
         >
           {/* Screen */}
           <div className="relative overflow-hidden rounded-[40px] bg-[#070707]">
-            {/* Top reflection sheen — subtle white gradient at the top edge
-                of the screen, gives the glass-under-bezel feel. */}
+            {/* Top reflection sheen */}
             <div
               aria-hidden
               className="pointer-events-none absolute inset-x-0 top-0 h-24"
@@ -570,7 +601,6 @@ function PhoneMockup() {
             {/* Status bar */}
             <div className="relative flex items-center justify-between px-7 pt-3 pb-1.5 text-[10.5px] font-semibold text-white">
               <span>9:41</span>
-              {/* Dynamic island with camera lens hint */}
               <span className="absolute left-1/2 top-2 flex h-[26px] w-[104px] -translate-x-1/2 items-center justify-end rounded-full bg-black pr-2.5">
                 <span
                   aria-hidden
@@ -584,218 +614,79 @@ function PhoneMockup() {
               </span>
             </div>
 
-            {/* App content */}
-            <div className="relative px-5 pb-5 pt-4">
-              {/* Greeting row */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-white/45">
-                    Domingo, 4 may
-                  </div>
-                  <div className="mt-0.5 text-[18px] font-bold leading-tight text-white">
-                    Hola, Gee <span aria-hidden>👋</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    aria-label="Buscar"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/80"
-                  >
-                    <SearchGlyph />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Notificaciones"
-                    className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/80"
-                  >
-                    <Bell size={14} aria-hidden />
-                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-[#070707]" />
-                  </button>
-                </div>
+            {/* Capture screen header */}
+            <div className="relative flex items-center justify-between px-5 pt-3 pb-2">
+              <div className="text-[15px] font-semibold text-white">
+                Nuevo gasto
               </div>
-
-              {/* Account hero card — layered: emerald gradient + radial
-                  highlight + KANE chip + balance + sparkline + ingresos/
-                  gastos pills. */}
-              <div className="relative mt-4 overflow-hidden rounded-[20px] p-4 text-white"
-                style={{
-                  background:
-                    "linear-gradient(135deg, oklch(0.42 0.16 162) 0%, oklch(0.58 0.18 162) 55%, oklch(0.66 0.18 162) 100%)",
-                }}
+              <button
+                type="button"
+                aria-label="Cerrar"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.06] text-white/65"
               >
-                {/* Radial highlight top-right */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full"
-                  style={{
-                    background:
-                      "radial-gradient(closest-side, rgba(255,255,255,0.35), transparent 70%)",
-                  }}
-                />
-                {/* Faint diagonal sheen */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 top-0 h-px"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)",
-                  }}
-                />
-
-                {/* Top row: account label + KANE chip */}
-                <div className="relative flex items-start justify-between">
-                  <div>
-                    <div className="inline-flex items-center gap-1.5 text-[10.5px] font-medium opacity-95">
-                      <Wallet size={11} aria-hidden />
-                      Cuenta principal
-                    </div>
-                    <div className="mt-0.5 font-mono text-[10px] tabular-nums text-white/65">
-                      •••• 4820
-                    </div>
-                  </div>
-                  <KaneChip />
-                </div>
-
-                {/* Balance + sparkline */}
-                <div className="relative mt-3 flex items-end justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.1em] opacity-75">
-                      Saldo disponible
-                    </div>
-                    <div className="mt-0.5 font-mono text-[30px] font-bold leading-none tracking-tight tabular-nums">
-                      S/ 4,820
-                      <span className="text-[18px] opacity-75">.00</span>
-                    </div>
-                  </div>
-                  <Sparkline />
-                </div>
-
-                {/* Ingresos / Gastos pills */}
-                <div className="relative mt-4 grid grid-cols-2 gap-2">
-                  <BalancePill
-                    label="Ingresos"
-                    value="+S/ 2,300"
-                    direction="up"
-                  />
-                  <BalancePill
-                    label="Gastos"
-                    value="−S/ 1,180"
-                    direction="down"
-                  />
-                </div>
-
-                {/* PEN chip pinned to bottom-right of the card */}
-                <span className="relative mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] backdrop-blur-sm">
-                  <span className="h-1 w-1 rounded-full bg-white" />
-                  PEN
-                </span>
-              </div>
-
-              {/* Quick actions row */}
-              <ul className="mt-4 grid grid-cols-4 gap-2">
-                <QuickAction
-                  icon={<Camera size={14} aria-hidden />}
-                  label="Capturar"
-                  primary
-                />
-                <QuickAction
-                  icon={<ArrowDown size={14} aria-hidden />}
-                  label="Recibir"
-                />
-                <QuickAction
-                  icon={<ArrowLeftRight size={14} aria-hidden />}
-                  label="Enviar"
-                />
-                <QuickAction
-                  icon={<CreditCard size={14} aria-hidden />}
-                  label="Pagar"
-                />
-              </ul>
-
-              {/* Movements list */}
-              <div className="mt-5 flex items-center justify-between">
-                <div className="text-[12px] font-semibold text-white">
-                  Últimos movimientos
-                </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-[9.5px] font-medium text-white/65">
-                  Hoy <span className="opacity-50">·</span> 4 mov
-                </span>
-              </div>
-              <ul className="mt-2 divide-y divide-white/[0.05] rounded-2xl border border-white/[0.05] bg-white/[0.02]">
-                <PhoneTxRow
-                  icon={<Receipt size={11} aria-hidden />}
-                  iconBg="oklch(0.95 0.04 56)"
-                  iconFg="oklch(0.45 0.12 56)"
-                  title="Tambo"
-                  sub="Comida"
-                  amount="−S/ 12.40"
-                  time="13:42"
-                />
-                <PhoneTxRow
-                  icon={<Globe size={11} aria-hidden />}
-                  iconBg="oklch(0.95 0.04 250)"
-                  iconFg="oklch(0.45 0.16 250)"
-                  title="Netflix"
-                  sub="Suscripciones"
-                  amount="−S/ 32.90"
-                  time="11:05"
-                />
-                <PhoneTxRow
-                  icon={<Banknote size={11} aria-hidden />}
-                  iconBg="oklch(0.95 0.05 162)"
-                  iconFg="oklch(0.40 0.16 162)"
-                  title="Sueldo"
-                  sub="Ingreso · BBVA"
-                  amount="+S/ 2,300"
-                  time="08:30"
-                  positive
-                />
-                <PhoneTxRow
-                  icon={<Wallet size={11} aria-hidden />}
-                  iconBg="oklch(0.93 0.005 95)"
-                  iconFg="oklch(0.30 0.005 95)"
-                  title="Taxi"
-                  sub="Transporte"
-                  amount="−S/ 18.50"
-                  time="07:48"
-                />
-              </ul>
+                <X size={14} aria-hidden />
+              </button>
             </div>
 
-            {/* Tab bar */}
-            <div className="mt-1 border-t border-white/[0.06] bg-[#0B0B0B] px-3 pb-4 pt-2.5">
-              <ul className="flex items-end justify-between text-white/55">
-                <PhoneTab icon={<Home size={14} />} label="Inicio" active />
-                <PhoneTab
-                  icon={<BarChart3 size={14} />}
-                  label="Movimientos"
+            <div className="relative px-5 pb-3">
+              {/* AI badge */}
+              <div className="flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1.5 text-[10.5px] font-medium text-primary">
+                <Sparkles size={11} aria-hidden />
+                Datos extraídos por IA
+              </div>
+
+              {/* Form rows */}
+              <div className="mt-3 space-y-2">
+                <FormRow
+                  label="Comercio"
+                  icon={<Store size={11} aria-hidden />}
+                  iconBg="oklch(0.95 0.04 56)"
+                  iconFg="oklch(0.45 0.12 56)"
+                  value="Tambo+"
                 />
-                {/* FAB */}
-                <li className="-mt-7">
-                  <button
-                    type="button"
-                    aria-label="Capturar gasto"
-                    className={cn(
-                      "relative inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary text-black",
-                      "shadow-[0_0_0_4px_#0B0B0B,0_8px_24px_-4px_oklch(0.78_0.16_162/0.65),0_0_40px_-2px_oklch(0.78_0.16_162/0.85)]",
-                    )}
-                  >
-                    {/* Inner ring highlight */}
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 rounded-full"
-                      style={{
-                        background:
-                          "radial-gradient(closest-side at 50% 30%, rgba(255,255,255,0.4), transparent 60%)",
-                      }}
-                    />
-                    <Plus size={18} strokeWidth={3} aria-hidden className="relative" />
-                  </button>
-                </li>
-                <PhoneTab icon={<Sparkles size={14} />} label="Insights" />
-                <PhoneTab icon={<User size={14} />} label="Cuenta" />
-              </ul>
+                <FormRow
+                  label="Monto"
+                  icon={
+                    <span className="font-mono text-[9.5px] font-bold leading-none">
+                      S/
+                    </span>
+                  }
+                  iconBg="oklch(0.95 0.05 162)"
+                  iconFg="oklch(0.40 0.16 162)"
+                  value={
+                    <span className="font-mono tabular-nums">S/ 12.40</span>
+                  }
+                />
+                <FormRow
+                  label="Fecha"
+                  icon={<CalendarGlyph />}
+                  iconBg="oklch(0.95 0.04 280)"
+                  iconFg="oklch(0.45 0.16 280)"
+                  value="12 may. 2026"
+                />
+                <FormRow
+                  label="Categoría"
+                  icon={<UtensilsCrossed size={11} aria-hidden />}
+                  iconBg="oklch(0.95 0.04 25)"
+                  iconFg="oklch(0.50 0.18 25)"
+                  value="Alimentación"
+                />
+                {/* Cuenta — featured row with the Interbank card */}
+                <BankCardRow />
+              </div>
+            </div>
+
+            {/* Sticky-style CTA */}
+            <div className="border-t border-white/[0.05] bg-[#0B0B0B] px-5 pb-4 pt-3">
+              <button
+                type="button"
+                className={cn(
+                  "relative inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-[13.5px] font-bold text-black",
+                  "shadow-[0_8px_24px_-4px_oklch(0.78_0.16_162/0.55),0_0_40px_-8px_oklch(0.78_0.16_162/0.85)]",
+                )}
+              >
+                Confirmar gasto
+              </button>
               {/* iOS home indicator */}
               <div
                 aria-hidden
@@ -809,230 +700,163 @@ function PhoneMockup() {
   );
 }
 
-// Mini SVG sparkline — 4-week balance trend, ends with a glowing dot
-// to suggest "live data". Static path, no JS.
-function Sparkline() {
-  return (
-    <svg
-      width="78"
-      height="32"
-      viewBox="0 0 78 32"
-      fill="none"
-      aria-hidden
-      className="opacity-90"
-    >
-      <defs>
-        <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.4)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-      </defs>
-      {/* Filled area */}
-      <path
-        d="M2 22 L14 18 L26 24 L38 14 L50 16 L62 8 L74 6 L74 30 L2 30 Z"
-        fill="url(#spark-fill)"
-      />
-      {/* Line */}
-      <path
-        d="M2 22 L14 18 L26 24 L38 14 L50 16 L62 8 L74 6"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Glow dot at end */}
-      <circle cx="74" cy="6" r="3" fill="white" />
-      <circle cx="74" cy="6" r="5" fill="white" opacity="0.25" />
-    </svg>
-  );
-}
+// ─── Capture form helpers ────────────────────────────────────────────────
 
-// Mini "KANE" chip on the account card — looks like a card chip, doubles
-// as a brand mark. Adds the "this is a real card" feel.
-function KaneChip() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex h-6 items-center justify-center rounded-md px-1.5 text-[8.5px] font-extrabold tracking-[0.04em] text-white/95"
-      style={{
-        background:
-          "linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.08))",
-        boxShadow:
-          "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 -2px 4px rgba(0,0,0,0.15)",
-      }}
-    >
-      KANE
-      <span className="ml-px h-1 w-1 rounded-full bg-white" />
-    </span>
-  );
-}
-
-function BalancePill({
+function FormRow({
   label,
+  icon,
+  iconBg,
+  iconFg,
   value,
-  direction,
 }: {
   label: string;
-  value: string;
-  direction: "up" | "down";
+  icon: React.ReactNode;
+  iconBg: string;
+  iconFg: string;
+  value: React.ReactNode;
 }) {
-  const Arrow = direction === "up" ? ArrowUp : ArrowDown;
   return (
-    <div className="flex items-center gap-2 rounded-xl bg-white/10 px-2.5 py-1.5 backdrop-blur-sm">
-      <span
-        className={cn(
-          "inline-flex h-5 w-5 items-center justify-center rounded-full",
-          direction === "up" ? "bg-white/95 text-[oklch(0.40_0.16_162)]" : "bg-black/20 text-white",
-        )}
-      >
-        <Arrow size={10} strokeWidth={3} aria-hidden />
-      </span>
-      <div className="min-w-0">
-        <div className="text-[8.5px] uppercase tracking-[0.08em] opacity-75">
-          {label}
-        </div>
-        <div className="font-mono text-[10.5px] font-bold tabular-nums leading-tight">
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
+      <div className="text-[8.5px] font-semibold uppercase tracking-[0.1em] text-white/40">
+        {label}
+      </div>
+      <div className="mt-1 flex items-center gap-2.5">
+        <span
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+          style={{ backgroundColor: iconBg, color: iconFg }}
+        >
+          {icon}
+        </span>
+        <div className="flex-1 truncate text-[12.5px] font-semibold text-white">
           {value}
+        </div>
+        <ChevronRight size={12} className="text-white/35" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
+// Cuenta row — instead of a plain text value, displays the actual
+// bank card so the user reads "this is what gets debited" at a glance.
+function BankCardRow() {
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[8.5px] font-semibold uppercase tracking-[0.1em] text-white/40">
+          Cuenta
+        </div>
+        <ChevronRight size={12} className="text-white/35" aria-hidden />
+      </div>
+      <div className="mt-1.5">
+        <BankCardMini />
+      </div>
+    </div>
+  );
+}
+
+// Mini Interbank card. Teal/emerald gradient, mini chip, masked number,
+// "interbank" wordmark in the top-right. Sized to fit the form row width.
+function BankCardMini() {
+  return (
+    <div
+      className="relative w-full overflow-hidden rounded-xl px-3 py-2.5 text-white"
+      style={{
+        background:
+          "linear-gradient(135deg, oklch(0.34 0.13 175) 0%, oklch(0.48 0.16 175) 55%, oklch(0.62 0.16 165) 100%)",
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
+      }}
+    >
+      {/* Top sheen */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)",
+        }}
+      />
+      {/* Top-right halo */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(255,255,255,0.30), transparent 70%)",
+        }}
+      />
+      {/* Subtle diagonal stripes texture */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, white 0 1px, transparent 1px 8px)",
+        }}
+      />
+
+      <div className="relative flex items-start justify-between">
+        <ChipMini />
+        <span className="text-[10px] font-extrabold tracking-tight text-white">
+          interbank
+        </span>
+      </div>
+
+      <div className="relative mt-2 font-mono text-[12.5px] font-bold tabular-nums tracking-[0.06em]">
+        •••• 4820
+      </div>
+
+      <div className="relative mt-0.5 flex items-end justify-between">
+        <div className="text-[8px] uppercase tracking-[0.08em] opacity-80">
+          Tarjeta débito
+        </div>
+        <div className="font-mono text-[8.5px] tabular-nums opacity-85">
+          12/28
         </div>
       </div>
     </div>
   );
 }
 
-function QuickAction({
-  icon,
-  label,
-  primary = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  primary?: boolean;
-}) {
+function ChipMini() {
   return (
-    <li className="flex flex-col items-center gap-1.5">
-      <span
-        className={cn(
-          "inline-flex h-11 w-11 items-center justify-center rounded-2xl",
-          primary
-            ? "bg-primary text-black shadow-[0_0_30px_-6px_oklch(0.78_0.16_162/0.85)]"
-            : "border border-white/[0.07] bg-white/[0.04] text-white",
-        )}
-      >
-        {icon}
-      </span>
-      <span
-        className={cn(
-          "text-[9.5px] font-medium",
-          primary ? "text-primary" : "text-white/65",
-        )}
-      >
-        {label}
-      </span>
-    </li>
-  );
-}
-
-function PhoneTxRow({
-  icon,
-  title,
-  sub,
-  amount,
-  time,
-  positive = false,
-  iconBg,
-  iconFg,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  sub: string;
-  amount: string;
-  time: string;
-  positive?: boolean;
-  iconBg: string;
-  iconFg: string;
-}) {
-  return (
-    <li className="flex items-center gap-2.5 px-2.5 py-2.5">
-      <span
-        className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-        style={{ backgroundColor: iconBg, color: iconFg }}
-      >
-        {icon}
-        {/* Direction badge — tiny circle in the corner showing in/out */}
-        <span
-          className={cn(
-            "absolute -bottom-0.5 -right-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full ring-2 ring-[#070707]",
-            positive ? "bg-primary text-black" : "bg-white/15 text-white/80",
-          )}
-          aria-hidden
-        >
-          {positive ? (
-            <ArrowDown size={7} strokeWidth={3} className="rotate-180" />
-          ) : (
-            <ArrowUp size={7} strokeWidth={3} className="rotate-180" />
-          )}
-        </span>
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[11.5px] font-semibold text-white">
-          {title}
-        </div>
-        <div className="truncate text-[9.5px] text-white/45">
-          {sub} <span className="opacity-50">·</span> {time}
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <div
-          className={cn(
-            "font-mono text-[11px] font-semibold tabular-nums",
-            positive ? "text-primary" : "text-white",
-          )}
-        >
-          {amount}
-        </div>
-        <ChevronRight size={11} className="text-white/30" aria-hidden />
-      </div>
-    </li>
-  );
-}
-
-function PhoneTab({
-  icon,
-  label,
-  active = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <li
-      className={cn(
-        "relative flex flex-col items-center gap-1 px-2 py-1 text-[9.5px] font-medium",
-        active ? "text-primary" : "text-white/45",
-      )}
+    <span
+      aria-hidden
+      className="inline-flex h-5 w-7 items-center justify-center rounded-[3px]"
+      style={{
+        background:
+          "linear-gradient(135deg, #d4af37 0%, #f7d56a 50%, #b9892d 100%)",
+        boxShadow:
+          "inset 0 0 0 0.5px rgba(0,0,0,0.25), inset 0 -1px 1px rgba(0,0,0,0.2)",
+      }}
     >
-      {active ? (
-        <span
-          aria-hidden
-          className="absolute inset-x-2 -top-2.5 h-0.5 rounded-full bg-primary"
-        />
-      ) : null}
-      {icon}
-      <span>{label}</span>
-    </li>
+      <span
+        className="block h-2.5 w-4 rounded-[1px]"
+        style={{
+          background:
+            "repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 4px)",
+        }}
+      />
+    </span>
   );
 }
 
-// Tiny search lens — inline SVG, avoids importing one more lucide icon.
-function SearchGlyph() {
+function CalendarGlyph() {
   return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M9.5 9.5L12 12"
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <rect
+        x="1.5"
+        y="2.5"
+        width="9"
+        height="8"
+        rx="1.4"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.4"
+      />
+      <path d="M1.5 5h9" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M3.5 1.5v2M8.5 1.5v2"
+        stroke="currentColor"
+        strokeWidth="1.4"
         strokeLinecap="round"
       />
     </svg>
@@ -1040,24 +864,21 @@ function SearchGlyph() {
 }
 
 // ─── Floating cards ──────────────────────────────────────────────────────
+
+// Big TAMBO+ ticket floating on the left, slightly tilted, with green
+// scan brackets at the corners and a subtle scanner sweep line. Tells
+// the user "we read the actual receipt".
 function FloatingReceipt() {
   return (
     <aside
-      aria-label="Vista previa: capturando boleta de Tambo con IA"
+      aria-label="Boleta de Tambo+ siendo capturada por la IA"
       className={cn(
-        "absolute left-2 top-12 z-20 hidden w-[210px] -rotate-[5deg] rounded-2xl border border-white/10 p-3.5",
+        "absolute -left-4 top-2 z-20 hidden w-[180px] -rotate-[7deg] rounded-2xl border border-white/10 p-3",
         "bg-[#0F0F0F]/90 backdrop-blur-md md:block",
         "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
       )}
     >
-      <div className="flex items-center justify-between text-[10px] font-medium text-white/70">
-        <span>Capturando boleta...</span>
-        <ScanCornerMark />
-      </div>
-
-      {/* Faux receipt */}
-      <div className="relative mt-2.5 overflow-hidden rounded-md bg-[#F4F1EB] px-3 py-3 text-[8px] font-mono text-neutral-700">
-        {/* scanner sweep */}
+      <div className="relative overflow-hidden rounded-md bg-[#F4F1EB] px-3 py-3 text-[8px] font-mono text-neutral-700">
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
@@ -1065,42 +886,38 @@ function FloatingReceipt() {
             background:
               "linear-gradient(90deg, transparent, oklch(0.78 0.16 162 / 0.9), transparent)",
             boxShadow: "0 0 8px oklch(0.78 0.16 162)",
-            transform: "translateY(60%)",
+            transform: "translateY(50%)",
           }}
         />
-        <div className="text-center text-[11px] font-bold tracking-[0.05em] text-neutral-900">
+        <div className="text-center text-[12px] font-bold tracking-[0.05em] text-neutral-900">
           TAMBO+
         </div>
-        <div className="mt-1 text-center text-[7px] uppercase tracking-wider text-neutral-500">
-          Av. Arequipa 123 · Lima
+        <div className="mt-1 text-center text-[6.5px] uppercase leading-tight tracking-wider text-neutral-500">
+          AV. AREQUIPA 1283 · LIMA
+          <br />
+          RUC: 20123456789
         </div>
         <div className="mt-2.5 space-y-0.5">
-          <ReceiptRow label="Agua Cielo 600ml" amount="2.90" />
-          <ReceiptRow label="Snickers 50g" amount="7.80" />
-          <ReceiptRow label="Galleta Oreo 36g" amount="1.80" />
+          <ReceiptRow label="Agua Cielo 600ml" amount="2.85" />
+          <ReceiptRow label="Sandwich Mixto" amount="6.85" />
+          <ReceiptRow label="Galletas Oreo 36g" amount="1.50" />
         </div>
         <div className="mt-2 border-t border-dashed border-neutral-300 pt-1.5">
-          <div className="flex justify-between text-[9px] font-bold text-neutral-900">
+          <div className="flex justify-between text-[10px] font-bold text-neutral-900">
             <span>TOTAL</span>
             <span>S/ 12.40</span>
           </div>
         </div>
         <div className="mt-1.5 text-center text-[6.5px] text-neutral-400">
-          12/05/2026 · 11:39 AM
+          12/05/2026 11:39 AM
         </div>
-        {/* scan corners */}
+        <div className="mt-2 text-center text-[6.5px] uppercase tracking-wider text-neutral-400">
+          Gracias por su compra
+        </div>
         <CornerBracket position="tl" />
         <CornerBracket position="tr" />
         <CornerBracket position="bl" />
         <CornerBracket position="br" />
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5 text-[10px] font-medium text-primary">
-        <span className="relative inline-flex h-1.5 w-1.5">
-          <span className="absolute inset-0 animate-ping rounded-full bg-primary/60" />
-          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-        </span>
-        Leyendo datos con IA
       </div>
     </aside>
   );
@@ -1112,15 +929,6 @@ function ReceiptRow({ label, amount }: { label: string; amount: string }) {
       <span className="truncate">{label}</span>
       <span className="ml-2 shrink-0">{amount}</span>
     </div>
-  );
-}
-
-function ScanCornerMark() {
-  return (
-    <span
-      aria-hidden
-      className="inline-block h-2 w-2 rounded-sm border-l-2 border-t-2 border-primary"
-    />
   );
 }
 
@@ -1146,30 +954,80 @@ function CornerBracket({
   );
 }
 
+// Step card — icon + title + subtitle. Used to narrate the OCR flow
+// around the phone (Tomas foto / IA procesa / Se guarda). Position is
+// controlled by the consumer via `className`.
+function FloatingStep({
+  icon,
+  title,
+  body,
+  className,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  className?: string;
+}) {
+  return (
+    <aside
+      aria-label={`${title}: ${body}`}
+      className={cn(
+        "absolute z-20 hidden w-[170px] rounded-2xl border border-white/10 p-3.5",
+        "bg-[#0F0F0F]/95 backdrop-blur-md md:block",
+        "shadow-[0_24px_48px_-16px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
+        className,
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-bold leading-tight text-white">
+            {title}
+          </div>
+          <p className="mt-1 text-[11px] leading-snug text-white/55">
+            {body}
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// "Gasto registrado" confirmation card — top-right of the phone. Shows
+// the green check, the amount, and a small Tambo merchant chip.
 function FloatingConfirmation() {
   return (
     <aside
-      aria-label="Vista previa: confirmación de gasto registrado por S/ 12.40"
+      aria-label="Confirmación: gasto registrado por S/ 12.40"
       className={cn(
-        "absolute -right-2 bottom-10 z-20 hidden w-[180px] rotate-[4deg] rounded-2xl border border-white/10 p-4 text-center",
+        "absolute -right-4 top-6 z-20 hidden w-[170px] rotate-[4deg] rounded-2xl border border-white/10 p-4",
         "bg-[#0F0F0F]/95 backdrop-blur-md md:block",
         "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
       )}
     >
-      <div className="mx-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-black shadow-[0_0_30px_-2px_oklch(0.78_0.16_162/0.85)]">
-        <Check size={16} strokeWidth={3} aria-hidden />
+      <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-black shadow-[0_0_30px_-2px_oklch(0.78_0.16_162/0.85)]">
+        <Check size={18} strokeWidth={3} aria-hidden />
       </div>
-      <div className="mt-3 text-[14px] font-bold text-white">¡Listo!</div>
-      <div className="mt-0.5 text-[11px] text-white/65">Gasto registrado</div>
-      <div className="mt-2 font-mono text-[20px] font-bold tabular-nums text-white">
+      <div className="mt-3 text-[12px] font-medium text-white/65">
+        Gasto registrado
+      </div>
+      <div className="mt-1 font-mono text-[20px] font-bold tabular-nums text-white">
         S/ 12.40
       </div>
-      <button
-        type="button"
-        className="mt-3 inline-flex h-8 w-full items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-[11px] font-semibold text-white/85 transition-colors hover:bg-white/[0.08]"
-      >
-        Ver movimiento
-      </button>
+      <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5">
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+          style={{
+            backgroundColor: "oklch(0.95 0.04 56)",
+            color: "oklch(0.45 0.12 56)",
+          }}
+        >
+          <Receipt size={11} aria-hidden />
+        </span>
+        <span className="text-[11px] font-semibold text-white">Tambo</span>
+      </div>
     </aside>
   );
 }
