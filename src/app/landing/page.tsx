@@ -21,12 +21,17 @@ import * as React from "react";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import {
+  ArrowDown,
+  ArrowLeftRight,
   ArrowRight,
+  ArrowUp,
   Banknote,
   BarChart3,
   Bell,
   Camera,
   Check,
+  ChevronRight,
+  CreditCard,
   Globe,
   Home,
   Plus,
@@ -511,6 +516,26 @@ function PhoneMockup() {
             "radial-gradient(closest-side, oklch(0.78 0.16 162 / 0.45), transparent 70%)",
         }}
       />
+
+      {/* Hardware buttons (volume up/down + silent on left, power on right).
+          Positioned absolutely so they peek out from behind the chassis. */}
+      <span
+        aria-hidden
+        className="absolute -left-[3px] top-[112px] h-3 w-[3px] rounded-l bg-gradient-to-r from-[#1a1a1a] to-[#0a0a0a]"
+      />
+      <span
+        aria-hidden
+        className="absolute -left-[3px] top-[150px] h-10 w-[3px] rounded-l bg-gradient-to-r from-[#1a1a1a] to-[#0a0a0a]"
+      />
+      <span
+        aria-hidden
+        className="absolute -left-[3px] top-[206px] h-10 w-[3px] rounded-l bg-gradient-to-r from-[#1a1a1a] to-[#0a0a0a]"
+      />
+      <span
+        aria-hidden
+        className="absolute -right-[3px] top-[170px] h-14 w-[3px] rounded-r bg-gradient-to-l from-[#1a1a1a] to-[#0a0a0a]"
+      />
+
       {/* Chassis */}
       <div
         className={cn(
@@ -519,22 +544,39 @@ function PhoneMockup() {
         )}
         style={{
           background:
-            "linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 50%, #050505 100%)",
+            "linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 30%, #0a0a0a 70%, #050505 100%)",
         }}
       >
         <div
           className="relative overflow-hidden rounded-[46px] p-2"
           style={{
             background:
-              "linear-gradient(180deg, #2a2a2a 0%, #0e0e0e 100%)",
+              "linear-gradient(180deg, #3a3a3a 0%, #1a1a1a 50%, #0e0e0e 100%)",
           }}
         >
           {/* Screen */}
-          <div className="relative overflow-hidden rounded-[40px] bg-[#0A0A0A]">
+          <div className="relative overflow-hidden rounded-[40px] bg-[#070707]">
+            {/* Top reflection sheen — subtle white gradient at the top edge
+                of the screen, gives the glass-under-bezel feel. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-24"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.06), transparent 70%)",
+              }}
+            />
+
             {/* Status bar */}
-            <div className="flex items-center justify-between px-7 pt-3 pb-1.5 text-[10.5px] font-semibold text-white">
+            <div className="relative flex items-center justify-between px-7 pt-3 pb-1.5 text-[10.5px] font-semibold text-white">
               <span>9:41</span>
-              <span className="absolute left-1/2 top-2 h-[26px] w-[100px] -translate-x-1/2 rounded-full bg-black" />
+              {/* Dynamic island with camera lens hint */}
+              <span className="absolute left-1/2 top-2 flex h-[26px] w-[104px] -translate-x-1/2 items-center justify-end rounded-full bg-black pr-2.5">
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 rounded-full bg-[#1a1a1a] ring-1 ring-[#252525]"
+                />
+              </span>
               <span className="inline-flex items-center gap-1.5 text-white/85">
                 <SignalIcon />
                 <WifiIcon />
@@ -543,66 +585,144 @@ function PhoneMockup() {
             </div>
 
             {/* App content */}
-            <div className="px-5 pb-5 pt-4">
+            <div className="relative px-5 pb-5 pt-4">
               {/* Greeting row */}
               <div className="flex items-center justify-between">
-                <div className="text-[18px] font-bold text-white">
-                  Hola, Gee <span aria-hidden>👋</span>
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-white/45">
+                    Domingo, 4 may
+                  </div>
+                  <div className="mt-0.5 text-[18px] font-bold leading-tight text-white">
+                    Hola, Gee <span aria-hidden>👋</span>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Notificaciones"
-                  className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/80"
-                >
-                  <Bell size={15} aria-hidden />
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Buscar"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/80"
+                  >
+                    <SearchGlyph />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Notificaciones"
+                    className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/80"
+                  >
+                    <Bell size={14} aria-hidden />
+                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-[#070707]" />
+                  </button>
+                </div>
               </div>
 
-              {/* Account hero card */}
-              <div
-                className="relative mt-4 overflow-hidden rounded-2xl p-4 text-white"
+              {/* Account hero card — layered: emerald gradient + radial
+                  highlight + KANE chip + balance + sparkline + ingresos/
+                  gastos pills. */}
+              <div className="relative mt-4 overflow-hidden rounded-[20px] p-4 text-white"
                 style={{
                   background:
-                    "linear-gradient(135deg, oklch(0.45 0.16 162) 0%, oklch(0.62 0.18 162) 100%)",
+                    "linear-gradient(135deg, oklch(0.42 0.16 162) 0%, oklch(0.58 0.18 162) 55%, oklch(0.66 0.18 162) 100%)",
                 }}
               >
-                <div className="flex items-center justify-between text-[10.5px] font-medium">
-                  <span className="inline-flex items-center gap-1.5 opacity-95">
-                    <Wallet size={11} aria-hidden />
-                    Cuenta principal
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5">
-                    <span className="h-1 w-1 rounded-full bg-white" />
-                    PEN
-                  </span>
+                {/* Radial highlight top-right */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full"
+                  style={{
+                    background:
+                      "radial-gradient(closest-side, rgba(255,255,255,0.35), transparent 70%)",
+                  }}
+                />
+                {/* Faint diagonal sheen */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)",
+                  }}
+                />
+
+                {/* Top row: account label + KANE chip */}
+                <div className="relative flex items-start justify-between">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 text-[10.5px] font-medium opacity-95">
+                      <Wallet size={11} aria-hidden />
+                      Cuenta principal
+                    </div>
+                    <div className="mt-0.5 font-mono text-[10px] tabular-nums text-white/65">
+                      •••• 4820
+                    </div>
+                  </div>
+                  <KaneChip />
                 </div>
-                <div className="mt-3 text-[10px] uppercase tracking-[0.1em] opacity-75">
-                  Saldo disponible
+
+                {/* Balance + sparkline */}
+                <div className="relative mt-3 flex items-end justify-between">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.1em] opacity-75">
+                      Saldo disponible
+                    </div>
+                    <div className="mt-0.5 font-mono text-[30px] font-bold leading-none tracking-tight tabular-nums">
+                      S/ 4,820
+                      <span className="text-[18px] opacity-75">.00</span>
+                    </div>
+                  </div>
+                  <Sparkline />
                 </div>
-                <div className="mt-0.5 font-mono text-[28px] font-bold leading-none tracking-tight tabular-nums">
-                  S/ 4,820.00
+
+                {/* Ingresos / Gastos pills */}
+                <div className="relative mt-4 grid grid-cols-2 gap-2">
+                  <BalancePill
+                    label="Ingresos"
+                    value="+S/ 2,300"
+                    direction="up"
+                  />
+                  <BalancePill
+                    label="Gastos"
+                    value="−S/ 1,180"
+                    direction="down"
+                  />
                 </div>
-                <div className="mt-3 flex items-center gap-3 text-[10px]">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
-                    Ingresos +S/ 2,300
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-white/40" />
-                    Gastos −S/ 1,180
-                  </span>
-                </div>
+
+                {/* PEN chip pinned to bottom-right of the card */}
+                <span className="relative mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] backdrop-blur-sm">
+                  <span className="h-1 w-1 rounded-full bg-white" />
+                  PEN
+                </span>
               </div>
 
+              {/* Quick actions row */}
+              <ul className="mt-4 grid grid-cols-4 gap-2">
+                <QuickAction
+                  icon={<Camera size={14} aria-hidden />}
+                  label="Capturar"
+                  primary
+                />
+                <QuickAction
+                  icon={<ArrowDown size={14} aria-hidden />}
+                  label="Recibir"
+                />
+                <QuickAction
+                  icon={<ArrowLeftRight size={14} aria-hidden />}
+                  label="Enviar"
+                />
+                <QuickAction
+                  icon={<CreditCard size={14} aria-hidden />}
+                  label="Pagar"
+                />
+              </ul>
+
               {/* Movements list */}
-              <div className="mt-4 flex items-baseline justify-between">
+              <div className="mt-5 flex items-center justify-between">
                 <div className="text-[12px] font-semibold text-white">
                   Últimos movimientos
                 </div>
-                <div className="text-[10px] text-white/50">Hoy</div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-[9.5px] font-medium text-white/65">
+                  Hoy <span className="opacity-50">·</span> 4 mov
+                </span>
               </div>
-              <ul className="mt-2.5 space-y-2.5">
+              <ul className="mt-2 divide-y divide-white/[0.05] rounded-2xl border border-white/[0.05] bg-white/[0.02]">
                 <PhoneTxRow
                   icon={<Receipt size={11} aria-hidden />}
                   iconBg="oklch(0.95 0.04 56)"
@@ -610,6 +730,7 @@ function PhoneMockup() {
                   title="Tambo"
                   sub="Comida"
                   amount="−S/ 12.40"
+                  time="13:42"
                 />
                 <PhoneTxRow
                   icon={<Globe size={11} aria-hidden />}
@@ -618,6 +739,7 @@ function PhoneMockup() {
                   title="Netflix"
                   sub="Suscripciones"
                   amount="−S/ 32.90"
+                  time="11:05"
                 />
                 <PhoneTxRow
                   icon={<Banknote size={11} aria-hidden />}
@@ -626,6 +748,7 @@ function PhoneMockup() {
                   title="Sueldo"
                   sub="Ingreso · BBVA"
                   amount="+S/ 2,300"
+                  time="08:30"
                   positive
                 />
                 <PhoneTxRow
@@ -635,12 +758,13 @@ function PhoneMockup() {
                   title="Taxi"
                   sub="Transporte"
                   amount="−S/ 18.50"
+                  time="07:48"
                 />
               </ul>
             </div>
 
             {/* Tab bar */}
-            <div className="mt-2 border-t border-white/[0.06] bg-[#0E0E0E] px-3 pb-4 pt-2.5">
+            <div className="mt-1 border-t border-white/[0.06] bg-[#0B0B0B] px-3 pb-4 pt-2.5">
               <ul className="flex items-end justify-between text-white/55">
                 <PhoneTab icon={<Home size={14} />} label="Inicio" active />
                 <PhoneTab
@@ -653,16 +777,30 @@ function PhoneMockup() {
                     type="button"
                     aria-label="Capturar gasto"
                     className={cn(
-                      "inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary text-black",
-                      "shadow-[0_0_0_4px_#0E0E0E,0_0_30px_-4px_oklch(0.78_0.16_162/0.9)]",
+                      "relative inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary text-black",
+                      "shadow-[0_0_0_4px_#0B0B0B,0_8px_24px_-4px_oklch(0.78_0.16_162/0.65),0_0_40px_-2px_oklch(0.78_0.16_162/0.85)]",
                     )}
                   >
-                    <Plus size={18} strokeWidth={3} aria-hidden />
+                    {/* Inner ring highlight */}
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background:
+                          "radial-gradient(closest-side at 50% 30%, rgba(255,255,255,0.4), transparent 60%)",
+                      }}
+                    />
+                    <Plus size={18} strokeWidth={3} aria-hidden className="relative" />
                   </button>
                 </li>
                 <PhoneTab icon={<Sparkles size={14} />} label="Insights" />
                 <PhoneTab icon={<User size={14} />} label="Cuenta" />
               </ul>
+              {/* iOS home indicator */}
+              <div
+                aria-hidden
+                className="mx-auto mt-3 h-[3px] w-[80px] rounded-full bg-white/30"
+              />
             </div>
           </div>
         </div>
@@ -671,11 +809,135 @@ function PhoneMockup() {
   );
 }
 
+// Mini SVG sparkline — 4-week balance trend, ends with a glowing dot
+// to suggest "live data". Static path, no JS.
+function Sparkline() {
+  return (
+    <svg
+      width="78"
+      height="32"
+      viewBox="0 0 78 32"
+      fill="none"
+      aria-hidden
+      className="opacity-90"
+    >
+      <defs>
+        <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.4)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+      </defs>
+      {/* Filled area */}
+      <path
+        d="M2 22 L14 18 L26 24 L38 14 L50 16 L62 8 L74 6 L74 30 L2 30 Z"
+        fill="url(#spark-fill)"
+      />
+      {/* Line */}
+      <path
+        d="M2 22 L14 18 L26 24 L38 14 L50 16 L62 8 L74 6"
+        stroke="white"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Glow dot at end */}
+      <circle cx="74" cy="6" r="3" fill="white" />
+      <circle cx="74" cy="6" r="5" fill="white" opacity="0.25" />
+    </svg>
+  );
+}
+
+// Mini "KANE" chip on the account card — looks like a card chip, doubles
+// as a brand mark. Adds the "this is a real card" feel.
+function KaneChip() {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-6 items-center justify-center rounded-md px-1.5 text-[8.5px] font-extrabold tracking-[0.04em] text-white/95"
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.08))",
+        boxShadow:
+          "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 -2px 4px rgba(0,0,0,0.15)",
+      }}
+    >
+      KANE
+      <span className="ml-px h-1 w-1 rounded-full bg-white" />
+    </span>
+  );
+}
+
+function BalancePill({
+  label,
+  value,
+  direction,
+}: {
+  label: string;
+  value: string;
+  direction: "up" | "down";
+}) {
+  const Arrow = direction === "up" ? ArrowUp : ArrowDown;
+  return (
+    <div className="flex items-center gap-2 rounded-xl bg-white/10 px-2.5 py-1.5 backdrop-blur-sm">
+      <span
+        className={cn(
+          "inline-flex h-5 w-5 items-center justify-center rounded-full",
+          direction === "up" ? "bg-white/95 text-[oklch(0.40_0.16_162)]" : "bg-black/20 text-white",
+        )}
+      >
+        <Arrow size={10} strokeWidth={3} aria-hidden />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[8.5px] uppercase tracking-[0.08em] opacity-75">
+          {label}
+        </div>
+        <div className="font-mono text-[10.5px] font-bold tabular-nums leading-tight">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  primary = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  primary?: boolean;
+}) {
+  return (
+    <li className="flex flex-col items-center gap-1.5">
+      <span
+        className={cn(
+          "inline-flex h-11 w-11 items-center justify-center rounded-2xl",
+          primary
+            ? "bg-primary text-black shadow-[0_0_30px_-6px_oklch(0.78_0.16_162/0.85)]"
+            : "border border-white/[0.07] bg-white/[0.04] text-white",
+        )}
+      >
+        {icon}
+      </span>
+      <span
+        className={cn(
+          "text-[9.5px] font-medium",
+          primary ? "text-primary" : "text-white/65",
+        )}
+      >
+        {label}
+      </span>
+    </li>
+  );
+}
+
 function PhoneTxRow({
   icon,
   title,
   sub,
   amount,
+  time,
   positive = false,
   iconBg,
   iconFg,
@@ -684,31 +946,51 @@ function PhoneTxRow({
   title: string;
   sub: string;
   amount: string;
+  time: string;
   positive?: boolean;
   iconBg: string;
   iconFg: string;
 }) {
   return (
-    <li className="flex items-center gap-2.5">
+    <li className="flex items-center gap-2.5 px-2.5 py-2.5">
       <span
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+        className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
         style={{ backgroundColor: iconBg, color: iconFg }}
       >
         {icon}
+        {/* Direction badge — tiny circle in the corner showing in/out */}
+        <span
+          className={cn(
+            "absolute -bottom-0.5 -right-0.5 inline-flex h-3 w-3 items-center justify-center rounded-full ring-2 ring-[#070707]",
+            positive ? "bg-primary text-black" : "bg-white/15 text-white/80",
+          )}
+          aria-hidden
+        >
+          {positive ? (
+            <ArrowDown size={7} strokeWidth={3} className="rotate-180" />
+          ) : (
+            <ArrowUp size={7} strokeWidth={3} className="rotate-180" />
+          )}
+        </span>
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11.5px] font-semibold text-white">
           {title}
         </div>
-        <div className="text-[9.5px] text-white/50">{sub}</div>
+        <div className="truncate text-[9.5px] text-white/45">
+          {sub} <span className="opacity-50">·</span> {time}
+        </div>
       </div>
-      <div
-        className={cn(
-          "font-mono text-[11px] font-semibold tabular-nums",
-          positive ? "text-primary" : "text-white",
-        )}
-      >
-        {amount}
+      <div className="flex items-center gap-1.5">
+        <div
+          className={cn(
+            "font-mono text-[11px] font-semibold tabular-nums",
+            positive ? "text-primary" : "text-white",
+          )}
+        >
+          {amount}
+        </div>
+        <ChevronRight size={11} className="text-white/30" aria-hidden />
       </div>
     </li>
   );
@@ -726,13 +1008,34 @@ function PhoneTab({
   return (
     <li
       className={cn(
-        "flex flex-col items-center gap-1 text-[9.5px] font-medium",
-        active ? "text-primary" : "text-white/55",
+        "relative flex flex-col items-center gap-1 px-2 py-1 text-[9.5px] font-medium",
+        active ? "text-primary" : "text-white/45",
       )}
     >
+      {active ? (
+        <span
+          aria-hidden
+          className="absolute inset-x-2 -top-2.5 h-0.5 rounded-full bg-primary"
+        />
+      ) : null}
       {icon}
       <span>{label}</span>
     </li>
+  );
+}
+
+// Tiny search lens — inline SVG, avoids importing one more lucide icon.
+function SearchGlyph() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M9.5 9.5L12 12"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
