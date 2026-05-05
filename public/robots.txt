@@ -1,8 +1,12 @@
-# Gastospersonales is a private financial app. The public surface is
-# limited to /login, /register, and /welcome — everything else requires
-# auth and would 401 to a crawler anyway, but we ask nicely first to
-# avoid wasting their budget AND keep search results clean.
+# Kane is a personal-finance PWA. The public, indexable surface is the
+# marketing landing (/landing) plus the auth entry points (/login,
+# /register). Everything else needs a session and would 401 to a crawler
+# anyway — we ask nicely first to keep search results clean and not burn
+# their crawl budget.
 User-agent: *
+Allow: /landing
+Allow: /login
+Allow: /register
 Disallow: /dashboard
 Disallow: /movements
 Disallow: /capture
@@ -17,5 +21,11 @@ Disallow: /settings
 Disallow: /advisor
 Disallow: /receipt
 Disallow: /share-target
+Disallow: /welcome
+Disallow: /onboarding
 Disallow: /api/
 Disallow: /auth/
+
+# Generated dynamically by src/app/sitemap.ts. The host portion is taken
+# from NEXT_PUBLIC_SITE_URL (falls back to https://kane.verkex.com).
+Sitemap: https://kane.verkex.com/sitemap.xml
