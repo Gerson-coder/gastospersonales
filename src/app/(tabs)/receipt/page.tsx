@@ -89,6 +89,7 @@ import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
+import { MerchantPicker } from "@/components/kane/MerchantPicker";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
 import { cn } from "@/lib/utils";
 
@@ -852,6 +853,10 @@ function ReceiptPageInner() {
   const [categoryId, setCategoryId] = React.useState<string | null>(
     INITIAL_FORM.category_id,
   );
+  // Comercio seleccionado dentro de la categoría — opcional. Mismo
+  // contrato que /capture: cuando cambia la categoría, reset a null
+  // (los merchants están scoped por categoría).
+  const [merchantId, setMerchantId] = React.useState<string | null>(null);
   // Real account id (uuid). Populated from listAccounts() on mount; the
   // first account is the default until OCR routes to a source-matching
   // account via suggestAccountIdForSource.
@@ -1366,7 +1371,7 @@ function ReceiptPageInner() {
         kind: transactionKind,
         accountId,
         categoryId,
-        merchantId: null,
+        merchantId,
         note: trimmedMerchant.length > 0 ? trimmedMerchant : null,
         occurredAt: occurredIso,
         receiptId: receiptId ?? null,
@@ -1447,6 +1452,7 @@ function ReceiptPageInner() {
     currency,
     isSaving,
     merchant,
+    merchantId,
     missingAccountSourceLabel,
     occurredAt,
     occurredAtIso,
@@ -1775,6 +1781,22 @@ function ReceiptPageInner() {
               </button>
             </FieldRow>
 
+            {/* Comercio dentro de la categoría — opcional. Mismo
+                componente que /capture. Devuelve null cuando no hay
+                categoría elegida o la categoría no tiene comercios
+                visibles, así que no afecta el flujo cuando el user
+                no quiere usarlo. Cuando elige uno, se persiste como
+                `merchant_id` en la transacción. */}
+            <MerchantPicker
+              categoryId={categoryId}
+              categoryName={selectedCategory?.name ?? null}
+              value={merchantId}
+              onChange={(id) => {
+                setMerchantId(id);
+                markDirty();
+              }}
+            />
+
             {/* Cuenta — tres estados:
                   1. missingAccountSourceLabel: el OCR detectó la
                      fuente (Yape/Plin/BBVA/BCP) pero el user no
@@ -2031,6 +2053,10 @@ function ReceiptPageInner() {
                     key={c.id}
                     type="button"
                     onClick={() => {
+                      // Cambio de categoría → reset del merchant
+                      // (los comercios están scoped por categoría, un
+                      // merchant de "Comida" no es válido en "Salud").
+                      if (categoryId !== c.id) setMerchantId(null);
                       setCategoryId(c.id);
                       markDirty();
                       setIsCategoryOpen(false);
