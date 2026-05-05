@@ -46,9 +46,9 @@ const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
   "https://kane.verkex.com";
 
-const OG_TITLE = `${APP_NAME} — Registra gastos en 3 segundos`;
+const OG_TITLE = `${APP_NAME} — Registra gastos en segundos`;
 const OG_DESCRIPTION =
-  "Sin Excel. Sin fricción. Sin pensar. Toma foto de tu boleta y la IA registra el gasto por ti. Multi-cuenta, multi-moneda, instalable como app.";
+  "Toma una foto. La IA lo organiza por ti. App de finanzas personales para registrar gastos en segundos — multi-cuenta, multi-moneda, instalable como app en tu móvil.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
