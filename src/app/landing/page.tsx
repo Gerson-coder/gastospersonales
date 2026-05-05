@@ -24,16 +24,18 @@ import {
   ArrowRight,
   Banknote,
   BarChart3,
+  Bell,
   Camera,
   Check,
-  ChevronRight,
+  ChevronDown,
+  Globe,
+  Home,
+  Lock,
+  Plus,
   Receipt,
   ShieldCheck,
   Sparkles,
-  Star,
-  Store,
-  UtensilsCrossed,
-  X,
+  User,
 } from "lucide-react";
 
 import { APP_NAME } from "@/lib/brand";
@@ -189,9 +191,8 @@ function TopNav() {
   const links = [
     { href: "#como-funciona", label: "Cómo funciona" },
     { href: "#caracteristicas", label: "Características" },
-    { href: "#seguridad", label: "Seguridad" },
+    { href: "#seguridad", label: "Privacidad" },
     { href: "#precios", label: "Precios" },
-    { href: "#faq", label: "FAQ" },
   ];
 
   return (
@@ -200,19 +201,17 @@ function TopNav() {
         <Link
           href="/landing"
           aria-label={`${APP_NAME} — inicio`}
-          className="group inline-flex items-baseline gap-0.5"
+          className="inline-flex items-center gap-2"
         >
-          <span className="text-[22px] font-extrabold tracking-tight text-white">
-            KANE
-          </span>
-          <span className="text-[22px] font-extrabold leading-none text-primary">
-            .
+          <KaneMark />
+          <span className="text-[18px] font-semibold tracking-tight text-white">
+            Kane
           </span>
         </Link>
 
         <nav
           aria-label="Navegación principal"
-          className="hidden items-center gap-8 lg:flex"
+          className="hidden items-center gap-9 md:flex"
         >
           {links.map((l) => (
             <a
@@ -225,27 +224,22 @@ function TopNav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-5">
           <Link
             href="/login"
-            className="hidden h-10 items-center px-3 text-[14px] font-medium text-white/75 transition-colors hover:text-white sm:inline-flex"
+            className="hidden text-[14px] font-medium text-white/75 transition-colors hover:text-white sm:inline-flex"
           >
             Iniciar sesión
           </Link>
           <Link
             href="/register"
             className={cn(
-              "group inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-semibold text-black",
-              "transition-all hover:opacity-95 active:translate-y-px",
-              "shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_-6px_oklch(0.78_0.16_162/0.55),0_0_60px_-12px_oklch(0.78_0.16_162/0.7)]",
+              "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-[13.5px] font-semibold text-black",
+              "transition-colors hover:bg-primary/90",
+              "shadow-[0_4px_16px_-4px_oklch(0.78_0.16_162/0.35)]",
             )}
           >
             Crear cuenta gratis
-            <ArrowRight
-              size={15}
-              className="transition-transform group-hover:translate-x-0.5"
-              aria-hidden
-            />
           </Link>
         </div>
       </div>
@@ -253,14 +247,40 @@ function TopNav() {
   );
 }
 
+// Small "K" mark — green rounded square with a stylized K. Used as the
+// brand glyph in the top-nav and footer.
+function KaneMark() {
+  return (
+    <span
+      aria-hidden
+      className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-black"
+      style={{
+        boxShadow:
+          "inset 0 0 0 1px rgba(255,255,255,0.18), 0 4px 16px -6px oklch(0.78 0.16 162 / 0.5)",
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path
+          d="M3.5 2v12M3.5 8L11 2M5.5 8L12 14"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
 // ─── Hero ────────────────────────────────────────────────────────────────
 function Hero() {
   return (
     <section className="relative">
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-14 px-6 py-12 md:py-20 lg:grid-cols-2 lg:gap-10">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-16 px-6 py-16 md:px-10 md:py-24 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-28">
         <HeroCopy />
         <HeroVisual />
       </div>
+      <ScrollHint />
     </section>
   );
 }
@@ -268,116 +288,66 @@ function Hero() {
 function HeroCopy() {
   return (
     <div className="relative">
-      {/* NUEVO badge */}
-      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1.5 pl-1.5 pr-4 backdrop-blur-sm">
-        <span className="rounded-full border border-primary/40 bg-primary/15 px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-primary">
-          Nuevo
+      {/* Eyebrow pill */}
+      <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/[0.06] px-3 py-1.5 backdrop-blur-sm">
+        <Sparkles size={12} className="text-primary" aria-hidden />
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-primary">
+          IA que lee tus boletas
         </span>
-        <span className="text-[12.5px] font-medium text-white/80">
-          IA que lee tus boletas por ti
-        </span>
-        <Sparkles size={13} className="text-primary" aria-hidden />
       </div>
 
       {/* Headline */}
-      <h1 className="mt-7 text-balance text-[52px] font-extrabold leading-[1.02] tracking-[-0.02em] text-white md:text-[68px] lg:text-[76px]">
+      <h1 className="mt-8 text-balance text-[56px] font-bold leading-[1.02] tracking-[-0.025em] text-white md:text-[72px] lg:text-[84px]">
         Registra gastos en{" "}
-        <span className="text-primary">3 segundos.</span>
+        <span className="text-primary">segundos.</span>
       </h1>
 
-      {/* Italic subheadline triplet */}
-      <div className="mt-4 space-y-1 text-[40px] font-light leading-[1.1] tracking-[-0.02em] text-white md:text-[52px] lg:text-[58px]">
-        <p>
-          Sin{" "}
-          <span className="font-display italic font-normal text-white/85">
-            Excel.
-          </span>
-        </p>
-        <p>
-          Sin{" "}
-          <span className="font-display italic font-normal text-white/85">
-            fricción.
-          </span>
-        </p>
-        <p>
-          Sin{" "}
-          <span className="font-display italic font-normal text-white/85">
-            pensar.
-          </span>
-        </p>
-      </div>
-
-      {/* Body */}
-      <p className="mt-7 max-w-md text-[15px] leading-relaxed text-white/65">
-        Toma foto de tu boleta. Nuestra IA extrae todos los datos
-        automáticamente. Tú solo confirmas y listo.
+      {/* Subtitle — strict 2 lines */}
+      <p className="mt-7 max-w-[440px] text-[19px] font-medium leading-[1.45] text-white/70 md:text-[21px]">
+        Toma una foto.
+        <br />
+        La <span className="text-primary">IA</span> lo organiza por ti.
       </p>
 
       {/* CTAs */}
-      <div className="mt-8 flex flex-wrap items-center gap-3">
+      <div className="mt-10 flex flex-wrap items-center gap-3">
         <Link
           href="/register"
           className={cn(
-            "group inline-flex h-14 items-center gap-2 rounded-full bg-primary px-7 text-[15px] font-semibold text-black",
-            "transition-all hover:opacity-95 active:translate-y-px",
-            "shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_10px_30px_-6px_oklch(0.78_0.16_162/0.55),0_0_80px_-12px_oklch(0.78_0.16_162/0.85)]",
+            "group inline-flex h-14 items-center gap-2 rounded-full bg-primary px-6 text-[14.5px] font-semibold text-black",
+            "transition-colors hover:bg-primary/92",
+            "shadow-[0_8px_24px_-8px_oklch(0.78_0.16_162/0.45)]",
           )}
         >
-          Empieza gratis ahora
+          Crear cuenta gratis
           <ArrowRight
-            size={16}
+            size={15}
             className="transition-transform group-hover:translate-x-0.5"
             aria-hidden
           />
         </Link>
         <a
           href="#demo"
-          className="inline-flex h-14 items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-7 text-[15px] font-semibold text-white transition-colors hover:bg-white/[0.07]"
+          className="inline-flex h-14 items-center gap-2 rounded-full border border-white/12 px-6 text-[14.5px] font-semibold text-white transition-colors hover:bg-white/[0.04]"
         >
           <PlayTriangle />
           Ver demo
         </a>
       </div>
 
-      {/* Trust list */}
-      <ul className="mt-8 flex flex-wrap items-center gap-x-7 gap-y-3 text-[13px] text-white/70">
-        <li className="inline-flex items-center gap-2">
-          <CheckPill />
-          Sin tarjeta de crédito
-        </li>
-        <li className="inline-flex items-center gap-2">
-          <CheckPill />
-          Datos cifrados
-        </li>
-        <li className="inline-flex items-center gap-2">
-          <CheckPill />
-          Hecho en Perú <span aria-hidden>🇵🇪</span>
-        </li>
-      </ul>
-
-      {/* Social proof */}
-      <div className="mt-10 flex items-center gap-4">
-        <AvatarStack />
-        <div>
-          <div className="text-[13.5px] font-semibold text-white">
-            Más de 2,500 personas ya están ahorrando tiempo
-          </div>
-          <div className="mt-1 inline-flex items-center gap-2">
-            <span className="inline-flex items-center gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  size={13}
-                  className="fill-primary text-primary"
-                  aria-hidden
-                />
-              ))}
-            </span>
-            <span className="text-[12px] text-white/60">
-              4.9 de 5 estrellas
-            </span>
-          </div>
-        </div>
+      {/* Micro-copy: just two reassurances, low opacity, lots of breathing room */}
+      <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] text-white/45">
+        <span className="inline-flex items-center gap-1.5">
+          <Lock size={12} aria-hidden />
+          Sin tarjeta
+        </span>
+        <span aria-hidden className="text-white/25">
+          ·
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <ShieldCheck size={12} aria-hidden />
+          Privado por diseño
+        </span>
       </div>
     </div>
   );
@@ -386,8 +356,8 @@ function HeroCopy() {
 function PlayTriangle() {
   return (
     <svg
-      width="11"
-      height="13"
+      width="10"
+      height="12"
       viewBox="0 0 11 13"
       fill="currentColor"
       aria-hidden
@@ -398,86 +368,39 @@ function PlayTriangle() {
   );
 }
 
-function CheckPill() {
+// "Descubre más" scroll indicator below the hero — soft text + chevron
+// that gently bobs (CSS-only, respects prefers-reduced-motion via
+// globals.css clamping all animations to 0.01ms).
+function ScrollHint() {
   return (
-    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary">
-      <Check size={12} strokeWidth={3} aria-hidden />
-    </span>
-  );
-}
-
-function AvatarStack() {
-  // Stylized gradient avatars — no real user faces. Each circle has
-  // a unique hue ring + initial so the strip reads as people, not as
-  // a generic "users" icon.
-  const seeds = [
-    { hue: "from-rose-500 to-orange-400", initial: "A" },
-    { hue: "from-sky-500 to-violet-500", initial: "M" },
-    { hue: "from-emerald-400 to-teal-500", initial: "L" },
-    { hue: "from-amber-400 to-rose-500", initial: "C" },
-  ];
-  return (
-    <ul className="flex -space-x-2">
-      {seeds.map((s, i) => (
-        <li
-          key={i}
-          className={cn(
-            "h-9 w-9 rounded-full bg-gradient-to-br ring-2 ring-black",
-            "flex items-center justify-center text-[12px] font-bold text-white/90",
-            s.hue,
-          )}
-          aria-hidden
-        >
-          {s.initial}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// ─── Hero visual: phone + floating cards + flow lines ────────────────────
-function HeroVisual() {
-  return (
-    <div className="relative mx-auto h-[640px] w-full max-w-[560px] lg:max-w-none">
-      {/* Connection flow lines (decorative) */}
-      <FlowLines />
-
-      {/* Phone mockup, centered */}
-      <div className="relative z-10 mx-auto w-[300px] sm:w-[340px] md:w-[360px]">
-        <PhoneMockup />
-      </div>
-
-      {/* Floating narrative cards — tell the OCR flow:
-          Tomas foto → IA procesa → Se guarda → Gasto registrado. */}
-      <FloatingReceipt />
-
-      <FloatingStep
-        icon={<Camera size={16} aria-hidden />}
-        title="Tomas foto"
-        body="Captura tu boleta al instante."
-        className="-left-6 bottom-44 -rotate-[3deg]"
-      />
-
-      <FloatingStep
-        icon={<Sparkles size={16} aria-hidden />}
-        title="IA procesa"
-        body="Extrae comercio, monto y fecha automáticamente."
-        className="left-[28%] -bottom-2 rotate-[3deg]"
-      />
-
-      <FloatingConfirmation />
-
-      <FloatingStep
-        icon={<Check size={16} strokeWidth={3} aria-hidden />}
-        title="Se guarda"
-        body="Listo, tu gasto queda registrado."
-        className="-right-6 top-[55%] rotate-[4deg]"
-      />
+    <div className="pointer-events-none absolute inset-x-0 -bottom-6 hidden flex-col items-center gap-1 text-white/40 md:flex">
+      <span className="text-[11.5px] font-medium tracking-wide">
+        Descubre más
+      </span>
+      <ChevronDown size={14} className="animate-bounce" aria-hidden />
     </div>
   );
 }
 
-function FlowLines() {
+// ─── Hero visual: phone + 2 floating cards + single subtle curve ─────────
+function HeroVisual() {
+  return (
+    <div className="relative mx-auto h-[660px] w-full max-w-[560px] lg:max-w-none">
+      {/* Single subtle dashed curve receipt → phone → confirmation. */}
+      <FlowCurve />
+
+      {/* Phone mockup with a gentle tilt, centered. */}
+      <div className="relative z-10 mx-auto w-[300px] rotate-[2deg] sm:w-[330px] md:w-[340px]">
+        <PhoneMockup />
+      </div>
+
+      <FloatingReceipt />
+      <FloatingConfirmation />
+    </div>
+  );
+}
+
+function FlowCurve() {
   return (
     <svg
       aria-hidden
@@ -487,52 +410,24 @@ function FlowLines() {
       fill="none"
     >
       <defs>
-        <linearGradient id="flow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="flow-grad" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="oklch(0.78 0.16 162)" stopOpacity="0" />
           <stop
             offset="50%"
             stopColor="oklch(0.78 0.16 162)"
-            stopOpacity="0.55"
+            stopOpacity="0.4"
           />
           <stop offset="100%" stopColor="oklch(0.78 0.16 162)" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {/* Receipt → phone (top-left into screen) */}
+      {/* One arc that sweeps under the phone, from the receipt on the
+          left to the confirmation on the right. Subtle, single curve. */}
       <path
-        d="M 130 280 Q 200 100 320 180"
+        d="M 130 540 Q 300 700 470 480"
         stroke="url(#flow-grad)"
-        strokeWidth="1.5"
+        strokeWidth="1.25"
         strokeDasharray="4 6"
       />
-      {/* Phone → "Se guarda" (right side mid) */}
-      <path
-        d="M 460 360 Q 540 360 540 470"
-        stroke="url(#flow-grad)"
-        strokeWidth="1.5"
-        strokeDasharray="4 6"
-      />
-      {/* "Tomas foto" → "IA procesa" curve under phone */}
-      <path
-        d="M 110 540 Q 230 660 310 620"
-        stroke="url(#flow-grad)"
-        strokeWidth="1.5"
-        strokeDasharray="4 6"
-      />
-      {/* IA procesa → confirmation (bottom-center → top-right) */}
-      <path
-        d="M 360 560 Q 500 400 540 220"
-        stroke="url(#flow-grad)"
-        strokeWidth="1.5"
-        strokeDasharray="4 6"
-        opacity="0.5"
-      />
-      {/* Sparkle marks at endpoints */}
-      <g fill="oklch(0.78 0.16 162)" opacity="0.85">
-        <circle cx="320" cy="180" r="3" />
-        <circle cx="540" cy="470" r="3" />
-        <circle cx="130" cy="280" r="2" />
-        <circle cx="310" cy="620" r="2" />
-      </g>
     </svg>
   );
 }
@@ -614,83 +509,140 @@ function PhoneMockup() {
               </span>
             </div>
 
-            {/* Capture screen header */}
-            <div className="relative flex items-center justify-between px-5 pt-3 pb-2">
-              <div className="text-[15px] font-semibold text-white">
-                Nuevo gasto
-              </div>
+            {/* App header */}
+            <div className="relative flex items-center justify-between px-5 pt-4 pb-2">
+              <div className="text-[16px] font-bold text-white">Resumen</div>
               <button
                 type="button"
-                aria-label="Cerrar"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.06] text-white/65"
+                aria-label="Notificaciones"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.05] text-white/70"
               >
-                <X size={14} aria-hidden />
+                <Bell size={14} aria-hidden />
               </button>
             </div>
 
-            <div className="relative px-5 pb-3">
-              {/* AI badge */}
-              <div className="flex w-full items-center justify-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.08] py-1.5 text-[10.5px] font-medium text-primary">
-                <Sparkles size={11} aria-hidden />
-                Datos extraídos por IA
+            {/* Saldo card */}
+            <div className="relative px-5 pt-1">
+              <div
+                className="relative overflow-hidden rounded-2xl p-4 text-white"
+                style={{
+                  background:
+                    "linear-gradient(135deg, oklch(0.36 0.14 162) 0%, oklch(0.50 0.16 162) 100%)",
+                }}
+              >
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -right-12 -top-16 h-36 w-36 rounded-full"
+                  style={{
+                    background:
+                      "radial-gradient(closest-side, rgba(255,255,255,0.22), transparent 70%)",
+                  }}
+                />
+                <div className="relative flex items-center justify-between">
+                  <span className="text-[10.5px] font-medium opacity-90">
+                    Saldo total
+                  </span>
+                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.06em]">
+                    PEN
+                  </span>
+                </div>
+                <div className="relative mt-1.5 font-mono text-[26px] font-bold leading-none tracking-tight tabular-nums">
+                  S/ 4,820.00
+                </div>
+                <div className="relative mt-3 flex items-center gap-3 text-[10px] opacity-90">
+                  <span>Ingresos +S/ 2,300</span>
+                  <span aria-hidden className="opacity-50">
+                    ·
+                  </span>
+                  <span>Gastos −S/ 1,180</span>
+                </div>
               </div>
+            </div>
 
-              {/* Form rows */}
-              <div className="mt-3 space-y-2">
-                <FormRow
-                  label="Comercio"
-                  icon={<Store size={11} aria-hidden />}
+            {/* Movements list */}
+            <div className="relative px-5 pt-4 pb-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold text-white">
+                  Últimos movimientos
+                </div>
+                <a
+                  href="#"
+                  className="text-[10.5px] font-semibold text-primary"
+                >
+                  Ver todos
+                </a>
+              </div>
+              <ul className="mt-2.5 space-y-2.5">
+                <PhoneTxRow
+                  icon={<Receipt size={11} aria-hidden />}
                   iconBg="oklch(0.95 0.04 56)"
                   iconFg="oklch(0.45 0.12 56)"
-                  value="Tambo+"
+                  title="Tambo"
+                  sub="Comida"
+                  amount="−S/ 12.40"
+                  meta="Hoy"
                 />
-                <FormRow
-                  label="Monto"
-                  icon={
-                    <span className="font-mono text-[9.5px] font-bold leading-none">
-                      S/
-                    </span>
-                  }
+                <PhoneTxRow
+                  icon={<Banknote size={11} aria-hidden />}
                   iconBg="oklch(0.95 0.05 162)"
                   iconFg="oklch(0.40 0.16 162)"
-                  value={
-                    <span className="font-mono tabular-nums">S/ 12.40</span>
+                  title="Sueldo"
+                  sub="Ingreso"
+                  amount="+S/ 2,300"
+                  meta="12 may."
+                  positive
+                />
+                <PhoneTxRow
+                  icon={
+                    <span className="font-mono text-[10px] font-bold leading-none">
+                      N
+                    </span>
                   }
+                  iconBg="oklch(0.95 0.06 25)"
+                  iconFg="oklch(0.50 0.22 25)"
+                  title="Netflix"
+                  sub="Suscripción"
+                  amount="−S/ 32.90"
+                  meta="Ayer"
                 />
-                <FormRow
-                  label="Fecha"
-                  icon={<CalendarGlyph />}
-                  iconBg="oklch(0.95 0.04 280)"
-                  iconFg="oklch(0.45 0.16 280)"
-                  value="12 may. 2026"
+                <PhoneTxRow
+                  icon={<Globe size={11} aria-hidden />}
+                  iconBg="oklch(0.95 0.10 80)"
+                  iconFg="oklch(0.55 0.18 75)"
+                  title="Metro"
+                  sub="Supermercado"
+                  amount="−S/ 45.60"
+                  meta="Ayer"
                 />
-                <FormRow
-                  label="Categoría"
-                  icon={<UtensilsCrossed size={11} aria-hidden />}
-                  iconBg="oklch(0.95 0.04 25)"
-                  iconFg="oklch(0.50 0.18 25)"
-                  value="Alimentación"
-                />
-                {/* Cuenta — featured row with the Interbank card */}
-                <BankCardRow />
-              </div>
+              </ul>
             </div>
 
-            {/* Sticky-style CTA */}
-            <div className="border-t border-white/[0.05] bg-[#0B0B0B] px-5 pb-4 pt-3">
-              <button
-                type="button"
-                className={cn(
-                  "relative inline-flex h-11 w-full items-center justify-center rounded-2xl bg-primary text-[13.5px] font-bold text-black",
-                  "shadow-[0_8px_24px_-4px_oklch(0.78_0.16_162/0.55),0_0_40px_-8px_oklch(0.78_0.16_162/0.85)]",
-                )}
-              >
-                Confirmar gasto
-              </button>
-              {/* iOS home indicator */}
+            {/* Tab bar */}
+            <div className="relative mt-auto border-t border-white/[0.05] bg-[#0A0A0A] px-3 pt-2 pb-4">
+              <ul className="flex items-end justify-between text-white/55">
+                <PhoneTab icon={<Home size={14} />} label="Inicio" active />
+                <PhoneTab
+                  icon={<BarChart3 size={14} />}
+                  label="Movimientos"
+                />
+                <li className="-mt-7">
+                  <button
+                    type="button"
+                    aria-label="Capturar gasto"
+                    className={cn(
+                      "inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary text-black",
+                      "shadow-[0_0_0_4px_#0A0A0A,0_8px_24px_-6px_oklch(0.78_0.16_162/0.6)]",
+                    )}
+                  >
+                    <Plus size={18} strokeWidth={3} aria-hidden />
+                  </button>
+                </li>
+                <PhoneTab icon={<Sparkles size={14} />} label="Insights" />
+                <PhoneTab icon={<User size={14} />} label="Cuenta" />
+              </ul>
               <div
                 aria-hidden
-                className="mx-auto mt-3 h-[3px] w-[80px] rounded-full bg-white/30"
+                className="mx-auto mt-3 h-[3px] w-[80px] rounded-full bg-white/25"
               />
             </div>
           </div>
@@ -700,166 +652,75 @@ function PhoneMockup() {
   );
 }
 
-// ─── Capture form helpers ────────────────────────────────────────────────
+// ─── Phone screen helpers ────────────────────────────────────────────────
 
-function FormRow({
-  label,
+function PhoneTxRow({
   icon,
+  title,
+  sub,
+  amount,
+  meta,
+  positive = false,
   iconBg,
   iconFg,
-  value,
 }: {
-  label: string;
   icon: React.ReactNode;
+  title: string;
+  sub: string;
+  amount: string;
+  meta: string;
+  positive?: boolean;
   iconBg: string;
   iconFg: string;
-  value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
-      <div className="text-[8.5px] font-semibold uppercase tracking-[0.1em] text-white/40">
-        {label}
-      </div>
-      <div className="mt-1 flex items-center gap-2.5">
-        <span
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-          style={{ backgroundColor: iconBg, color: iconFg }}
-        >
-          {icon}
-        </span>
-        <div className="flex-1 truncate text-[12.5px] font-semibold text-white">
-          {value}
-        </div>
-        <ChevronRight size={12} className="text-white/35" aria-hidden />
-      </div>
-    </div>
-  );
-}
-
-// Cuenta row — instead of a plain text value, displays the actual
-// bank card so the user reads "this is what gets debited" at a glance.
-function BankCardRow() {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] px-3 py-2">
-      <div className="flex items-center justify-between">
-        <div className="text-[8.5px] font-semibold uppercase tracking-[0.1em] text-white/40">
-          Cuenta
-        </div>
-        <ChevronRight size={12} className="text-white/35" aria-hidden />
-      </div>
-      <div className="mt-1.5">
-        <BankCardMini />
-      </div>
-    </div>
-  );
-}
-
-// Mini Interbank card. Teal/emerald gradient, mini chip, masked number,
-// "interbank" wordmark in the top-right. Sized to fit the form row width.
-function BankCardMini() {
-  return (
-    <div
-      className="relative w-full overflow-hidden rounded-xl px-3 py-2.5 text-white"
-      style={{
-        background:
-          "linear-gradient(135deg, oklch(0.34 0.13 175) 0%, oklch(0.48 0.16 175) 55%, oklch(0.62 0.16 165) 100%)",
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
-      }}
-    >
-      {/* Top sheen */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{
-          background:
-            "linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)",
-        }}
-      />
-      {/* Top-right halo */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(255,255,255,0.30), transparent 70%)",
-        }}
-      />
-      {/* Subtle diagonal stripes texture */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.05]"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(45deg, white 0 1px, transparent 1px 8px)",
-        }}
-      />
-
-      <div className="relative flex items-start justify-between">
-        <ChipMini />
-        <span className="text-[10px] font-extrabold tracking-tight text-white">
-          interbank
-        </span>
-      </div>
-
-      <div className="relative mt-2 font-mono text-[12.5px] font-bold tabular-nums tracking-[0.06em]">
-        •••• 4820
-      </div>
-
-      <div className="relative mt-0.5 flex items-end justify-between">
-        <div className="text-[8px] uppercase tracking-[0.08em] opacity-80">
-          Tarjeta débito
-        </div>
-        <div className="font-mono text-[8.5px] tabular-nums opacity-85">
-          12/28
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChipMini() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex h-5 w-7 items-center justify-center rounded-[3px]"
-      style={{
-        background:
-          "linear-gradient(135deg, #d4af37 0%, #f7d56a 50%, #b9892d 100%)",
-        boxShadow:
-          "inset 0 0 0 0.5px rgba(0,0,0,0.25), inset 0 -1px 1px rgba(0,0,0,0.2)",
-      }}
-    >
+    <li className="flex items-center gap-2.5">
       <span
-        className="block h-2.5 w-4 rounded-[1px]"
-        style={{
-          background:
-            "repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 4px)",
-        }}
-      />
-    </span>
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+        style={{ backgroundColor: iconBg, color: iconFg }}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] font-semibold leading-tight text-white">
+          {title}
+        </div>
+        <div className="truncate text-[10px] text-white/45">{sub}</div>
+      </div>
+      <div className="text-right">
+        <div
+          className={cn(
+            "font-mono text-[11px] font-semibold tabular-nums",
+            positive ? "text-primary" : "text-white",
+          )}
+        >
+          {amount}
+        </div>
+        <div className="text-[9.5px] text-white/40">{meta}</div>
+      </div>
+    </li>
   );
 }
 
-function CalendarGlyph() {
+function PhoneTab({
+  icon,
+  label,
+  active = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+}) {
   return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <rect
-        x="1.5"
-        y="2.5"
-        width="9"
-        height="8"
-        rx="1.4"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <path d="M1.5 5h9" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M3.5 1.5v2M8.5 1.5v2"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
+    <li
+      className={cn(
+        "flex flex-col items-center gap-1 px-2 text-[9.5px] font-medium",
+        active ? "text-primary" : "text-white/45",
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </li>
   );
 }
 
@@ -951,47 +812,6 @@ function CornerBracket({
         classes[position],
       )}
     />
-  );
-}
-
-// Step card — icon + title + subtitle. Used to narrate the OCR flow
-// around the phone (Tomas foto / IA procesa / Se guarda). Position is
-// controlled by the consumer via `className`.
-function FloatingStep({
-  icon,
-  title,
-  body,
-  className,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-  className?: string;
-}) {
-  return (
-    <aside
-      aria-label={`${title}: ${body}`}
-      className={cn(
-        "absolute z-20 hidden w-[170px] rounded-2xl border border-white/10 p-3.5",
-        "bg-[#0F0F0F]/95 backdrop-blur-md md:block",
-        "shadow-[0_24px_48px_-16px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
-        className,
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <div className="text-[12.5px] font-bold leading-tight text-white">
-            {title}
-          </div>
-          <p className="mt-1 text-[11px] leading-snug text-white/55">
-            {body}
-          </p>
-        </div>
-      </div>
-    </aside>
   );
 }
 
