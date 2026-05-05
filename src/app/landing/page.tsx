@@ -726,42 +726,40 @@ function PhoneTab({
 
 // ─── Floating cards ──────────────────────────────────────────────────────
 
-// Big TAMBO+ ticket floating on the left, slightly tilted, with green
-// scan brackets at the corners and a subtle scanner sweep line. Tells
-// the user "we read the actual receipt".
+// TAMBO+ ticket floating on the left, gently tilted. Content matches
+// the new reference image 1:1 (address 1235, items, date 11:09 AM,
+// "¡GRACIAS POR SU COMPRA!" tagline). Green corner brackets keep the
+// "scan in progress" cue without an extra scanner-sweep line.
 function FloatingReceipt() {
   return (
     <aside
-      aria-label="Boleta de Tambo+ siendo capturada por la IA"
+      aria-label="Boleta de Tambo+ capturada por la IA"
       className={cn(
-        "absolute -left-4 top-2 z-20 hidden w-[180px] -rotate-[7deg] rounded-2xl border border-white/10 p-3",
-        "bg-[#0F0F0F]/90 backdrop-blur-md md:block",
-        "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
+        "absolute -left-6 top-12 z-20 hidden w-[180px] -rotate-[5deg] rounded-md",
+        "bg-[#F4F1EB] px-4 py-4 md:block",
+        "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)]",
       )}
     >
-      <div className="relative overflow-hidden rounded-md bg-[#F4F1EB] px-3 py-3 text-[8px] font-mono text-neutral-700">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{
-            background:
-              "linear-gradient(90deg, transparent, oklch(0.78 0.16 162 / 0.9), transparent)",
-            boxShadow: "0 0 8px oklch(0.78 0.16 162)",
-            transform: "translateY(50%)",
-          }}
-        />
-        <div className="text-center text-[12px] font-bold tracking-[0.05em] text-neutral-900">
+      {/* Green scan corner brackets, anchored to the receipt's outer
+          edges so they read as "this is the area being captured". */}
+      <CornerBracket position="tl" />
+      <CornerBracket position="tr" />
+      <CornerBracket position="bl" />
+      <CornerBracket position="br" />
+
+      <div className="text-[8px] font-mono text-neutral-700">
+        <div className="text-center text-[13px] font-extrabold tracking-[0.06em] text-neutral-900">
           TAMBO+
         </div>
         <div className="mt-1 text-center text-[6.5px] uppercase leading-tight tracking-wider text-neutral-500">
-          AV. AREQUIPA 1283 · LIMA
+          AV. AREQUIPA 1235 · LIMA
           <br />
           RUC: 20123456789
         </div>
         <div className="mt-2.5 space-y-0.5">
-          <ReceiptRow label="Agua Cielo 600ml" amount="2.85" />
-          <ReceiptRow label="Sandwich Mixto" amount="6.85" />
-          <ReceiptRow label="Galletas Oreo 36g" amount="1.50" />
+          <ReceiptRow label="AGUA CIELO 600ML" amount="2.85" />
+          <ReceiptRow label="SANDWICH MIXTO" amount="6.65" />
+          <ReceiptRow label="GALLETAS OREO 96G" amount="2.90" />
         </div>
         <div className="mt-2 border-t border-dashed border-neutral-300 pt-1.5">
           <div className="flex justify-between text-[10px] font-bold text-neutral-900">
@@ -769,16 +767,12 @@ function FloatingReceipt() {
             <span>S/ 12.40</span>
           </div>
         </div>
-        <div className="mt-1.5 text-center text-[6.5px] text-neutral-400">
-          12/05/2026 11:39 AM
+        <div className="mt-2 text-center text-[6.5px] text-neutral-400">
+          12/05/2024 11:09 AM
         </div>
-        <div className="mt-2 text-center text-[6.5px] uppercase tracking-wider text-neutral-400">
-          Gracias por su compra
+        <div className="mt-2 text-center text-[7px] font-bold uppercase tracking-wider text-neutral-500">
+          ¡Gracias por su compra!
         </div>
-        <CornerBracket position="tl" />
-        <CornerBracket position="tr" />
-        <CornerBracket position="bl" />
-        <CornerBracket position="br" />
       </div>
     </aside>
   );
@@ -822,31 +816,36 @@ function FloatingConfirmation() {
     <aside
       aria-label="Confirmación: gasto registrado por S/ 12.40"
       className={cn(
-        "absolute -right-4 top-6 z-20 hidden w-[170px] rotate-[4deg] rounded-2xl border border-white/10 p-4",
+        "absolute -right-4 top-[28%] z-20 hidden w-[180px] rotate-[3deg] rounded-2xl border border-white/10 p-5 text-center",
         "bg-[#0F0F0F]/95 backdrop-blur-md md:block",
-        "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)]",
+        "shadow-[0_30px_60px_-20px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.04)]",
       )}
     >
-      <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary text-black shadow-[0_0_30px_-2px_oklch(0.78_0.16_162/0.85)]">
-        <Check size={18} strokeWidth={3} aria-hidden />
+      <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary text-black shadow-[0_0_36px_-4px_oklch(0.78_0.16_162/0.85)]">
+        <Check size={20} strokeWidth={3} aria-hidden />
       </div>
-      <div className="mt-3 text-[12px] font-medium text-white/65">
+      <div className="mt-3.5 text-[12.5px] font-medium text-white/70">
         Gasto registrado
       </div>
-      <div className="mt-1 font-mono text-[20px] font-bold tabular-nums text-white">
+      <div className="mt-1.5 font-mono text-[22px] font-bold tabular-nums text-white">
         S/ 12.40
       </div>
-      <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1.5">
+      <div className="mt-4 flex items-center justify-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2">
         <span
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
           style={{
             backgroundColor: "oklch(0.95 0.04 56)",
             color: "oklch(0.45 0.12 56)",
           }}
         >
-          <Receipt size={11} aria-hidden />
+          <Receipt size={12} aria-hidden />
         </span>
-        <span className="text-[11px] font-semibold text-white">Tambo</span>
+        <div className="text-left">
+          <div className="text-[11.5px] font-semibold leading-tight text-white">
+            Tambo
+          </div>
+          <div className="text-[9.5px] text-white/45">Comida</div>
+        </div>
       </div>
     </aside>
   );
