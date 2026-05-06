@@ -230,10 +230,14 @@ export function AccountWizardSheet({
   const previewAccount: Account = React.useMemo(
     () => ({
       id: "__preview",
+      // Preview no tiene owner real ni esta compartida — son
+      // fields requeridos por el type Account desde 00027.
+      userId: "",
       label: lockedKindName ?? (label.trim() || "Mi cuenta"),
       kind,
       currency,
       subtype,
+      sharedWithPartner: false,
     }),
     [lockedKindName, label, kind, currency, subtype],
   );
