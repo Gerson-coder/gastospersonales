@@ -367,15 +367,9 @@ export default function CommitmentsPage(): React.ReactElement {
         </div>
       </div>
 
-      {/* FAB mobile — desktop usa el boton plus en el header. */}
-      <button
-        type="button"
-        onClick={openCreate}
-        aria-label="Crear compromiso"
-        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-      >
-        <Plus size={24} aria-hidden strokeWidth={2.5} />
-      </button>
+      {/* FAB removido — chocaba visualmente con el boton central "+"
+          del TabBar global. El boton plus del AppHeader cubre el caso
+          de creacion en mobile y desktop. */}
 
       {/* Form sheet — create + edit en el mismo componente. Renderizo
           dos elementos separados (no spread) para que el discriminated

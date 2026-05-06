@@ -96,14 +96,6 @@ function formatAmountCompact(amount: number, currency: Currency): string {
   return `${symbol} ${formatted}`;
 }
 
-function formatSignedAmountCompact(
-  amount: number,
-  currency: Currency,
-): string {
-  const sign = amount > 0 ? "+ " : amount < 0 ? "− " : "";
-  return `${sign}${formatAmountCompact(amount, currency)}`;
-}
-
 export function MovementsFiltersBar({
   filter,
   onFilterChange,
@@ -120,7 +112,6 @@ export function MovementsFiltersBar({
   totalCount,
   currency,
 }: MovementsFiltersBarProps) {
-  const balance = totalIncome - totalExpense;
   const movementsLabel = totalCount === 1 ? "movimiento" : "movimientos";
 
   return (
@@ -183,12 +174,11 @@ export function MovementsFiltersBar({
         />
       </div>
 
-      {/* KPI summary — 3 columnas separadas por borders verticales,
-          mismo patrón que el SummaryBar del dashboard desktop. Cuando
-          el filtro está vacío rendiriza ceros (no oculto la card —
-          quiero que el user vea que el filtro acotó a 0). */}
+      {/* KPI summary — 2 columnas (Ingresos | Gastos). El user pidio
+          quitar Balance porque lo va a implementar como vista propia
+          mas adelante (probablemente en /insights o un dashboard). */}
       <Card className="rounded-2xl border-border p-0 overflow-hidden">
-        <div className="grid grid-cols-3 divide-x divide-border">
+        <div className="grid grid-cols-2 divide-x divide-border">
           <KpiCell
             label="Ingresos"
             amount={totalIncome}
@@ -200,13 +190,6 @@ export function MovementsFiltersBar({
             amount={totalExpense}
             currency={currency}
             tone="negative"
-          />
-          <KpiCell
-            label="Balance"
-            amount={balance}
-            currency={currency}
-            tone={balance >= 0 ? "positive" : "negative"}
-            signed
           />
         </div>
         <div className="border-t border-border px-4 py-2 text-[11.5px] text-muted-foreground tabular-nums" style={TNUM_STYLE}>
@@ -271,10 +254,9 @@ type KpiCellProps = {
   amount: number;
   currency: Currency;
   tone: "positive" | "negative" | "default";
-  signed?: boolean;
 };
 
-function KpiCell({ label, amount, currency, tone, signed }: KpiCellProps) {
+function KpiCell({ label, amount, currency, tone }: KpiCellProps) {
   const isZero = amount === 0;
   return (
     <div className="min-w-0 px-3 py-3.5 text-left">
@@ -297,9 +279,7 @@ function KpiCell({ label, amount, currency, tone, signed }: KpiCellProps) {
         )}
         style={TNUM_STYLE}
       >
-        {signed
-          ? formatSignedAmountCompact(amount, currency)
-          : formatAmountCompact(amount, currency)}
+        {formatAmountCompact(amount, currency)}
       </div>
     </div>
   );
