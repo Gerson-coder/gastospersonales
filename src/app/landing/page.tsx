@@ -24,15 +24,20 @@ import {
   ArrowRight,
   Banknote,
   BarChart3,
+  Bell,
+  Bot,
   Camera,
   Check,
   ChevronDown,
+  FileDown,
+  Globe2,
   Heart,
   Lock,
   ShieldCheck,
   Sparkles,
   Users2,
   Wifi,
+  Zap,
 } from "lucide-react";
 
 import { APP_NAME } from "@/lib/brand";
@@ -43,9 +48,9 @@ const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
   "https://kane.verkex.com";
 
-const OG_TITLE = `${APP_NAME} — Registra gastos en segundos`;
+const OG_TITLE = `${APP_NAME} — Tu plata, clara. Sin Excel.`;
 const OG_DESCRIPTION =
-  "Toma una foto. La IA lo organiza por ti. App de finanzas personales para registrar gastos en segundos — multi-cuenta, multi-moneda, instalable como app en tu móvil.";
+  "App de finanzas personales hecha para Perú. Lee boletas con IA (Tambo, Plaza Vea, vouchers Yape). Conecta Yape, Plin, BCP, BBVA, Interbank. Cuenta compartida con tu pareja en tiempo real.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -138,6 +143,8 @@ export default function LandingPage() {
           <BankStrip />
           <Pillars />
           <CoupleSection />
+          <MoreFeatures />
+          <ComparisonTable />
           <HowItWorks />
           <SecurityBlock />
           <FinalCta />
@@ -286,25 +293,37 @@ function Hero() {
 function HeroCopy() {
   return (
     <div className="relative">
-      {/* Eyebrow pill */}
+      {/* Eyebrow pill — mas concreto, menciona Yape como ancla
+          peruana. Diferenciacion vs apps gringas desde el primer
+          segundo. */}
       <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/[0.06] px-3 py-1.5 backdrop-blur-sm">
         <Sparkles size={12} className="text-primary" aria-hidden />
         <span className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-primary">
-          IA que lee tus boletas
+          La primera app de finanzas hecha para Perú
         </span>
       </div>
 
-      {/* Headline */}
-      <h1 className="mt-8 text-balance text-[56px] font-bold leading-[1.02] tracking-[-0.025em] text-white md:text-[72px] lg:text-[84px]">
-        Registra gastos en{" "}
-        <span className="text-primary">segundos.</span>
+      {/* Headline — dolor concreto + benefit emocional. "Sin Excel"
+          ataca el competidor #1 (la hoja de calculo personal). "Sin
+          capturas a tu pareja" mete el angulo unico de cuenta
+          compartida en el primer pantallazo. */}
+      <h1 className="mt-8 text-balance text-[52px] font-bold leading-[1.02] tracking-[-0.025em] text-white md:text-[68px] lg:text-[78px]">
+        Tu plata,{" "}
+        <span className="text-primary">clara.</span>
+        <br />
+        <span className="font-display italic font-normal text-white/85">
+          Sin Excel.
+        </span>
       </h1>
 
-      {/* Subtitle — strict 2 lines */}
-      <p className="mt-7 max-w-[440px] text-[19px] font-medium leading-[1.45] text-white/70 md:text-[21px]">
-        Toma una foto.
+      {/* Subtitle — compone 3 puntos en una frase, todos relevantes
+          para el user peruano. */}
+      <p className="mt-7 max-w-[460px] text-[18px] font-medium leading-[1.45] text-white/70 md:text-[20px]">
+        Saca foto a la boleta, la IA la lee.
         <br />
-        La <span className="text-primary">IA</span> lo organiza por ti.
+        Conecta <span className="text-white">Yape, Plin y tu banco</span>.
+        <br />
+        Tu pareja ve el saldo en tiempo real.
       </p>
 
       {/* CTAs */}
@@ -317,7 +336,7 @@ function HeroCopy() {
             "shadow-[0_8px_24px_-8px_oklch(0.78_0.16_162/0.45)]",
           )}
         >
-          Crear cuenta gratis
+          Empezar gratis
           <ArrowRight
             size={15}
             className="transition-transform group-hover:translate-x-0.5"
@@ -325,15 +344,15 @@ function HeroCopy() {
           />
         </Link>
         <a
-          href="#demo"
+          href="#caracteristicas"
           className="inline-flex h-14 items-center gap-2 rounded-full border border-white/12 px-6 text-[14.5px] font-semibold text-white transition-colors hover:bg-white/[0.04]"
         >
           <PlayTriangle />
-          Ver demo
+          Ver qué hace
         </a>
       </div>
 
-      {/* Micro-copy: just two reassurances, low opacity, lots of breathing room */}
+      {/* Micro-reassurances: gratis, instalable, sin spam de mails. */}
       <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px] text-white/45">
         <span className="inline-flex items-center gap-1.5">
           <Lock size={12} aria-hidden />
@@ -344,7 +363,14 @@ function HeroCopy() {
         </span>
         <span className="inline-flex items-center gap-1.5">
           <ShieldCheck size={12} aria-hidden />
-          Privado por diseño
+          100% en español
+        </span>
+        <span aria-hidden className="text-white/25">
+          ·
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Sparkles size={12} aria-hidden />
+          Se instala como app
         </span>
       </div>
     </div>
@@ -469,21 +495,24 @@ function Pillars() {
   const items = [
     {
       icon: Camera,
-      title: "Boleta a transacción",
+      title: "Lee tu boleta de Tambo",
       body:
-        "Saca foto al recibo y la IA extrae comercio, monto y fecha. Tú solo confirmas. Funciona con boletas peruanas, voucher Yape y vouchers de tarjeta.",
-    },
-    {
-      icon: Sparkles,
-      title: "Captura en 3 toques",
-      body:
-        "Anota un gasto sin abandonar el momento. Categoría, monto y comercio en menos tiempo del que tarda el café en llegar a la mesa.",
+        "Foto al recibo de Tambo, Plaza Vea, Wong, Tottus o vouchers de Yape — la IA saca comercio, monto y fecha. Tú confirmas con un toque. Acertamos el 95% de las veces.",
+      tag: "OCR con IA",
     },
     {
       icon: BarChart3,
-      title: "Insights claros",
+      title: "Ve a dónde se va tu sueldo",
       body:
-        "Mira a dónde se va tu sueldo por categoría y mes. Sin gráficos eternos: lo importante arriba, lo demás un toque más abajo.",
+        "Comida vs Servicios vs Transporte, mes a mes. Compara tu mayo con tu abril. Detecta cuando el delivery se te fue de las manos antes de que el saldo te lo recuerde.",
+      tag: "Reportes",
+    },
+    {
+      icon: Heart,
+      title: "Lleven la cuenta de la casa juntos",
+      body:
+        "Invita a tu pareja a una sola cuenta del hogar. Cada uno paga desde su lado, los dos ven los movimientos al instante. Las cuentas personales siguen siendo solo tuyas.",
+      tag: "Compartido",
     },
   ];
 
@@ -492,34 +521,49 @@ function Pillars() {
       id="caracteristicas"
       className="relative scroll-mt-20 border-y border-white/[0.06] bg-white/[0.015]"
     >
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-5 px-6 py-20 md:grid-cols-3">
-        {items.map(({ icon: Icon, title, body }) => (
-          <article
-            key={title}
-            className={cn(
-              "group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0A0A0A] p-7",
-              "transition-colors hover:border-primary/20",
-            )}
-          >
-            <div
-              aria-hidden
-              className="absolute inset-x-0 -top-10 h-32 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-              style={{
-                background:
-                  "radial-gradient(closest-side, oklch(0.78 0.16 162 / 0.18), transparent 70%)",
-              }}
-            />
-            <div className="relative inline-flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <Icon size={20} aria-hidden />
-            </div>
-            <h3 className="relative mt-6 text-[19px] font-bold leading-snug tracking-tight text-white">
-              {title}
-            </h3>
-            <p className="relative mt-2 text-[14px] leading-relaxed text-white/65">
-              {body}
-            </p>
-          </article>
-        ))}
+      <div className="mx-auto w-full max-w-7xl px-6 py-20">
+        {/* Eyebrow centrado para anclar el contexto de la seccion */}
+        <div className="mx-auto max-w-2xl text-center mb-12">
+          <Eyebrow>Lo que hace Kane</Eyebrow>
+          <h2 className="mt-4 text-balance text-[34px] font-bold leading-tight tracking-tight text-white md:text-[44px]">
+            Tres cosas que ninguna app gringa hace bien.
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          {items.map(({ icon: Icon, title, body, tag }) => (
+            <article
+              key={title}
+              className={cn(
+                "group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0A0A0A] p-7",
+                "transition-colors hover:border-primary/20",
+              )}
+            >
+              <div
+                aria-hidden
+                className="absolute inset-x-0 -top-10 h-32 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                style={{
+                  background:
+                    "radial-gradient(closest-side, oklch(0.78 0.16 162 / 0.18), transparent 70%)",
+                }}
+              />
+              <div className="relative flex items-center justify-between">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+                  <Icon size={20} aria-hidden />
+                </div>
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.02] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-white/55">
+                  {tag}
+                </span>
+              </div>
+              <h3 className="relative mt-6 text-[19px] font-bold leading-snug tracking-tight text-white">
+                {title}
+              </h3>
+              <p className="relative mt-2 text-[14px] leading-relaxed text-white/65">
+                {body}
+              </p>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -633,13 +677,22 @@ function CoupleSection() {
 function CoupleSync() {
   return (
     <div className="relative aspect-[5/4] w-full max-w-md mx-auto">
-      {/* Pulse del partner */}
-      <span
+      {/* Connector dashed verde entre los 2 phones — sutil, da
+          la sensacion de "estan sincronizados" sin gritar. */}
+      <svg
         aria-hidden
-        className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+        className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2"
+        viewBox="0 0 48 48"
+        fill="none"
       >
-        <span className="absolute inset-0 animate-ping rounded-full bg-primary/40" />
-      </span>
+        <path
+          d="M4 24 H44"
+          stroke="oklch(0.78 0.16 162 / 0.5)"
+          strokeWidth="2"
+          strokeDasharray="3 3"
+          strokeLinecap="round"
+        />
+      </svg>
 
       {/* Mini phone A (left) */}
       <article className="absolute left-0 top-1/2 w-[55%] -translate-y-1/2 -rotate-2 rounded-[28px] border border-white/[0.08] bg-[#0A0A0A] p-3 shadow-2xl">
@@ -712,6 +765,240 @@ function PhoneRow({
         {amount}
       </span>
     </div>
+  );
+}
+
+// ─── More features — secondary capabilities en grid 6 ───────────────────
+// Reuna features que no entran en pillars (que son los 3 hooks
+// principales) ni en couple section (que es su propio diferenciador).
+// Aca van: compromisos, templates, multi-cuenta, reportes PDF,
+// asesor IA, OCR multi-formato.
+function MoreFeatures() {
+  const features = [
+    {
+      icon: Bell,
+      title: "Recordatorios de recibos",
+      body:
+        "Sedapal vence el 12, Luz del Sur el 8, alquiler el 1. La app te avisa antes y los marca pagados de un toque.",
+    },
+    {
+      icon: Zap,
+      title: "Gastos frecuentes en 1 toque",
+      body:
+        "El café diario, el pasaje en taxi, la pensión del gym. Guarda como template y lo registras tappeando un chip.",
+    },
+    {
+      icon: Banknote,
+      title: "Multi-cuenta real",
+      body:
+        "Cuentas separadas para Yape, Plin, BCP sueldo, BCP dólares, tarjeta de crédito. Saldos al día, transferencias entre las tuyas.",
+    },
+    {
+      icon: FileDown,
+      title: "Reporte mensual PDF",
+      body:
+        "Para el contador, para pedir un crédito o para tu propio archivo. Un PDF limpio con todo el mes en un toque.",
+    },
+    {
+      icon: Bot,
+      title: "Asesor financiero IA",
+      body:
+        "Pregúntale al chat: «¿cuánto puedo gastar en restaurantes este mes sin pasarme?». Conoce tus números reales y responde en español.",
+    },
+    {
+      icon: Globe2,
+      title: "Soles y dólares juntos",
+      body:
+        "Multi-moneda nativo. Cambia entre PEN y USD con un toque. Cada cuenta tiene su moneda; los reportes te muestran ambas sin sumarlas mal.",
+    },
+  ];
+
+  return (
+    <section
+      id="mas-features"
+      className="relative scroll-mt-20 border-y border-white/[0.06] bg-white/[0.015]"
+    >
+      <div className="mx-auto w-full max-w-7xl px-6 py-20">
+        <div className="mx-auto max-w-2xl text-center mb-12">
+          <Eyebrow>Y mucho más</Eyebrow>
+          <h2 className="mt-4 text-balance text-[34px] font-bold leading-tight tracking-tight text-white md:text-[44px]">
+            Pequeñas cosas que{" "}
+            <span className="text-primary">cambian el día a día</span>.
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {features.map(({ icon: Icon, title, body }) => (
+            <article
+              key={title}
+              className="group rounded-2xl border border-white/[0.06] bg-[#0A0A0A] p-6 transition-colors hover:border-primary/15 hover:bg-[#0F0F0F]"
+            >
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-primary/15 bg-primary/[0.08] text-primary">
+                <Icon size={17} aria-hidden />
+              </div>
+              <h3 className="mt-4 text-[15.5px] font-bold leading-snug tracking-tight text-white">
+                {title}
+              </h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-white/60">
+                {body}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Comparison table — Kane vs alternativas reales del mercado ─────────
+// El user peruano usa: Excel/Sheets, Mint o YNAB (gringas, no entienden
+// PEN ni Yape), Splitwise (solo divide cuentas, no hace finanzas
+// personales). Esta tabla mata las 3 alternativas con check marks
+// concretos.
+function ComparisonTable() {
+  type Score = "yes" | "no" | "partial";
+  const cols = [
+    { name: "Kane", highlight: true },
+    { name: "Excel" },
+    { name: "Mint / YNAB" },
+    { name: "Splitwise" },
+  ];
+  type Row = {
+    label: string;
+    scores: Score[];
+  };
+  const rows: Row[] = [
+    {
+      label: "100% en español",
+      scores: ["yes", "yes", "no", "partial"],
+    },
+    {
+      label: "Lee boletas peruanas con IA",
+      scores: ["yes", "no", "no", "no"],
+    },
+    {
+      label: "Soporta Yape, Plin y bancos peruanos",
+      scores: ["yes", "no", "no", "no"],
+    },
+    {
+      label: "Cuenta compartida en tiempo real",
+      scores: ["yes", "no", "no", "partial"],
+    },
+    {
+      label: "Recordatorios de recibos (Sedapal, luz, alquiler)",
+      scores: ["yes", "no", "no", "no"],
+    },
+    {
+      label: "Soles y dólares en la misma app",
+      scores: ["yes", "yes", "no", "no"],
+    },
+    {
+      label: "Se instala como app en el celular",
+      scores: ["yes", "no", "yes", "yes"],
+    },
+    {
+      label: "Gratis para empezar",
+      scores: ["yes", "yes", "partial", "yes"],
+    },
+  ];
+
+  return (
+    <section id="comparativa" className="relative scroll-mt-20">
+      <div className="mx-auto w-full max-w-6xl px-6 py-20">
+        <div className="mx-auto max-w-2xl text-center mb-10">
+          <Eyebrow>Por qué Kane</Eyebrow>
+          <h2 className="mt-4 text-balance text-[34px] font-bold leading-tight tracking-tight text-white md:text-[44px]">
+            Versus lo que estás usando hoy.
+          </h2>
+          <p className="mt-4 text-[14.5px] leading-relaxed text-white/60">
+            Comparativa honesta. Las apps gringas son buenas, pero ninguna
+            entiende un Yape ni una boleta de Tambo.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-white/[0.08]">
+          {/* Header row */}
+          <div className="grid grid-cols-[1.5fr_repeat(4,1fr)] border-b border-white/[0.08] bg-white/[0.02] text-[12px] font-bold uppercase tracking-wider text-white/60">
+            <div className="px-4 py-3.5 md:px-6">Feature</div>
+            {cols.map((c) => (
+              <div
+                key={c.name}
+                className={cn(
+                  "px-2 py-3.5 text-center md:px-3",
+                  c.highlight
+                    ? "border-l border-r border-primary/30 bg-primary/[0.05] text-primary"
+                    : "",
+                )}
+              >
+                {c.name}
+              </div>
+            ))}
+          </div>
+
+          {/* Data rows */}
+          {rows.map((row, i) => (
+            <div
+              key={row.label}
+              className={cn(
+                "grid grid-cols-[1.5fr_repeat(4,1fr)] items-center text-[12.5px]",
+                i !== rows.length - 1 ? "border-b border-white/[0.05]" : "",
+              )}
+            >
+              <div className="px-4 py-3.5 text-white/85 md:px-6">
+                {row.label}
+              </div>
+              {row.scores.map((score, j) => (
+                <div
+                  key={`${row.label}-${j}`}
+                  className={cn(
+                    "flex items-center justify-center px-2 py-3.5 md:px-3",
+                    cols[j].highlight
+                      ? "border-l border-r border-primary/30 bg-primary/[0.025]"
+                      : "",
+                  )}
+                >
+                  <ScoreCell score={score} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-5 text-center text-[11.5px] text-white/35">
+          Comparación basada en uso público de cada app a mayo 2026.
+          Ningún sponsor ni afiliación.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ScoreCell({ score }: { score: "yes" | "no" | "partial" }) {
+  if (score === "yes") {
+    return (
+      <span
+        aria-label="Sí"
+        className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-primary"
+      >
+        <Check size={13} aria-hidden strokeWidth={3} />
+      </span>
+    );
+  }
+  if (score === "partial") {
+    return (
+      <span
+        aria-label="Parcial"
+        className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/15 text-amber-400"
+      >
+        <Check size={11} aria-hidden strokeWidth={2.5} />
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-label="No"
+      className="block h-[2px] w-4 rounded-full bg-white/15"
+    />
   );
 }
 
@@ -869,16 +1156,17 @@ function FinalCta() {
           }}
         />
         <div className="relative mx-auto max-w-2xl">
-          <Eyebrow>Empieza gratis</Eyebrow>
+          <Eyebrow>Empieza ahora</Eyebrow>
           <h2 className="mt-5 text-balance text-[40px] font-extrabold leading-[1.05] tracking-tight text-white md:text-[56px]">
-            El primer mes empieza{" "}
+            Tu próximo gasto, registrado en{" "}
             <span className="font-display italic font-normal text-primary">
-              ahora.
+              30 segundos.
             </span>
           </h2>
           <p className="mt-5 text-[15px] leading-relaxed text-white/70 md:text-[16px]">
-            Crea tu cuenta y registra tu primer gasto en menos de un minuto.
-            Cuando quieras irte, exportas todo y listo.
+            Sin tarjeta, sin pagos, sin verificación de identidad incómoda.
+            Crea cuenta, saca foto a una boleta y mira la magia. Si no te
+            gusta, exportas todo y te vas — tus datos siempre fueron tuyos.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link
