@@ -484,8 +484,27 @@ function TransactionRow({
         </div>
       )}
       <div className="min-w-0 flex-1 md:flex md:items-center md:justify-between md:gap-4">
-        <div className="truncate text-[15px] font-semibold leading-tight text-foreground">
-          {titleText}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="truncate text-[15px] font-semibold leading-tight text-foreground">
+            {titleText}
+          </span>
+          {t.pending ? (
+            <span
+              aria-label={
+                t.pendingError
+                  ? `Pendiente — ${t.pendingError}`
+                  : "Pendiente de sincronizar"
+              }
+              className={cn(
+                "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                t.pendingError
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+              )}
+            >
+              {t.pendingError ? "Falló" : "Pendiente"}
+            </span>
+          ) : null}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground md:mt-0 md:shrink-0 md:text-[13px]">
           {subtitle}
@@ -1037,8 +1056,32 @@ function MovementsContent() {
                 key={g.key}
                 group={g}
                 currency={currency}
-                onLongPress={(tx) => setActionSheetTx(tx)}
-                onTap={(tx) => setDetailTx(tx)}
+                onLongPress={(tx) => {
+                  // Pending rows live only in the local queue — they
+                  // have no server-issued id, so archive/edit cannot
+                  // run yet. We surface a hint and let the sync engine
+                  // do its job before the user can act on them.
+                  if (tx.pending) {
+                    toast.message(
+                      tx.pendingError
+                        ? "Este movimiento falló al sincronizar — toca el aviso de arriba para reintentar."
+                        : "Este movimiento se está sincronizando. Esperá un momento.",
+                    );
+                    return;
+                  }
+                  setActionSheetTx(tx);
+                }}
+                onTap={(tx) => {
+                  if (tx.pending) {
+                    toast.message(
+                      tx.pendingError
+                        ? "Falló la sincronización. Toca el aviso de arriba para reintentar."
+                        : "Sincronizando este movimiento…",
+                    );
+                    return;
+                  }
+                  setDetailTx(tx);
+                }}
               />
             ))}
 

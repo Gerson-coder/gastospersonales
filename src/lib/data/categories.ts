@@ -15,6 +15,11 @@
  */
 "use client";
 
+import {
+  cacheCategories,
+  isOfflineError,
+  readCategoriesCache,
+} from "@/lib/offline/cache";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import type { CategoryKind } from "@/lib/supabase/types";
 
@@ -56,25 +61,36 @@ const UNIQUE_VIOLATION = "23505";
  */
 export async function listCategories(): Promise<Category[]> {
   const supabase = createSupabaseClient();
-  const { data, error } = await supabase
-    .from("categories")
-    .select(
-      "id,user_id,name,kind,color,icon,archived_at,created_at,updated_at",
-    )
-    .is("archived_at", null);
+  try {
+    const { data, error } = await supabase
+      .from("categories")
+      .select(
+        "id,user_id,name,kind,color,icon,archived_at,created_at,updated_at",
+      )
+      .is("archived_at", null);
 
-  if (error) {
-    throw new Error(error.message || "No pudimos cargar las categorías.");
+    if (error) {
+      throw new Error(error.message || "No pudimos cargar las categorías.");
+    }
+
+    const rows = (data ?? []) as Category[];
+    const sorted = rows.slice().sort((a, b) => {
+      // System (user_id NULL) first.
+      const aSystem = a.user_id === null ? 0 : 1;
+      const bSystem = b.user_id === null ? 0 : 1;
+      if (aSystem !== bSystem) return aSystem - bSystem;
+      return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+    });
+    // Mirror to offline cache (Fase 1). Fire-and-forget.
+    void cacheCategories(sorted);
+    return sorted;
+  } catch (err) {
+    if (isOfflineError(err)) {
+      const cached = await readCategoriesCache<Category>();
+      if (cached.length > 0) return cached;
+    }
+    throw err;
   }
-
-  const rows = (data ?? []) as Category[];
-  return rows.slice().sort((a, b) => {
-    // System (user_id NULL) first.
-    const aSystem = a.user_id === null ? 0 : 1;
-    const bSystem = b.user_id === null ? 0 : 1;
-    if (aSystem !== bSystem) return aSystem - bSystem;
-    return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
-  });
 }
 
 /**

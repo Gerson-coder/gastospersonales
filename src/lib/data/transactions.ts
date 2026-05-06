@@ -19,12 +19,25 @@
  */
 "use client";
 
+import { isOfflineError } from "@/lib/offline/cache";
+import {
+  enqueueCreateTransaction,
+  listPendingTransactions,
+} from "@/lib/offline/pending";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import type {
   Currency,
   CategoryKind,
   TransactionSource,
 } from "@/lib/supabase/types";
+
+import {
+  cacheTransactions,
+  readAccountsCache,
+  readCategoriesCache,
+  readMerchantsCacheByCategory,
+  readTransactionsCache,
+} from "@/lib/offline/cache";
 
 // `transactions.kind` reuses the `expense | income` literal in the DB schema,
 // which is also the shape of `CategoryKind`. Re-export with a domain-specific
@@ -81,6 +94,14 @@ export type TransactionView = {
   amount: number;
   currency: Currency;
   kind: TransactionKind;
+  /** True for rows that exist only in the local offline queue (Fase 2).
+   *  The UI flags these with a "Pendiente" badge and skips operations
+   *  that need a server-issued id (edit, archive). Always `false` /
+   *  `undefined` for rows fetched from Supabase. */
+  pending?: boolean;
+  /** Last sync error for a `pending` row that ended up failed. UI
+   *  surfaces this in the retry sheet. */
+  pendingError?: string;
   categoryId: string | null;
   categoryName: string | null;
   merchantId: string | null;
@@ -291,48 +312,153 @@ export async function listTransactionsByCurrency(opts: {
   const limit = opts.limit ?? 50;
   const supabase = createSupabaseClient();
 
-  let query = supabase
-    .from("transactions")
-    .select(SELECT_WITH_JOINS)
-    .is("archived_at", null)
-    .eq("currency", opts.currency)
-    .order("occurred_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit + 1);
+  try {
+    let query = supabase
+      .from("transactions")
+      .select(SELECT_WITH_JOINS)
+      .is("archived_at", null)
+      .eq("currency", opts.currency)
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit + 1);
 
-  if (opts.fromISO) {
-    query = query.gte("occurred_at", opts.fromISO);
+    if (opts.fromISO) {
+      query = query.gte("occurred_at", opts.fromISO);
+    }
+    if (opts.toISO) {
+      query = query.lt("occurred_at", opts.toISO);
+    }
+
+    if (opts.cursor) {
+      // Strict tuple inequality: occurred_at < cursor.occurredAt
+      //   OR (occurred_at = cursor.occurredAt AND id < cursor.id)
+      const tieBreaker = `and(occurred_at.eq.${opts.cursor.occurredAt},id.lt.${opts.cursor.id})`;
+      query = query.or(
+        `occurred_at.lt.${opts.cursor.occurredAt},${tieBreaker}`,
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(error.message || "No pudimos cargar los movimientos.");
+    }
+
+    const rows = (data ?? []) as unknown as TransactionRow[];
+    const hasMore = rows.length > limit;
+    const sliced = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor: ListCursor | null = hasMore
+      ? {
+          occurredAt: sliced[sliced.length - 1].occurred_at,
+          id: sliced[sliced.length - 1].id,
+        }
+      : null;
+
+    const baseRows = sliced.map(toView);
+    // Mirror to offline cache (Fase 1 expansion) — fire-and-forget so a
+    // slow IDB write never delays the UI. We cache the whole sliced
+    // page so cursor pagination through the same window is hot.
+    void cacheTransactions(baseRows);
+
+    // Read merge (Fase 2): pending rows are the freshest by definition,
+    // so we prepend them to page 1 only. On paginated calls (cursor !=
+    // null) we're paginating into the past; pending rows already showed
+    // up on page 1 — re-emitting them here would double-render.
+    const merged = opts.cursor
+      ? baseRows
+      : [
+          ...(await readPendingViewsForCurrency(
+            opts.currency,
+            opts.fromISO,
+            opts.toISO,
+          )),
+          ...baseRows,
+        ];
+
+    return {
+      rows: merged,
+      nextCursor,
+    };
+  } catch (err) {
+    // Offline fallback — read from IndexedDB cache. Same shape as the
+    // online return so the consumer doesn't need to branch.
+    if (isOfflineError(err)) {
+      const cached = await readTransactionsCache<TransactionView>({
+        currency: opts.currency,
+        fromISO: opts.fromISO,
+        toISO: opts.toISO,
+      });
+      // Apply cursor predicate locally so /movements pagination keeps
+      // working offline against the cache.
+      const filtered = opts.cursor
+        ? cached.filter(
+            (r) =>
+              r.occurredAt < opts.cursor!.occurredAt ||
+              (r.occurredAt === opts.cursor!.occurredAt &&
+                r.id < opts.cursor!.id),
+          )
+        : cached;
+      const sliced = filtered.slice(0, limit);
+      const hasMore = filtered.length > limit;
+      const nextCursor: ListCursor | null = hasMore
+        ? {
+            occurredAt: sliced[sliced.length - 1].occurredAt,
+            id: sliced[sliced.length - 1].id,
+          }
+        : null;
+      const merged = opts.cursor
+        ? sliced
+        : [
+            ...(await readPendingViewsForCurrency(
+              opts.currency,
+              opts.fromISO,
+              opts.toISO,
+            )),
+            ...sliced,
+          ];
+      return { rows: merged, nextCursor };
+    }
+    throw err;
   }
-  if (opts.toISO) {
-    query = query.lt("occurred_at", opts.toISO);
+}
+
+/**
+ * Pull pending-queue rows that match the currency filter + optional
+ * date window, in `occurred_at DESC` order. Used by the read-merge
+ * branches in `listTransactionsByCurrency` and `listTransactionsWindow`
+ * so the user sees their offline captures immediately.
+ *
+ * Each row is enriched with `pending: true` and (when applicable)
+ * `pendingError` for failed rows so the UI can render the right badge.
+ */
+async function readPendingViewsForCurrency(
+  currency: Currency,
+  fromISO?: string,
+  toISO?: string,
+): Promise<TransactionView[]> {
+  if (typeof window === "undefined") return [];
+  const queue = await listPendingTransactions();
+  const views: TransactionView[] = [];
+  for (const row of queue) {
+    if (row.operation !== "createTransaction") continue;
+    const wrapper = row.payload as { view?: TransactionView };
+    if (!wrapper?.view) continue;
+    if (wrapper.view.currency !== currency) continue;
+    if (fromISO && wrapper.view.occurredAt < fromISO) continue;
+    if (toISO && wrapper.view.occurredAt >= toISO) continue;
+    views.push({
+      ...wrapper.view,
+      id: row.localId,
+      pending: true,
+      pendingError: row.status === "failed" ? row.lastError : undefined,
+    });
   }
-
-  if (opts.cursor) {
-    // Strict tuple inequality: occurred_at < cursor.occurredAt
-    //   OR (occurred_at = cursor.occurredAt AND id < cursor.id)
-    const tieBreaker = `and(occurred_at.eq.${opts.cursor.occurredAt},id.lt.${opts.cursor.id})`;
-    query = query.or(`occurred_at.lt.${opts.cursor.occurredAt},${tieBreaker}`);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    throw new Error(error.message || "No pudimos cargar los movimientos.");
-  }
-
-  const rows = (data ?? []) as unknown as TransactionRow[];
-  const hasMore = rows.length > limit;
-  const sliced = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor: ListCursor | null = hasMore
-    ? {
-        occurredAt: sliced[sliced.length - 1].occurred_at,
-        id: sliced[sliced.length - 1].id,
-      }
-    : null;
-
-  return {
-    rows: sliced.map(toView),
-    nextCursor,
-  };
+  // occurred_at DESC, then id DESC — same order as the remote query
+  return views.sort((a, b) => {
+    if (a.occurredAt !== b.occurredAt) {
+      return a.occurredAt > b.occurredAt ? -1 : 1;
+    }
+    return a.id > b.id ? -1 : 1;
+  });
 }
 
 /**
@@ -346,21 +472,44 @@ export async function listTransactionsWindow(opts: {
   fromISO: string;
 }): Promise<TransactionView[]> {
   const supabase = createSupabaseClient();
-  const { data, error } = await supabase
-    .from("transactions")
-    .select(SELECT_WITH_JOINS)
-    .is("archived_at", null)
-    .eq("currency", opts.currency)
-    .gte("occurred_at", opts.fromISO)
-    .order("occurred_at", { ascending: false })
-    .order("id", { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(SELECT_WITH_JOINS)
+      .is("archived_at", null)
+      .eq("currency", opts.currency)
+      .gte("occurred_at", opts.fromISO)
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false });
 
-  if (error) {
-    throw new Error(error.message || "No pudimos cargar los movimientos.");
+    if (error) {
+      throw new Error(error.message || "No pudimos cargar los movimientos.");
+    }
+
+    const rows = (data ?? []) as unknown as TransactionRow[];
+    const baseRows = rows.map(toView);
+    // Mirror to offline cache.
+    void cacheTransactions(baseRows);
+    // Read merge (Fase 2) — see `readPendingViewsForCurrency`.
+    const pending = await readPendingViewsForCurrency(
+      opts.currency,
+      opts.fromISO,
+    );
+    return [...pending, ...baseRows];
+  } catch (err) {
+    if (isOfflineError(err)) {
+      const cached = await readTransactionsCache<TransactionView>({
+        currency: opts.currency,
+        fromISO: opts.fromISO,
+      });
+      const pending = await readPendingViewsForCurrency(
+        opts.currency,
+        opts.fromISO,
+      );
+      return [...pending, ...cached];
+    }
+    throw err;
   }
-
-  const rows = (data ?? []) as unknown as TransactionRow[];
-  return rows.map(toView);
 }
 
 /**
@@ -401,27 +550,54 @@ export async function getAccountBalances(
   currency: TransactionDraft["currency"],
 ): Promise<Record<string, number>> {
   const supabase = createSupabaseClient();
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("account_id, kind, amount_minor")
-    .is("archived_at", null)
-    .eq("currency", currency);
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("account_id, kind, amount_minor")
+      .is("archived_at", null)
+      .eq("currency", currency);
 
-  if (error) {
-    throw new Error(error.message || "No pudimos calcular el saldo.");
-  }
+    if (error) {
+      throw new Error(error.message || "No pudimos calcular el saldo.");
+    }
 
-  const minor: Record<string, number> = {};
-  type Row = { account_id: string; kind: "income" | "expense"; amount_minor: number };
-  for (const row of (data ?? []) as Row[]) {
-    const sign = row.kind === "income" ? 1 : -1;
-    minor[row.account_id] = (minor[row.account_id] ?? 0) + sign * row.amount_minor;
+    const minor: Record<string, number> = {};
+    type Row = {
+      account_id: string;
+      kind: "income" | "expense";
+      amount_minor: number;
+    };
+    for (const row of (data ?? []) as Row[]) {
+      const sign = row.kind === "income" ? 1 : -1;
+      minor[row.account_id] =
+        (minor[row.account_id] ?? 0) + sign * row.amount_minor;
+    }
+    // Convert to major in a second pass — keeps the inner sum on integers
+    // (no float drift) and only divides once per account.
+    const balances: Record<string, number> = {};
+    for (const id in minor) balances[id] = minor[id] / 100;
+    return balances;
+  } catch (err) {
+    if (isOfflineError(err)) {
+      // Offline fallback: recompute from the cached transactions (which
+      // are already mapped to major units in the View). Pending rows
+      // also count — the user's mental balance includes captures they
+      // made while offline. Best-effort: if the cache is empty (first
+      // visit while offline) we return {} so the consumer treats every
+      // account as zero, matching pre-cache behavior.
+      const cached = await readTransactionsCache<TransactionView>({
+        currency,
+      });
+      const pending = await readPendingViewsForCurrency(currency);
+      const balances: Record<string, number> = {};
+      for (const r of [...cached, ...pending]) {
+        const sign = r.kind === "income" ? 1 : -1;
+        balances[r.accountId] = (balances[r.accountId] ?? 0) + sign * r.amount;
+      }
+      return balances;
+    }
+    throw err;
   }
-  // Convert to major in a second pass — keeps the inner sum on integers
-  // (no float drift) and only divides once per account.
-  const balances: Record<string, number> = {};
-  for (const id in minor) balances[id] = minor[id] / 100;
-  return balances;
 }
 
 /**
@@ -463,6 +639,50 @@ export function emitTxUpserted(): void {
 export async function createTransaction(
   draft: TransactionDraft,
 ): Promise<TransactionView> {
+  // Validate up front so offline + online paths reject the same way —
+  // a bad amount / kind / accountId never lands in the queue. The
+  // validator throws an actionable Spanish error the capture flow
+  // toasts. We don't have user.id yet but the validator's userId
+  // check only requires a non-empty sentinel; the real writer below
+  // re-reads it from auth.
+  toInsertPayload(draft, "validation-only");
+
+  try {
+    return await createTransactionRemote(draft);
+  } catch (err) {
+    if (isOfflineError(err)) {
+      // Offline path: build an optimistic view from cached reference
+      // data, drop the draft into the pending queue, and return the
+      // synthetic row to the caller. The capture flow renders it the
+      // same way as a real row, but with a "Pendiente" badge.
+      const view = await buildOptimisticView(draft);
+      const localId = await enqueueCreateTransaction({ draft, view });
+      // Reuse the localId as the row id so consumers correlating
+      // optimistic and synced rows have a stable handle.
+      const finalView: TransactionView = { ...view, id: localId };
+      emitTxUpserted();
+      return finalView;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Online-only variant of `createTransaction`. Throws on network errors
+ * instead of falling back to the offline queue. Used by the sync engine
+ * (`src/lib/offline/sync.ts`) when replaying a pending row — if the
+ * network drops mid-replay, the engine re-queues the SAME row instead
+ * of creating a duplicate via the offline branch.
+ *
+ * `opts.silent`: skip the `tx:upserted` broadcast. The sync engine
+ * uses this so it can emit the broadcast AFTER `removePending` has
+ * cleared the optimistic row, avoiding a flash of (real + pending)
+ * rows during a refetch race.
+ */
+export async function createTransactionRemote(
+  draft: TransactionDraft,
+  opts: { silent?: boolean } = {},
+): Promise<TransactionView> {
   const supabase = createSupabaseClient();
   const {
     data: { user },
@@ -485,8 +705,62 @@ export async function createTransaction(
     throw new Error(describeWriteError(error));
   }
 
-  emitTxUpserted();
+  if (!opts.silent) emitTxUpserted();
   return toView(data as unknown as TransactionRow);
+}
+
+/**
+ * Build a `TransactionView` from a `TransactionDraft` using the local
+ * caches for the joined names (account / category / merchant). Used to
+ * surface the optimistic row immediately when capture happens offline.
+ *
+ * Names that aren't in the cache fall back to `null` — the UI handles
+ * that (the row just shows "Sin categoría" / "Sin comercio") which is
+ * better than refusing to display the optimistic row at all.
+ */
+async function buildOptimisticView(
+  draft: TransactionDraft,
+): Promise<TransactionView> {
+  const [accounts, categories] = await Promise.all([
+    readAccountsCache<{ id: string; label: string }>(),
+    readCategoriesCache<{ id: string; name: string }>(),
+  ]);
+  const accountName =
+    accounts.find((a) => a.id === draft.accountId)?.label ?? null;
+  const categoryName = draft.categoryId
+    ? (categories.find((c) => c.id === draft.categoryId)?.name ?? null)
+    : null;
+  let merchantName: string | null = null;
+  let merchantLogoSlug: string | null = null;
+  if (draft.merchantId && draft.categoryId) {
+    const merchants = await readMerchantsCacheByCategory<{
+      id: string;
+      name: string;
+      logo_slug: string | null;
+    }>(draft.categoryId);
+    const m = merchants.find((mm) => mm.id === draft.merchantId);
+    if (m) {
+      merchantName = m.name;
+      merchantLogoSlug = m.logo_slug;
+    }
+  }
+  return {
+    id: "pending-placeholder",
+    amount: draft.amount,
+    currency: draft.currency,
+    kind: draft.kind,
+    pending: true,
+    categoryId: draft.categoryId,
+    categoryName,
+    merchantId: draft.merchantId,
+    merchantName,
+    merchantLogoSlug,
+    accountId: draft.accountId,
+    accountName,
+    note: draft.note,
+    occurredAt: draft.occurredAt ?? new Date().toISOString(),
+    transferGroupId: null,
+  };
 }
 
 /**

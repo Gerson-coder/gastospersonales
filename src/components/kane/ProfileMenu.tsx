@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
+import { clearAllCaches } from "@/lib/offline/db";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { useSession } from "@/lib/use-session";
 import { useUserName } from "@/lib/use-user-name";
@@ -55,6 +56,10 @@ export function ProfileMenu({ className }: { className?: string }) {
         /* fall through — local clear still proceeds */
       }
     }
+    // Wipe the offline read-cache so the next user on this device never
+    // inherits the previous user's accounts/categories/merchants. Errors
+    // are swallowed inside clearAllCaches — never blocks the sign-out.
+    await clearAllCaches();
     clearName();
     setSignOutSuccessOpen(true);
   }

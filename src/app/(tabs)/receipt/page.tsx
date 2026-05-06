@@ -38,7 +38,6 @@ import {
   Lock,
   Maximize2,
   PenLine,
-  Plus,
   RotateCcw,
   Sparkles,
   Trash2,
@@ -80,6 +79,13 @@ import {
   createTransaction,
   type TransactionKind,
 } from "@/lib/data/transactions";
+import { isOfflineError } from "@/lib/offline/cache";
+import {
+  enqueuePendingReceipt,
+  listReadyReceipts,
+  removePendingReceipt,
+  type PendingReceiptRow,
+} from "@/lib/offline/receipts";
 import {
   checkExpenseBalance,
   BALANCE_GUARD_TITLE,
@@ -745,6 +751,22 @@ async function compressImageToDataUrl(
 // Mirror of the API route's response. Kept loose because the route can
 // also send 4xx/5xx with a generic { error: string } that we render
 // as a toast message.
+type OcrSuccessData = {
+  receiptId: string;
+  source: string;
+  confidence: number;
+  kind: "expense" | "income";
+  amount: { minor: number; currency: Currency };
+  occurredAt: string;
+  counterparty?: { name: string; document?: string };
+  reference?: string;
+  memo?: string;
+  destinationApp?: "yape" | "plin";
+  categoryHint?: string;
+  rawText: string;
+  modelUsed: string;
+};
+
 type OcrApiResponse =
   | {
       ok: true;
@@ -914,6 +936,16 @@ function ReceiptPageInner() {
   // they return [] and the UI shows a helpful empty state.
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
+  // Fase 3: when the user enters /receipt and there's a queued receipt
+  // already processed offline (status=ready), we load its image + OCR
+  // result here. `pendingReceiptLocalId` is the queue row id we need
+  // to remove on save; `pendingReceiptResult` is the cached OCR data
+  // we'll apply to the form once accounts/categories are loaded.
+  const [pendingReceiptLocalId, setPendingReceiptLocalId] = React.useState<
+    string | null
+  >(null);
+  const [pendingReceiptResult, setPendingReceiptResult] =
+    React.useState<OcrSuccessData | null>(null);
   // Save submission state: prevents double-tap on the green "Aceptar y
   // guardar" button while the network request is in flight.
   const [isSaving, setIsSaving] = React.useState(false);
@@ -977,6 +1009,125 @@ function ReceiptPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Apply a successful OCR result to the form state. Extracted from the
+   * OCR effect so the queued-receipt loader (Fase 3) can reuse it
+   * without duplicating the auto-assign / category-hint logic.
+   *
+   * `transactionKind` is hardcoded to `"expense"` for the receipt
+   * flow — see the state declaration. Account auto-assign uses
+   * `destinationApp` (Yape with "Destino: Plin" pre-selects Plin)
+   * with a 0.6 confidence floor.
+   */
+  const applyOcrSuccessData = React.useCallback(
+    (d: OcrSuccessData, accs: Account[], cats: Category[]): void => {
+      setReceiptId(d.receiptId);
+      setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
+      setAmount((d.amount.minor / 100).toFixed(2));
+      setCurrency(d.amount.currency);
+      setOccurredAt(d.occurredAt.slice(0, 10));
+      setOccurredAtIso(d.occurredAt);
+
+      const matchKey = d.destinationApp ?? d.source;
+      if (d.confidence >= 0.6 && matchKey !== "unknown") {
+        const result = suggestAccountIdForSource(matchKey, accs);
+        if (result.kind === "matched") {
+          setAccountId(result.accountId);
+          setLockedSourceLabel(result.sourceLabel);
+          setMissingAccountSourceLabel(null);
+        } else if (result.kind === "unsupported") {
+          setAccountId(null);
+          setLockedSourceLabel(null);
+          setMissingAccountSourceLabel(result.sourceLabel);
+        } else {
+          setLockedSourceLabel(null);
+          setMissingAccountSourceLabel(null);
+        }
+      } else {
+        setLockedSourceLabel(null);
+        setMissingAccountSourceLabel(null);
+      }
+
+      const hintCategoryId = resolveCategoryIdFromHint(
+        d.categoryHint,
+        cats,
+        transactionKind,
+      );
+      if (hintCategoryId) {
+        setCategoryId(hintCategoryId);
+      }
+
+      setConfidences({
+        merchant: d.confidence,
+        amount: d.confidence,
+        occurred_at: d.confidence,
+        suggested_category: hintCategoryId ? d.confidence : 0,
+        kind: 0,
+      });
+      setDirty(false);
+      setStatus("review");
+    },
+    [transactionKind, setCurrency],
+  );
+
+  /**
+   * Fase 3 — load a queued receipt that was OCR-processed offline.
+   * Runs once after accounts + categories arrive (so auto-assign has
+   * the data it needs). We pick the OLDEST `ready` row; subsequent
+   * ones surface again after the user reviews and saves this one.
+   *
+   * Skipped when the user is already in flight on something else
+   * (share-target image, manual pick, in-progress review).
+   */
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (accounts.length === 0 && categories.length === 0) return;
+    if (imageFile || pendingReceiptLocalId) return;
+    if (searchParams.get("fromShare") === "1") return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const ready = await listReadyReceipts();
+        if (cancelled || ready.length === 0) return;
+        const next: PendingReceiptRow = ready[0];
+        // Reconstitute the File from the stored data URL so the
+        // existing image-preview + zoom UX works unchanged.
+        const file = dataUrlToFile(next.imageDataUrl, next.mime, next.fileName);
+        if (!file) {
+          // Bad data — drop it so we don't spin on a corrupt row.
+          await removePendingReceipt(next.localId);
+          return;
+        }
+        const url = URL.createObjectURL(file);
+        setImageUrl(url);
+        setImageFile(file);
+        setPendingReceiptLocalId(next.localId);
+        setPendingReceiptResult(next.result as OcrSuccessData);
+      } catch (err) {
+        console.warn("[receipt] queue_loader_failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // accounts/categories drive the gating; once loaded, we only ever
+    // run this branch when `imageFile` is empty so no infinite loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts.length, categories.length]);
+
+  // Apply a queued OCR result when both the result AND the form
+  // dependencies (accounts/categories) are ready. Two-stage to avoid
+  // racing against the data load.
+  React.useEffect(() => {
+    if (!pendingReceiptResult) return;
+    if (accounts.length === 0) return;
+    applyOcrSuccessData(pendingReceiptResult, accounts, categories);
+    // After applying we clear the staged result so editing the form
+    // doesn't trigger reapplication on every dependency change.
+    setPendingReceiptResult(null);
+  }, [pendingReceiptResult, accounts, categories, applyOcrSuccessData]);
+
   // OCR pipeline: ticks the 3-phase animation (cosmetic, ~2.4s) in
   // parallel with the real /api/ocr/extract call. We resolve either when
   // the API answers AND a 1.5s minimum has elapsed (so a cache-warm 600ms
@@ -1031,77 +1182,10 @@ function ReceiptPageInner() {
         const json = (await res.json()) as OcrApiResponse;
 
         if (json.ok) {
-          const d = json.data;
-          setReceiptId(d.receiptId);
-          setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
-          setAmount((d.amount.minor / 100).toFixed(2));
-          setCurrency(d.amount.currency);
-          setOccurredAt(d.occurredAt.slice(0, 10));
-          // Preserve the FULL ISO con hora del OCR — el row aparece en
-          // /movements y /dashboard ordenado por la hora real del
-          // receipt, no por noon. Si el user después edita la fecha,
-          // markDirty() limpia este iso (ver onChange del input date).
-          setOccurredAtIso(d.occurredAt);
-          // transactionKind is hardcoded to "expense" — we ignore d.kind
-          // on purpose (see state declaration above).
-          //
-          // Account auto-assign (firm-source only):
-          //   - Priority 1: `destinationApp` from the receipt's "Destino"
-          //     row (e.g. a Yape with "Destino: Plin" should pre-select
-          //     the user's Plin account — that's where the money landed).
-          //   - Priority 2: the OCR-classified source itself.
-          //   - Confidence floor: < 0.6 → skip auto-assign, let the user
-          //     pick from the drawer (the OCR isn't sure enough to
-          //     override the user's choice).
-          const matchKey = d.destinationApp ?? d.source;
-          if (d.confidence >= 0.6 && matchKey !== "unknown") {
-            const result = suggestAccountIdForSource(matchKey, accounts);
-            if (result.kind === "matched") {
-              setAccountId(result.accountId);
-              setLockedSourceLabel(result.sourceLabel);
-              setMissingAccountSourceLabel(null);
-            } else if (result.kind === "unsupported") {
-              // OCR knows the source but the user has no account for it
-              // — surface the create-account CTA and block save.
-              setAccountId(null);
-              setLockedSourceLabel(null);
-              setMissingAccountSourceLabel(result.sourceLabel);
-            } else {
-              // `unknown` — leave the default account selection.
-              setLockedSourceLabel(null);
-              setMissingAccountSourceLabel(null);
-            }
-          } else {
-            // Confidence too low or source = unknown → user picks.
-            setLockedSourceLabel(null);
-            setMissingAccountSourceLabel(null);
-          }
-          // categoryHint es una sugerencia conceptual del OCR cuando el
-          // merchant tiene keyword inequívoca ("BUFFET" → food, "E.T."
-          // → transport, "INKAFARMA" → health). Resolvemos el hint a un
-          // category id REAL del user (system o custom) — si no hay match
-          // dejamos null y el user elige manualmente desde el picker
-          // (que ahora muestra la misma lista que /capture).
-          const hintCategoryId = resolveCategoryIdFromHint(
-            d.categoryHint,
-            categories,
-            transactionKind,
-          );
-          if (hintCategoryId) {
-            setCategoryId(hintCategoryId);
-          }
-          //
-          // `kind` confidence is no longer surfaced because the type is
-          // hardcoded to "expense" — the toggle UI is gone.
-          setConfidences({
-            merchant: d.confidence,
-            amount: d.confidence,
-            occurred_at: d.confidence,
-            suggested_category: hintCategoryId ? d.confidence : 0,
-            kind: 0,
-          });
-          setDirty(false);
-          setStatus("review");
+          // All the auto-assign / category-hint logic moved into
+          // `applyOcrSuccessData` so the queued-receipt loader
+          // (Fase 3) can reuse it.
+          applyOcrSuccessData(json.data, accounts, categories);
           return;
         }
 
@@ -1188,6 +1272,34 @@ function ReceiptPageInner() {
       } catch (err) {
         if (cancelled) return;
         if (err instanceof Error && err.name === "AbortError") return;
+        // Offline path (Fase 3): the OCR call failed because of a
+        // network error. Stash the (already-compressed) image in the
+        // pending receipts queue so the sync engine can run OCR when
+        // we're back online. The user gets a clear toast and lands
+        // back at idle — capture flow stays interruption-free.
+        if (isOfflineError(err) && imageFile) {
+          try {
+            const dataUrl = await compressImageToDataUrl(imageFile);
+            await enqueuePendingReceipt({
+              imageDataUrl: dataUrl,
+              mime: imageFile.type || "image/jpeg",
+              fileName: imageFile.name || "shared-image",
+            });
+            toast.success(
+              "Boleta guardada. La procesaremos cuando vuelva la conexión.",
+            );
+            setStatus("idle");
+            // Clear the image preview so the user lands on a clean
+            // idle state ready for the next capture.
+            if (imageUrl) URL.revokeObjectURL(imageUrl);
+            setImageUrl(null);
+            setImageFile(null);
+            return;
+          } catch (queueErr) {
+            console.error("[receipt] offline_enqueue_failed", queueErr);
+            // Fall through to the generic failure toast.
+          }
+        }
         console.error("[receipt] ocr_call_failed", err);
         toast.error("No pude conectarme con el servicio. Intenta de nuevo.");
         setStatus("failed");
@@ -1312,12 +1424,6 @@ function ReceiptPageInner() {
 
   const handleAccept = React.useCallback(async () => {
     if (isSaving) return;
-    if (missingAccountSourceLabel) {
-      toast.error(
-        `Crea una cuenta de ${missingAccountSourceLabel} antes de guardar.`,
-      );
-      return;
-    }
     if (!accountId) {
       toast.error("Elige una cuenta antes de guardar.");
       setIsAccountOpen(true);
@@ -1414,6 +1520,13 @@ function ReceiptPageInner() {
       // aparecía en "Últimos movimientos". Bug confirmado por 5
       // agentes investigadores en paralelo.
       setActiveAccountId(accountId);
+      // Fase 3: drop the queued receipt now that the user committed.
+      // Fire-and-forget — failure here would be cosmetic (the row
+      // resurfaces on next /receipt mount, harmless).
+      if (pendingReceiptLocalId) {
+        void removePendingReceipt(pendingReceiptLocalId);
+        setPendingReceiptLocalId(null);
+      }
       try {
         window.sessionStorage.setItem("kane:tx-just-created", String(Date.now()));
       } catch {
@@ -1453,9 +1566,9 @@ function ReceiptPageInner() {
     isSaving,
     merchant,
     merchantId,
-    missingAccountSourceLabel,
     occurredAt,
     occurredAtIso,
+    pendingReceiptLocalId,
     receiptId,
     router,
   ]);
@@ -1473,7 +1586,14 @@ function ReceiptPageInner() {
     // Reset estado del OCR para que la siguiente foto arranque limpia
     // (evita que la hora del receipt anterior contamine la nueva).
     setOccurredAtIso(null);
-  }, [dirty, discardArmed, imageUrl]);
+    // Fase 3: discard a queued receipt → drop it from the queue too.
+    // The user explicitly chose not to register this expense; resurfacing
+    // it on next /receipt mount would be hostile.
+    if (pendingReceiptLocalId) {
+      void removePendingReceipt(pendingReceiptLocalId);
+      setPendingReceiptLocalId(null);
+    }
+  }, [dirty, discardArmed, imageUrl, pendingReceiptLocalId]);
 
   // Hidden inputs — rendered always so the refs are available across states.
   const hiddenInputs = (
@@ -1799,47 +1919,32 @@ function ReceiptPageInner() {
 
             {/* Cuenta — tres estados:
                   1. missingAccountSourceLabel: el OCR detectó la
-                     fuente (Yape/Plin/BBVA/BCP) pero el user no
-                     tiene esa cuenta. CTA inline para crearla,
-                     bloquea guardar.
+                     fuente (Yape/Plin/BBVA/BCP) pero el matcher no
+                     encontró una cuenta exacta del user. Mostramos
+                     un hint informativo arriba y dejamos el picker
+                     abierto para que el user elija (caso real PE:
+                     Yape vive sobre BCP/BBVA/Interbank y no aparece
+                     como kind=yape).
                   2. lockedSourceLabel: cuenta auto-asignada por la
                      foto. Fila informativa con candado, no
                      clickeable.
                   3. default: picker normal — el user elige. */}
-            {missingAccountSourceLabel ? (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-50/50 p-3.5 dark:border-amber-500/30 dark:bg-amber-500/10">
-                <div className="pb-1.5">
-                  <span className="text-[12px] font-semibold text-foreground">
-                    Cuenta
-                  </span>
-                </div>
-                <div className="flex items-start gap-3">
+            {missingAccountSourceLabel && !lockedSourceLabel && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+                <div className="flex items-start gap-2.5">
                   <span
                     aria-hidden="true"
-                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300"
                   >
-                    <AlertTriangle size={16} />
+                    <AlertTriangle size={13} />
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold text-foreground">
-                      No encontramos tu cuenta de {missingAccountSourceLabel}
-                    </p>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
-                      Crea una primero para registrar este movimiento.
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => router.push("/accounts?create=1")}
-                      className="mt-2.5 h-9 rounded-full px-3 text-[12px] font-semibold"
-                    >
-                      <Plus size={14} aria-hidden="true" />
-                      Crear cuenta de {missingAccountSourceLabel}
-                    </Button>
-                  </div>
+                  <p className="text-[12px] leading-relaxed text-foreground">
+                    Detectamos <span className="font-semibold">{missingAccountSourceLabel}</span> en la foto. Elige a qué cuenta cargar este gasto.
+                  </p>
                 </div>
               </div>
-            ) : lockedSourceLabel ? (
+            )}
+            {lockedSourceLabel ? (
               <div className="rounded-xl bg-card p-3.5">
                 <div className="pb-1.5">
                   <span className="text-[12px] font-semibold text-foreground">
@@ -1962,9 +2067,7 @@ function ReceiptPageInner() {
               <Button
                 type="button"
                 onClick={handleAccept}
-                disabled={
-                  isSaving || !accountId || Boolean(missingAccountSourceLabel)
-                }
+                disabled={isSaving || !accountId}
                 className="h-12 rounded-full text-base font-bold md:flex-[2]"
                 style={{ boxShadow: "var(--shadow-fab)" }}
               >

@@ -25,6 +25,11 @@
  */
 "use client";
 
+import {
+  cacheMerchantsByCategory,
+  isOfflineError,
+  readMerchantsCacheByCategory,
+} from "@/lib/offline/cache";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 export type Merchant = {
@@ -110,28 +115,41 @@ export async function listMerchantsByCategory(
   categoryId: string,
 ): Promise<Merchant[]> {
   const supabase = createSupabaseClient();
-  const { data, error } = await supabase
-    .from("merchants")
-    .select("id,user_id,category_id,name,logo_slug,archived_at,created_at,updated_at")
-    .eq("category_id", categoryId)
-    .is("archived_at", null);
+  try {
+    const { data, error } = await supabase
+      .from("merchants")
+      .select("id,user_id,category_id,name,logo_slug,archived_at,created_at,updated_at")
+      .eq("category_id", categoryId)
+      .is("archived_at", null);
 
-  if (error) {
-    if (isMissingFeatureError(error.code)) {
-      warnTableMissingOnce("listMerchantsByCategory");
-      return [];
+    if (error) {
+      if (isMissingFeatureError(error.code)) {
+        warnTableMissingOnce("listMerchantsByCategory");
+        return [];
+      }
+      throw new Error(error.message || "No pudimos cargar los comercios.");
     }
-    throw new Error(error.message || "No pudimos cargar los comercios.");
-  }
 
-  const rows = (data ?? []) as Merchant[];
-  return rows.slice().sort((a, b) => {
-    // System (user_id NULL) first.
-    const aSystem = a.user_id === null ? 0 : 1;
-    const bSystem = b.user_id === null ? 0 : 1;
-    if (aSystem !== bSystem) return aSystem - bSystem;
-    return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
-  });
+    const rows = (data ?? []) as Merchant[];
+    const sorted = rows.slice().sort((a, b) => {
+      // System (user_id NULL) first.
+      const aSystem = a.user_id === null ? 0 : 1;
+      const bSystem = b.user_id === null ? 0 : 1;
+      if (aSystem !== bSystem) return aSystem - bSystem;
+      return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+    });
+    // Mirror to offline cache for this category slice (Fase 1). Other
+    // categories' caches are not touched — see `cacheMerchantsByCategory`.
+    void cacheMerchantsByCategory(categoryId, sorted);
+    return sorted;
+  } catch (err) {
+    if (isOfflineError(err)) {
+      const cached =
+        await readMerchantsCacheByCategory<Merchant>(categoryId);
+      if (cached.length > 0) return cached;
+    }
+    throw err;
+  }
 }
 
 /**

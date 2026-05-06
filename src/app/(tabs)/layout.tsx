@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { InstallPrompt } from "@/components/kane/InstallPrompt";
+import { OfflineIndicator } from "@/components/kane/OfflineIndicator";
 import { Sidebar } from "@/components/kane/Sidebar";
 import { TabBarSlot } from "@/components/kane/TabBarSlot";
 import { TabsTopBar } from "@/components/kane/TabsTopBar";
@@ -34,6 +35,7 @@ export default async function TabsLayout({
   ) {
     return (
       <div className="flex min-h-screen flex-col">
+        <OfflineIndicator />
         <Sidebar />
         <TabsTopBar />
         <main className="flex-1 pb-24 md:pb-8 md:pl-64">{children}</main>
@@ -73,6 +75,7 @@ export default async function TabsLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <OfflineIndicator />
       <Sidebar />
       <TabsTopBar />
       <main className="flex-1 pb-24 md:pb-8 md:pl-64">{children}</main>

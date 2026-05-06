@@ -14,6 +14,11 @@
  */
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  cacheAccounts,
+  isOfflineError,
+  readAccountsCache,
+} from "@/lib/offline/cache";
 import type {
   AccountSubtype,
   AccountType,
@@ -137,30 +142,48 @@ export function accountDisplayLabel(account: Account): string {
  * List the current user's active (non-archived) accounts. Ordered by
  * `created_at` ascending so the user's first-created account stays at
  * the top of the list (stable order across reloads).
+ *
+ * Offline behavior (see `src/lib/offline/cache.ts`): on a successful
+ * fetch, we mirror the result to IndexedDB. If the network is down we
+ * return the last-cached snapshot so the dashboard, picker, and capture
+ * flow still render the user's accounts. Semantic errors (RLS, schema)
+ * are NOT swallowed — only fetch/network failures fall back.
  */
 export async function listAccounts(): Promise<Account[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("accounts")
-    .select(
-      "id, user_id, name, type, currency, subtype, shared_with_partner, created_at",
-    )
-    .is("archived_at", null)
-    .order("created_at", { ascending: true });
+  try {
+    const { data, error } = await supabase
+      .from("accounts")
+      .select(
+        "id, user_id, name, type, currency, subtype, shared_with_partner, created_at",
+      )
+      .is("archived_at", null)
+      .order("created_at", { ascending: true });
 
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) =>
-    toAccount({
-      id: r.id,
-      user_id: r.user_id,
-      name: r.name,
-      type: r.type,
-      currency: r.currency,
-      subtype: (r as { subtype?: AccountSubtype | null }).subtype ?? null,
-      shared_with_partner: (r as { shared_with_partner?: boolean | null })
-        .shared_with_partner,
-    }),
-  );
+    if (error) throw new Error(error.message);
+    const accounts = (data ?? []).map((r) =>
+      toAccount({
+        id: r.id,
+        user_id: r.user_id,
+        name: r.name,
+        type: r.type,
+        currency: r.currency,
+        subtype: (r as { subtype?: AccountSubtype | null }).subtype ?? null,
+        shared_with_partner: (r as { shared_with_partner?: boolean | null })
+          .shared_with_partner,
+      }),
+    );
+    // Mirror to offline cache. Fire-and-forget — a slow IDB write must
+    // not delay the UI getting the freshest data.
+    void cacheAccounts(accounts);
+    return accounts;
+  } catch (err) {
+    if (isOfflineError(err)) {
+      const cached = await readAccountsCache<Account>();
+      if (cached.length > 0) return cached;
+    }
+    throw err;
+  }
 }
 
 /**
