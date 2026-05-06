@@ -16,6 +16,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Bot,
+  CalendarClock,
   ChevronRight,
   Clock,
   Settings,
@@ -73,6 +74,13 @@ const GROUPS: MoreGroup[] = [
         label: "Cuentas",
         description: "Efectivo, tarjeta, banco, Yape, Plin",
         icon: Wallet,
+      },
+      {
+        href: "/commitments",
+        label: "Compromisos",
+        description: "Recibos, alquileres, préstamos por venir",
+        icon: CalendarClock,
+        badge: "new",
       },
     ],
   },
