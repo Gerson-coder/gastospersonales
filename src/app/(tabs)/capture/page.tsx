@@ -151,12 +151,17 @@ function fromDbCategory(c: DbCategory): Category {
 type AccountId = string;
 type Account = {
   id: AccountId;
+  /** Owner del row (auth.users.id). Agregado en 00027 para soportar
+   *  cuenta compartida; en demo va con string vacio. */
+  userId: string;
   label: string;
   kind: "cash" | "card" | "bank" | "yape" | "plin";
   currency: Currency;
   /** Optional product subtype (sueldo / dólares / crédito…). Carried here
    * so the drawer + the picker chip can render `BCP · Sueldo`. */
   subtype: import("@/lib/data/accounts").AccountSubtype | null;
+  /** Flag de cuenta compartida con pareja. Demo siempre false. */
+  sharedWithPartner: boolean;
   Icon: React.ComponentType<{ size?: number; className?: string; "aria-hidden"?: boolean }>;
 };
 
@@ -183,10 +188,12 @@ const ACCOUNT_KIND_ICON: Record<
 function fromDataAccount(a: DataAccount): Account {
   return {
     id: a.id,
+    userId: a.userId,
     label: a.label,
     kind: a.kind,
     currency: a.currency,
     subtype: a.subtype,
+    sharedWithPartner: a.sharedWithPartner,
     Icon: ACCOUNT_KIND_ICON[a.kind],
   };
 }
@@ -206,9 +213,9 @@ const MOCK_CATEGORIES: Category[] = [
 ];
 
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "cash", label: "Efectivo", kind: "cash", currency: "PEN", subtype: null, Icon: Wallet },
-  { id: "card", label: "Tarjeta", kind: "card", currency: "PEN", subtype: null, Icon: CreditCard },
-  { id: "bank", label: "Banco",   kind: "bank", currency: "USD", subtype: null, Icon: Landmark },
+  { id: "cash", userId: "", label: "Efectivo", kind: "cash", currency: "PEN", subtype: null, sharedWithPartner: false, Icon: Wallet },
+  { id: "card", userId: "", label: "Tarjeta", kind: "card", currency: "PEN", subtype: null, sharedWithPartner: false, Icon: CreditCard },
+  { id: "bank", userId: "", label: "Banco",   kind: "bank", currency: "USD", subtype: null, sharedWithPartner: false, Icon: Landmark },
 ];
 
 // MRU mock — first three categories shown inline above the keypad in demo
