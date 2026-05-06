@@ -52,6 +52,10 @@ function emitAccountUpserted(): void {
 /** Shape returned to the UI. Mirrors the mock that previously lived inline. */
 export type Account = {
   id: string;
+  /** auth.users.id del owner. Necesario para que la UI pueda
+   *  distinguir owner vs partner cuando una cuenta esta compartida
+   *  (ver SharedAccountPanel + migration 00027). */
+  userId: string;
   label: string;
   kind: AccountKind;
   currency: Currency;
@@ -59,6 +63,10 @@ export type Account = {
    * the user keeps just one account at this bank — the UI hides the chip
    * in that case. See migration 00013_account_subtype.sql. */
   subtype: AccountSubtype | null;
+  /** True cuando la cuenta esta compartida con un partner. Habilita
+   *  los joins de RLS para transactions/commitments. Ver migration
+   *  00027_account_partnerships.sql. */
+  sharedWithPartner: boolean;
 };
 
 export type CreateAccountInput = {
@@ -73,19 +81,23 @@ export type UpdateAccountInput = Partial<CreateAccountInput>;
 // ─── Internal helpers ────────────────────────────────────────────────────
 type DbAccountRow = {
   id: string;
+  user_id: string;
   name: string;
   type: AccountType;
   currency: Currency;
   subtype: AccountSubtype | null;
+  shared_with_partner?: boolean | null;
 };
 
 function toAccount(row: DbAccountRow): Account {
   return {
     id: row.id,
+    userId: row.user_id,
     label: row.name,
     kind: row.type,
     currency: row.currency,
     subtype: row.subtype ?? null,
+    sharedWithPartner: row.shared_with_partner === true,
   };
 }
 
@@ -130,7 +142,9 @@ export async function listAccounts(): Promise<Account[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, name, type, currency, subtype, created_at")
+    .select(
+      "id, user_id, name, type, currency, subtype, shared_with_partner, created_at",
+    )
     .is("archived_at", null)
     .order("created_at", { ascending: true });
 
@@ -138,10 +152,13 @@ export async function listAccounts(): Promise<Account[]> {
   return (data ?? []).map((r) =>
     toAccount({
       id: r.id,
+      user_id: r.user_id,
       name: r.name,
       type: r.type,
       currency: r.currency,
       subtype: (r as { subtype?: AccountSubtype | null }).subtype ?? null,
+      shared_with_partner: (r as { shared_with_partner?: boolean | null })
+        .shared_with_partner,
     }),
   );
 }
@@ -186,7 +203,7 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
       currency: input.currency,
       subtype: input.subtype ?? null,
     })
-    .select("id, name, type, currency, subtype")
+    .select("id, user_id, name, type, currency, subtype, shared_with_partner")
     .single();
 
   if (error) throw friendlyAccountError(error);
@@ -220,7 +237,7 @@ export async function updateAccount(
     .from("accounts")
     .update(dbPatch)
     .eq("id", id)
-    .select("id, name, type, currency, subtype")
+    .select("id, user_id, name, type, currency, subtype, shared_with_partner")
     .single();
 
   if (error) throw friendlyAccountError(error);

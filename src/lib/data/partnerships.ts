@@ -332,6 +332,41 @@ export async function getAccountPartner(
 }
 
 /**
+ * Info renderizable del partner de una cuenta (nombre + joined_at).
+ * Llama a la SECURITY DEFINER function que bypassa RLS de profiles
+ * (el owner no tiene SELECT directo sobre el profile del partner).
+ *
+ * Retorna null cuando la cuenta no tiene partner o no tengo
+ * permisos.
+ */
+export type AccountPartnerInfo = {
+  partnerUserId: string;
+  partnerName: string;
+  joinedAt: string;
+};
+
+export async function getAccountPartnerInfo(
+  accountId: string,
+): Promise<AccountPartnerInfo | null> {
+  const supabase = createSupabaseClient();
+  const { data, error } = await supabase.rpc("get_account_partner_info", {
+    p_account_id: accountId,
+  });
+  if (error) return null;
+  if (!data || data.length === 0) return null;
+  const row = data[0] as {
+    partner_user_id: string;
+    partner_name: string;
+    joined_at: string;
+  };
+  return {
+    partnerUserId: row.partner_user_id,
+    partnerName: row.partner_name,
+    joinedAt: row.joined_at,
+  };
+}
+
+/**
  * Lista todas las partnerships en las que participa el user (como
  * owner o como partner). Util para el dashboard "tus cuentas
  * compartidas". RLS le deja ver:

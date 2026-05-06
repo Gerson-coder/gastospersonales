@@ -498,6 +498,15 @@ export type Database = {
           expires_at: string;
         }[];
       };
+      // ─── Added by migration 00030_account_partner_info.sql ───────
+      get_account_partner_info: {
+        Args: { p_account_id: string };
+        Returns: {
+          partner_user_id: string;
+          partner_name: string;
+          joined_at: string;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

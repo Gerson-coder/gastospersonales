@@ -84,6 +84,7 @@ import { CURRENCY_LABEL, formatMoney } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { useAccountBalances } from "@/hooks/use-account-balances";
 import { TX_UPSERTED_EVENT } from "@/lib/data/transactions";
+import { SharedAccountPanel } from "@/components/kane/SharedAccountPanel";
 
 // ─── Demo mode flag ───────────────────────────────────────────────────────
 // Mirrors `useSession` and `/login`: when env vars are absent we skip the
@@ -97,11 +98,14 @@ const SUPABASE_ENABLED =
 
 // ─── Constants ────────────────────────────────────────────────────────────
 // Demo-mode mock list. Same shape as `Account` from the data layer.
+// userId/sharedWithPartner agregados en 00027 — para demo no
+// tenemos un user real, asi que userId queda en string vacio y
+// las cuentas demo nunca son shared.
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "a1", label: "Efectivo",  currency: "PEN", kind: "cash", subtype: null     },
-  { id: "a2", label: "BCP",       currency: "PEN", kind: "bank", subtype: "sueldo" },
-  { id: "a3", label: "Interbank", currency: "PEN", kind: "card", subtype: null     },
-  { id: "a4", label: "BCP",       currency: "USD", kind: "bank", subtype: "dolares"},
+  { id: "a1", userId: "", label: "Efectivo",  currency: "PEN", kind: "cash", subtype: null,      sharedWithPartner: false },
+  { id: "a2", userId: "", label: "BCP",       currency: "PEN", kind: "bank", subtype: "sueldo",  sharedWithPartner: false },
+  { id: "a3", userId: "", label: "Interbank", currency: "PEN", kind: "card", subtype: null,      sharedWithPartner: false },
+  { id: "a4", userId: "", label: "BCP",       currency: "USD", kind: "bank", subtype: "dolares", sharedWithPartner: false },
 ];
 
 const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
@@ -448,8 +452,18 @@ function AccountsPageInner() {
                           />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[14px] font-semibold">
-                            {accountDisplayLabel(account)}
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-[14px] font-semibold">
+                              {accountDisplayLabel(account)}
+                            </span>
+                            {account.sharedWithPartner ? (
+                              <span
+                                aria-label="Cuenta compartida con tu pareja"
+                                className="inline-flex h-[18px] flex-shrink-0 items-center rounded-full bg-emerald-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400"
+                              >
+                                Compartida
+                              </span>
+                            ) : null}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {CURRENCY_LABEL[account.currency]} · {ACCOUNT_KIND_LABEL[account.kind]}
@@ -1172,6 +1186,19 @@ function AccountFormSheet({
                 })}
               </RadioGroup>
             </fieldset>
+
+            {/* Cuenta compartida — solo en edit mode + cuando hay
+                Supabase real. En demo o create no hay nada que
+                compartir todavia. */}
+            {mode === "edit" && account && SUPABASE_ENABLED ? (
+              <SharedAccountPanel
+                accountId={account.id}
+                accountLabel={account.label}
+                ownerUserId={account.userId}
+                sharedWithPartner={account.sharedWithPartner}
+                onChange={reload}
+              />
+            ) : null}
 
             {/* Inline archive confirm — keeps the destructive action calm
                 and reversible without stacking sheets. */}

@@ -206,9 +206,9 @@ const MOCK_CATEGORIES: Category[] = [
 ];
 
 const MOCK_ACCOUNTS: Account[] = [
-  { id: "cash", label: "Efectivo", kind: "cash", currency: "PEN", subtype: null, Icon: Wallet },
-  { id: "card", label: "Tarjeta", kind: "card", currency: "PEN", subtype: null, Icon: CreditCard },
-  { id: "bank", label: "Banco",   kind: "bank", currency: "USD", subtype: null, Icon: Landmark },
+  { id: "cash", userId: "", label: "Efectivo", kind: "cash", currency: "PEN", subtype: null, sharedWithPartner: false, Icon: Wallet },
+  { id: "card", userId: "", label: "Tarjeta", kind: "card", currency: "PEN", subtype: null, sharedWithPartner: false, Icon: CreditCard },
+  { id: "bank", userId: "", label: "Banco",   kind: "bank", currency: "USD", subtype: null, sharedWithPartner: false, Icon: Landmark },
 ];
 
 // MRU mock — first three categories shown inline above the keypad in demo
