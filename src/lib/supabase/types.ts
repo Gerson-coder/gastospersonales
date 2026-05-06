@@ -28,6 +28,16 @@ export type AccountSubtype =
   | "debito";
 export type CategoryKind = "expense" | "income";
 export type TransactionSource = "manual" | "ocr";
+
+// ─── Commitments (migration 00025) ────────────────────────────────────
+export type CommitmentKind = "payment" | "income" | "lent" | "borrowed";
+export type CommitmentRecurrence =
+  | "none"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "yearly";
+export type CommitmentStatus = "pending" | "completed" | "cancelled";
 export type OcrStatus = "pending" | "processing" | "completed" | "failed";
 export type OcrPipelineSource =
   | "yape"
@@ -340,6 +350,39 @@ export type Database = {
           currency: Currency;
         };
         Update: Partial<Database["public"]["Tables"]["goals"]["Row"]>;
+        Relationships: [];
+      };
+      // ─── Added by migration 00025_commitments.sql ──────────────────
+      commitments: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: CommitmentKind;
+          title: string;
+          amount_minor: number;
+          currency: Currency;
+          due_date: string;
+          recurrence: CommitmentRecurrence;
+          status: CommitmentStatus;
+          category_id: string | null;
+          account_id: string | null;
+          counterparty: string | null;
+          notes: string | null;
+          last_completed_at: string | null;
+          remind_days_before: number;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["commitments"]["Row"]> & {
+          user_id: string;
+          kind: CommitmentKind;
+          title: string;
+          amount_minor: number;
+          currency: Currency;
+          due_date: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["commitments"]["Row"]>;
         Relationships: [];
       };
     };
