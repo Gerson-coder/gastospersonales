@@ -55,6 +55,9 @@ export type CategoryDrillDownRow = {
 export type CategoryDrillDownSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Categoría id — null cuando es el bucket sintético "(sin categoría)".
+   *  Se usa para el deep-link a /movements?categoryId=... */
+  categoryId: string | null;
   /** Nombre de la categoría — header del drawer. */
   categoryName: string;
   /** Color de la categoría (var(--chart-N) o hex). Tinte del dot del header. */
@@ -96,6 +99,7 @@ function formatRowSubtitle(count: number, lastOccurredAt: string): string {
 export function CategoryDrillDownSheet({
   open,
   onOpenChange,
+  categoryId,
   categoryName,
   categoryColor,
   periodLabel,
@@ -224,8 +228,22 @@ export function CategoryDrillDownSheet({
               </span>
             </div>
           ) : null}
+          {/* Deep-link a /movements respetando la categoría + período
+              "Este mes" del drill-down. Si categoryId es null (bucket
+              "(sin categoría)"), navegamos solo con filter=gastos para
+              que la lista no quede atorada con un categoryId que no
+              matchea ningún row. */}
           <Link
-            href="/movements?filter=gastos"
+            href={(() => {
+              const qs = new URLSearchParams();
+              qs.set("filter", "gastos");
+              qs.set("period", "mes");
+              if (categoryId) {
+                qs.set("categoryId", categoryId);
+                qs.set("categoryLabel", categoryName);
+              }
+              return `/movements?${qs.toString()}`;
+            })()}
             onClick={() => onOpenChange(false)}
             className="inline-flex h-11 w-full items-center justify-center rounded-full border border-border bg-card text-[13px] font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >

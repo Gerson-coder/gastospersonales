@@ -2593,6 +2593,12 @@ export default function DashboardPage() {
           onOpenChange={(open) => {
             if (!open) setDrillCategoryId(null);
           }}
+          categoryId={
+            // Sentinel "__uncat__" representa el bucket sintetico de
+            // transacciones sin categoría — no debe enviarse a /movements
+            // como categoryId real (no matchearia ningun row).
+            drillCategoryId === "__uncat__" ? null : drillCategoryId
+          }
           categoryName={drillData.categoryName}
           categoryColor={drillData.categoryColor}
           periodLabel="Este mes"

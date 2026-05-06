@@ -67,6 +67,38 @@ const TransactionDetailDrawer = nextDynamic(
   () => import("@/components/kane/TransactionDetailDrawer"),
   { ssr: false },
 );
+// Lazy-load: los 3 sheets de filtros solo se montan al primer tap en
+// su pill correspondiente. Sacarlos del initial chunk reduce el JS
+// que se parsea al entrar a /movements (la mayoría de visits no tocan
+// los filtros).
+const PeriodPickerSheet = nextDynamic(
+  () => import("@/components/kane/PeriodPickerSheet"),
+  { ssr: false },
+);
+const CategoryFilterPicker = nextDynamic(
+  () =>
+    import("@/components/kane/MovementsFilterPickers").then(
+      (m) => m.CategoryFilterPicker,
+    ),
+  { ssr: false },
+);
+const AccountFilterPicker = nextDynamic(
+  () =>
+    import("@/components/kane/MovementsFilterPickers").then(
+      (m) => m.AccountFilterPicker,
+    ),
+  { ssr: false },
+);
+import {
+  MovementsFiltersBar,
+  type MovementsFilter,
+} from "@/components/kane/MovementsFiltersBar";
+import {
+  computeRange,
+  formatPeriodLabel,
+  type PeriodId,
+  type PeriodRange,
+} from "@/components/kane/PeriodPickerSheet";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
   archiveTransaction,
@@ -79,7 +111,10 @@ import {
 import type { Currency } from "@/lib/supabase/types";
 
 // --- Types ----------------------------------------------------------------
-type Filter = "todo" | "gastos" | "ingresos";
+// Filter type lives en MovementsFiltersBar para que el bar y la pagina
+// no driften. El bar exporta el type publico; aca lo aliaseamos para
+// no andar refactoreando todas las refs locales.
+type Filter = MovementsFilter;
 
 // Local categorization that maps a category NAME (from the joined
 // `categories.name` column) to a stable Kane category bucket so we can keep
@@ -475,47 +510,6 @@ function TransactionRow({
   );
 }
 
-// --- Filter chips ---------------------------------------------------------
-const FILTERS: ReadonlyArray<{ id: Filter; label: string }> = [
-  { id: "todo", label: "Todo" },
-  { id: "gastos", label: "Gastos" },
-  { id: "ingresos", label: "Ingresos" },
-];
-
-function FilterChips({
-  value,
-  onChange,
-}: {
-  value: Filter;
-  onChange: (next: Filter) => void;
-}) {
-  return (
-    <div role="radiogroup" aria-label="Filtrar movimientos" className="flex gap-2">
-      {FILTERS.map((f) => {
-        const selected = f.id === value;
-        return (
-          <button
-            key={f.id}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(f.id)}
-            className={cn(
-              "inline-flex h-11 items-center justify-center rounded-full border px-4 text-[13px] font-semibold transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              selected
-                ? "border-foreground bg-foreground text-background shadow-sm"
-                : "border-border bg-transparent text-foreground hover:bg-muted",
-            )}
-          >
-            {f.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // --- Page -----------------------------------------------------------------
 export default function MovementsPage() {
   return (
@@ -530,16 +524,68 @@ function MovementsContent() {
   const { currency } = useActiveCurrency();
   const params = useSearchParams();
 
+  // Inicialización desde URL — todos los filtros son shareables /
+  // bookmarkables. CategoryDrillDownSheet y otros call sites pueden
+  // deep-linkear con ?categoryId=X&period=mes y la pagina arranca ya
+  // filtrada.
   const initialFilter: Filter = (() => {
     const f = params?.get("filter");
     if (f === "gastos") return "gastos";
     if (f === "ingresos") return "ingresos";
+    if (f === "transferencias") return "transferencias";
     return "todo";
   })();
+  const initialPeriodId: PeriodId = (() => {
+    const p = params?.get("period");
+    if (
+      p === "hoy" ||
+      p === "semana" ||
+      p === "mes" ||
+      p === "mes-anterior" ||
+      p === "30d" ||
+      p === "90d" ||
+      p === "todo" ||
+      p === "custom"
+    )
+      return p;
+    return "mes";
+  })();
+  const initialCustomRange: PeriodRange = {
+    fromISO: params?.get("from") ?? null,
+    toISO: params?.get("to") ?? null,
+  };
+  const initialCategoryId = params?.get("categoryId") ?? null;
+  const initialCategoryLabel = params?.get("categoryLabel") ?? null;
+  const initialAccountId = params?.get("accountId") ?? null;
+  const initialAccountLabel = params?.get("accountLabel") ?? null;
+
   const [filter, setFilter] = React.useState<Filter>(initialFilter);
+  const [periodId, setPeriodId] = React.useState<PeriodId>(initialPeriodId);
+  const [customRange, setCustomRange] = React.useState<PeriodRange>(initialCustomRange);
+  const [categoryId, setCategoryId] = React.useState<string | null>(initialCategoryId);
+  const [categoryLabel, setCategoryLabel] = React.useState<string | null>(initialCategoryLabel);
+  const [accountId, setAccountId] = React.useState<string | null>(initialAccountId);
+  const [accountLabel, setAccountLabel] = React.useState<string | null>(initialAccountLabel);
+
+  // Sheets — lazy mounted on first open via the dynamic imports above.
+  const [periodSheetOpen, setPeriodSheetOpen] = React.useState(false);
+  const [categorySheetOpen, setCategorySheetOpen] = React.useState(false);
+  const [accountSheetOpen, setAccountSheetOpen] = React.useState(false);
 
   const [isSearching, setIsSearching] = React.useState(false);
   const [query, setQuery] = React.useState("");
+
+  // Derivados de los filtros temporales — solo el rango ISO se envia al
+  // server; el id + label viven en URL para preservar la elección al
+  // recargar.
+  const periodRange = React.useMemo(
+    () => computeRange(periodId, customRange),
+    [periodId, customRange],
+  );
+  const periodLabelStr = React.useMemo(
+    () => formatPeriodLabel(periodId, periodRange),
+    [periodId, periodRange],
+  );
 
   // Live data state.
   const [rows, setRows] = React.useState<TransactionView[]>([]);
@@ -572,7 +618,16 @@ function MovementsContent() {
         // joined-payload size by 60% and the user only sees the top of
         // the list anyway. `loadMore()` keeps 50 to make scrolling cheap
         // once the page is interactive.
-        const result = await listTransactionsByCurrency({ currency, limit: 20 });
+        //
+        // El rango temporal aplicado server-side viene de periodRange.
+        // null en cualquiera de los dos lados desactiva ese borde de la
+        // query (Todo = sin bordes).
+        const result = await listTransactionsByCurrency({
+          currency,
+          limit: 20,
+          fromISO: periodRange.fromISO ?? undefined,
+          toISO: periodRange.toISO ?? undefined,
+        });
         if (cancelled) return;
         setRows(result.rows);
         setNextCursor(result.nextCursor);
@@ -587,7 +642,7 @@ function MovementsContent() {
     return () => {
       cancelled = true;
     };
-  }, [currency, reloadKey]);
+  }, [currency, periodRange.fromISO, periodRange.toISO, reloadKey]);
 
   // Live-update bridge — /movements does NOT subscribe a Supabase
   // realtime channel (por diseño: realtime vive solo en /dashboard
@@ -616,7 +671,12 @@ function MovementsContent() {
       if (now - lastRefetchAt < COALESCE_MS) return;
       lastRefetchAt = now;
       try {
-        const result = await listTransactionsByCurrency({ currency, limit: 20 });
+        const result = await listTransactionsByCurrency({
+          currency,
+          limit: 20,
+          fromISO: periodRange.fromISO ?? undefined,
+          toISO: periodRange.toISO ?? undefined,
+        });
         if (cancelled) return;
         setRows((prev) => {
           const byId = new Map(prev.map((r) => [r.id, r]));
@@ -646,7 +706,7 @@ function MovementsContent() {
       globalThis.removeEventListener(TX_UPSERTED_EVENT, handler);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [currency]);
+  }, [currency, periodRange.fromISO, periodRange.toISO]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -656,6 +716,8 @@ function MovementsContent() {
         currency,
         cursor: nextCursor,
         limit: 50,
+        fromISO: periodRange.fromISO ?? undefined,
+        toISO: periodRange.toISO ?? undefined,
       });
       setRows((prev) => [...prev, ...result.rows]);
       setNextCursor(result.nextCursor);
@@ -759,15 +821,32 @@ function MovementsContent() {
     await archiveTx(tx);
   }
 
-  // Filter chain composes the chip filter with the free-text search.
+  // Filter chain — orden de aplicación pensado para minimizar el costo:
+  //   1. Tipo (kind / transferencia) — barato, descarta la mitad o más.
+  //   2. Categoría — exact match en uuid.
+  //   3. Cuenta — exact match en uuid.
+  //   4. Transferencias chip — solo `transferGroupId !== null`.
+  //   5. Búsqueda de texto — la más cara, va al final.
   const filtered = React.useMemo(() => {
-    let list: TransactionView[] = rows.filter((t) =>
-      filter === "todo"
-        ? true
-        : filter === "gastos"
-          ? t.kind === "expense"
-          : t.kind === "income",
-    );
+    let list: TransactionView[] = rows;
+
+    if (filter === "transferencias") {
+      list = list.filter((t) => t.transferGroupId !== null);
+    } else if (filter === "gastos") {
+      // Excluimos transferencias del bucket "gastos" — antes se mezclaban
+      // y el user veía la pierna expense de cada transferencia como un
+      // gasto normal, lo que distorsionaba el KPI de gastos.
+      list = list.filter((t) => t.kind === "expense" && t.transferGroupId === null);
+    } else if (filter === "ingresos") {
+      list = list.filter((t) => t.kind === "income" && t.transferGroupId === null);
+    }
+
+    if (categoryId !== null) {
+      list = list.filter((t) => t.categoryId === categoryId);
+    }
+    if (accountId !== null) {
+      list = list.filter((t) => t.accountId === accountId);
+    }
 
     const q = query.trim().toLowerCase();
     if (q) {
@@ -781,7 +860,52 @@ function MovementsContent() {
     }
 
     return list;
-  }, [rows, filter, query]);
+  }, [rows, filter, categoryId, accountId, query]);
+
+  // KPIs sobre la lista filtrada — ingresos, gastos, balance. Las
+  // transferencias se excluyen del cálculo: cada par suma 0 al neto y
+  // mostrar la pierna expense como "gasto" sería engañoso.
+  const kpis = React.useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    for (const t of filtered) {
+      if (t.transferGroupId !== null) continue;
+      if (t.kind === "income") income += t.amount;
+      else expense += t.amount;
+    }
+    return { income, expense, count: filtered.length };
+  }, [filtered]);
+
+  // URL sync — escribe los filtros activos a query params en cada cambio.
+  // useSearchParams da un snapshot inmutable; usamos URLSearchParams para
+  // construir el set nuevo. router.replace evita acumular history entries
+  // (cada cambio de filtro no debería ser un back-button stop).
+  React.useEffect(() => {
+    const next = new URLSearchParams();
+    if (filter !== "todo") next.set("filter", filter);
+    if (periodId !== "mes") next.set("period", periodId);
+    if (periodId === "custom") {
+      if (customRange.fromISO) next.set("from", customRange.fromISO);
+      if (customRange.toISO) next.set("to", customRange.toISO);
+    }
+    if (categoryId) next.set("categoryId", categoryId);
+    if (categoryLabel) next.set("categoryLabel", categoryLabel);
+    if (accountId) next.set("accountId", accountId);
+    if (accountLabel) next.set("accountLabel", accountLabel);
+    const qs = next.toString();
+    const path = qs ? `/movements?${qs}` : "/movements";
+    router.replace(path, { scroll: false });
+  }, [
+    filter,
+    periodId,
+    customRange.fromISO,
+    customRange.toISO,
+    categoryId,
+    categoryLabel,
+    accountId,
+    accountLabel,
+    router,
+  ]);
 
   const groups = React.useMemo(() => groupByDay(filtered), [filtered]);
 
@@ -869,9 +993,32 @@ function MovementsContent() {
           />
         )}
 
-        {/* Filter chips */}
+        {/* Filter chips + dropdown pills + KPI summary — todo el cabezal
+            analitico vive en MovementsFiltersBar. El padre solo le pasa
+            estado controlado y callbacks; el bar no toca data ni router. */}
         <div className="px-4 pb-3 pt-4 md:px-0 md:pt-6 md:pb-4">
-          <FilterChips value={filter} onChange={setFilter} />
+          <MovementsFiltersBar
+            filter={filter}
+            onFilterChange={setFilter}
+            periodLabel={periodLabelStr}
+            onOpenPeriod={() => setPeriodSheetOpen(true)}
+            categoryLabel={categoryLabel}
+            onOpenCategory={() => setCategorySheetOpen(true)}
+            onClearCategory={() => {
+              setCategoryId(null);
+              setCategoryLabel(null);
+            }}
+            accountLabel={accountLabel}
+            onOpenAccount={() => setAccountSheetOpen(true)}
+            onClearAccount={() => {
+              setAccountId(null);
+              setAccountLabel(null);
+            }}
+            totalIncome={kpis.income}
+            totalExpense={kpis.expense}
+            totalCount={kpis.count}
+            currency={currency}
+          />
         </div>
 
         {/* Content states: loading / error / empty / no-results / list */}
@@ -960,6 +1107,43 @@ function MovementsContent() {
           void archiveTx(tx);
         }}
       />
+
+      {/* Filter sheets — lazy mounted (ssr:false). Solo se cargan tras
+          el primer tap en su pill correspondiente. */}
+      {periodSheetOpen ? (
+        <PeriodPickerSheet
+          open={periodSheetOpen}
+          onOpenChange={setPeriodSheetOpen}
+          value={periodId}
+          customRange={customRange}
+          onSelect={(sel) => {
+            setPeriodId(sel.id);
+            if (sel.id === "custom") setCustomRange(sel.range);
+          }}
+        />
+      ) : null}
+      {categorySheetOpen ? (
+        <CategoryFilterPicker
+          open={categorySheetOpen}
+          onOpenChange={setCategorySheetOpen}
+          value={categoryId}
+          onSelect={(id, name) => {
+            setCategoryId(id);
+            setCategoryLabel(name);
+          }}
+        />
+      ) : null}
+      {accountSheetOpen ? (
+        <AccountFilterPicker
+          open={accountSheetOpen}
+          onOpenChange={setAccountSheetOpen}
+          value={accountId}
+          onSelect={(id, label) => {
+            setAccountId(id);
+            setAccountLabel(label);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

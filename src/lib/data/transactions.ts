@@ -278,6 +278,15 @@ export async function listTransactionsByCurrency(opts: {
   currency: Currency;
   cursor?: ListCursor;
   limit?: number;
+  /**
+   * Optional inclusive lower bound for `occurred_at`. ISO timestamp.
+   * /movements usa esto para acotar la lista al rango que el user
+   * eligio en el PeriodPicker. Compatible con cursor — el cursor solo
+   * angosta el upper edge dentro de la ventana.
+   */
+  fromISO?: string;
+  /** Optional exclusive upper bound for `occurred_at`. ISO timestamp. */
+  toISO?: string;
 }): Promise<ListResult> {
   const limit = opts.limit ?? 50;
   const supabase = createSupabaseClient();
@@ -290,6 +299,13 @@ export async function listTransactionsByCurrency(opts: {
     .order("occurred_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit + 1);
+
+  if (opts.fromISO) {
+    query = query.gte("occurred_at", opts.fromISO);
+  }
+  if (opts.toISO) {
+    query = query.lt("occurred_at", opts.toISO);
+  }
 
   if (opts.cursor) {
     // Strict tuple inequality: occurred_at < cursor.occurredAt
