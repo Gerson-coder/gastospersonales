@@ -84,6 +84,11 @@ export type Database = {
           type: AccountType;
           currency: Currency;
           subtype: AccountSubtype | null;
+          // Added in 00027 — flag que el RLS policy de accounts mira
+          // para decidir si un partner puede ver la cuenta. Se setea
+          // automaticamente en accept_account_invitation y se
+          // desetea en revoke/leave_account_partnership.
+          shared_with_partner: boolean;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -418,6 +423,49 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["commitments"]["Row"]>;
         Relationships: [];
       };
+      // ─── Added by migration 00027_account_partnerships.sql ────────
+      account_partnerships: {
+        Row: {
+          account_id: string;
+          partner_user_id: string;
+          invited_at: string;
+          joined_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["account_partnerships"]["Row"]
+        > & {
+          account_id: string;
+          partner_user_id: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["account_partnerships"]["Row"]
+        >;
+        Relationships: [];
+      };
+      account_invitations: {
+        Row: {
+          id: string;
+          account_id: string;
+          invited_by: string;
+          code: string;
+          created_at: string;
+          expires_at: string;
+          accepted_by: string | null;
+          accepted_at: string | null;
+          revoked_at: string | null;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["account_invitations"]["Row"]
+        > & {
+          account_id: string;
+          invited_by: string;
+          code: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["account_invitations"]["Row"]
+        >;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -427,6 +475,19 @@ export type Database = {
           p_limit?: number;
         };
         Returns: Database["public"]["Tables"]["merchants"]["Row"][];
+      };
+      // ─── Added by migration 00027_account_partnerships.sql ────────
+      accept_account_invitation: {
+        Args: { p_code: string };
+        Returns: string;
+      };
+      revoke_account_partnership: {
+        Args: { p_account_id: string };
+        Returns: void;
+      };
+      leave_account_partnership: {
+        Args: { p_account_id: string };
+        Returns: void;
       };
     };
     Enums: Record<string, never>;
