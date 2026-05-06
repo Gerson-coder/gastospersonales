@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { AppHeader } from "@/components/kane/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -124,6 +125,16 @@ function formatRelativeDue(dueDate: string): string {
     .replace(/\./g, "");
 }
 
+/** Fecha en formato largo legible: "12 de mayo". Usada en el modal
+ *  de exito para que el user reconozca la fecha que fijo. */
+function formatDueLong(dueDate: string): string {
+  const [y, m, d] = dueDate.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "long" })
+    .format(date)
+    .replace(/\./g, "");
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────
 
 export default function CommitmentsPage(): React.ReactElement {
@@ -135,6 +146,16 @@ export default function CommitmentsPage(): React.ReactElement {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CommitmentView | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Drawer de confirmacion de exito (reemplaza el toast verde — el
+  // user prefiere un acknowledgement explicito vs un toast que
+  // desaparece. Mismo patron que ya se usa en /settings para
+  // resets y abonos).
+  const [successOpen, setSuccessOpen] = React.useState(false);
+  const [successTitle, setSuccessTitle] = React.useState<string>("");
+  const [successDescription, setSuccessDescription] = React.useState<
+    string | null
+  >(null);
 
   // Mostrar/ocultar la seccion de completados (collapsed por default
   // — son ruido visual cuando hay muchos).
@@ -202,15 +223,26 @@ export default function CommitmentsPage(): React.ReactElement {
   async function handleSubmit(draft: CommitmentDraft) {
     setSubmitting(true);
     try {
+      const isUpdate = editing !== null;
       if (editing) {
         await updateCommitment(editing.id, draft);
-        toast.success("Compromiso actualizado.");
       } else {
         await createCommitment(draft);
-        toast.success("Compromiso creado.");
       }
       setFormOpen(false);
       setEditing(null);
+      // Acknowledgement modal — reemplaza el toast.success verde.
+      // Mismo lenguaje que /settings (resets + abonos): drawer con
+      // check verde + titulo + boton "Listo".
+      setSuccessTitle(
+        isUpdate ? "Compromiso actualizado" : "Compromiso creado",
+      );
+      setSuccessDescription(
+        isUpdate
+          ? "Los cambios ya quedaron guardados."
+          : `${draft.title} quedó agendado para el ${formatDueLong(draft.dueDate)}.`,
+      );
+      setSuccessOpen(true);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "No pudimos guardar el compromiso.",
@@ -223,6 +255,10 @@ export default function CommitmentsPage(): React.ReactElement {
   async function handleMarkCompleted(c: CommitmentView) {
     try {
       await markCompleted(c.id);
+      // markCompleted es un "tap rapido" — un toast efimero rinde
+      // mejor que abrir un drawer cada vez. El feedback visual ya
+      // viene de la lista que se reordena (el row sale de Pronto y
+      // entra a Completados / o avanza al proximo periodo).
       toast.success(
         c.recurrence === "none"
           ? "Marcado como completado."
@@ -399,6 +435,17 @@ export default function CommitmentsPage(): React.ReactElement {
           onSubmit={handleSubmit}
         />
       )}
+
+      {/* Acknowledgement drawer — sustituye al toast.success verde
+          que aparecía al crear o actualizar. Mismo lenguaje visual
+          que /settings (resets, abonos). */}
+      <ActionResultDrawer
+        open={successOpen}
+        onOpenChange={setSuccessOpen}
+        title={successTitle}
+        description={successDescription}
+        tone="success"
+      />
     </div>
   );
 }
