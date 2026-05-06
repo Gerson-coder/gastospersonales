@@ -64,3 +64,50 @@ export function subscribeToUserTable<T extends PublicTables>(
     .subscribe();
   return channel;
 }
+
+/**
+ * Subscribe to realtime changes on a table SIN filter de user_id —
+ * la RLS del table decide que rows el subscriber recibe. Util para
+ * tablas como `transactions` que tras 00027 tienen RLS extendida
+ * (mis rows + rows en cuentas compartidas) y un filter por user_id
+ * dejaria afuera los events del partner.
+ *
+ * Tradeoff vs subscribeToUserTable:
+ *   + cubre cuentas compartidas (no se necesita conocer las cuentas
+ *     antes de subscribirse).
+ *   - el server evalua RLS por cada event en lugar de filtrar por
+ *     columna — mas costoso si hay mucha actividad. OK para un app
+ *     de finanzas personal en Pro plan.
+ *
+ * Lo usamos solo en /dashboard para transactions; otros tables (e.g.
+ * accounts events) siguen usando el filter por user_id.
+ */
+export function subscribeToTableRlsOnly<T extends PublicTables>(
+  table: T,
+  channelKey: string,
+  onChange: (payload: ChangePayload<T>) => void,
+): RealtimeChannel {
+  const supabase = createClient();
+  const channel = supabase
+    .channel(`rls-${channelKey}-${table as string}`)
+    .on<RowOf<T> & Record<string, unknown>>(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: table as string,
+        // Sin filter — RLS hace el job.
+      },
+      (payload: RealtimePostgresChangesPayload<RowOf<T> & Record<string, unknown>>) => {
+        const isEmpty = (v: unknown): boolean =>
+          typeof v === "object" && v !== null && Object.keys(v).length === 0;
+        onChange({
+          event: payload.eventType,
+          new: isEmpty(payload.new) ? null : (payload.new as RowOf<T>),
+          old: isEmpty(payload.old) ? null : (payload.old as RowOf<T>),
+        });
+      },
+    )
+    .subscribe();
+  return channel;
+}

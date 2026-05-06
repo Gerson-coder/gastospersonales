@@ -27,9 +27,12 @@ import {
   Camera,
   Check,
   ChevronDown,
+  Heart,
   Lock,
   ShieldCheck,
   Sparkles,
+  Users2,
+  Wifi,
 } from "lucide-react";
 
 import { APP_NAME } from "@/lib/brand";
@@ -134,6 +137,7 @@ export default function LandingPage() {
           <Hero />
           <BankStrip />
           <Pillars />
+          <CoupleSection />
           <HowItWorks />
           <SecurityBlock />
           <FinalCta />
@@ -518,6 +522,196 @@ function Pillars() {
         ))}
       </div>
     </section>
+  );
+}
+
+// ─── Couple section — diferenciador #1 vs apps gringas ──────────────────
+// "Manejen su plata juntos." Cuenta compartida en tiempo real con
+// privacidad selectiva — el feature que usa Splitwise + Yape + el
+// excel del whatsapp de la pareja todo junto, en un solo lado.
+function CoupleSection() {
+  const features = [
+    {
+      icon: Wifi,
+      title: "En tiempo real",
+      body:
+        "Cada vez que tu pareja paga algo, lo ves al instante en tu dashboard. Sin refrescar, sin enviar capturas.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Privacidad selectiva",
+      body:
+        "Comparten solo las cuentas que ustedes elijan (la de la casa). Las cuentas personales siguen siendo solo tuyas.",
+    },
+    {
+      icon: Heart,
+      title: "Sin drama al separarse",
+      body:
+        "Si se acaba o cambian de planes, retiras a tu pareja con un toque. Las transacciones quedan donde correspondan.",
+    },
+  ];
+
+  return (
+    <section
+      id="pareja"
+      className="relative scroll-mt-20 border-y border-white/[0.06]"
+    >
+      {/* Backdrop sutil con un halo emerald del lado derecho — el
+          mismo lenguaje del hero. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        <div
+          className="absolute right-[-15%] top-1/2 h-[400px] w-[400px] -translate-y-1/2 rounded-full opacity-30"
+          style={{
+            background:
+              "radial-gradient(closest-side, oklch(0.78 0.16 162 / 0.4), transparent 70%)",
+          }}
+        />
+      </div>
+
+      <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 gap-12 px-6 py-20 lg:grid-cols-[1.15fr_1fr] lg:items-center">
+        {/* Left — copy + features */}
+        <div>
+          <Eyebrow>Cuenta compartida</Eyebrow>
+          <h2 className="mt-4 text-[34px] font-bold leading-[1.05] tracking-tight text-white md:text-[44px]">
+            Manejen su plata{" "}
+            <span className="text-primary">juntos</span>.
+            <br />
+            Sin Excel. Sin spam de WhatsApp.
+          </h2>
+          <p className="mt-5 max-w-xl text-[15.5px] leading-relaxed text-white/65">
+            Invita a tu pareja a una cuenta compartida y verán los gastos del
+            hogar al instante en sus dos celulares. Cada uno registra desde
+            su lado; el balance se actualiza solo.
+          </p>
+
+          <ul className="mt-8 space-y-4">
+            {features.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="flex gap-3">
+                <span
+                  aria-hidden
+                  className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"
+                >
+                  <Icon size={16} aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold text-white">
+                    {title}
+                  </h3>
+                  <p className="mt-0.5 text-[13.5px] leading-relaxed text-white/60">
+                    {body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-9">
+            <Link
+              href="/register"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_0_0_1px_oklch(0.78_0.16_162/0.4),0_8px_24px_oklch(0.78_0.16_162/0.18)] transition-shadow hover:shadow-[0_0_0_1px_oklch(0.78_0.16_162/0.55),0_12px_32px_oklch(0.78_0.16_162/0.28)]"
+            >
+              Inviten a su pareja gratis
+              <ArrowRight size={15} aria-hidden />
+            </Link>
+          </div>
+        </div>
+
+        {/* Right — visual: 2 phones connected */}
+        <CoupleSync />
+      </div>
+    </section>
+  );
+}
+
+/** Visual decorativo: 2 phones lado a lado con un row sincronizado
+ *  entre ellos + linea dashed verde que connecta. Sin animaciones
+ *  fuera del hover — la idea es transmitir "los dos ven lo mismo
+ *  al instante" en un screenshot. */
+function CoupleSync() {
+  return (
+    <div className="relative aspect-[5/4] w-full max-w-md mx-auto">
+      {/* Pulse del partner */}
+      <span
+        aria-hidden
+        className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+      >
+        <span className="absolute inset-0 animate-ping rounded-full bg-primary/40" />
+      </span>
+
+      {/* Mini phone A (left) */}
+      <article className="absolute left-0 top-1/2 w-[55%] -translate-y-1/2 -rotate-2 rounded-[28px] border border-white/[0.08] bg-[#0A0A0A] p-3 shadow-2xl">
+        <div className="rounded-2xl border border-white/[0.05] bg-black p-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-[9px] text-white/50">
+            <Users2 size={10} aria-hidden />
+            <span>Casa BCP · Compartida</span>
+          </div>
+          <div className="space-y-1.5 mt-2">
+            <PhoneRow initial="T" label="Tambo" amount="S/ 12.40" />
+            <PhoneRow initial="S" label="Sedapal" amount="S/ 89.50" />
+            <PhoneRow
+              initial="P"
+              label="Plaza Vea"
+              amount="S/ 142.00"
+              fresh
+            />
+          </div>
+        </div>
+        <p className="mt-2 text-center text-[9.5px] text-white/40">Tú</p>
+      </article>
+
+      {/* Mini phone B (right) */}
+      <article className="absolute right-0 top-1/2 w-[55%] -translate-y-1/2 rotate-2 rounded-[28px] border border-white/[0.08] bg-[#0A0A0A] p-3 shadow-2xl">
+        <div className="rounded-2xl border border-white/[0.05] bg-black p-3 space-y-2">
+          <div className="flex items-center gap-1.5 text-[9px] text-white/50">
+            <Users2 size={10} aria-hidden />
+            <span>Casa BCP · Compartida</span>
+          </div>
+          <div className="space-y-1.5 mt-2">
+            <PhoneRow initial="T" label="Tambo" amount="S/ 12.40" />
+            <PhoneRow initial="S" label="Sedapal" amount="S/ 89.50" />
+            <PhoneRow
+              initial="P"
+              label="Plaza Vea"
+              amount="S/ 142.00"
+              fresh
+            />
+          </div>
+        </div>
+        <p className="mt-2 text-center text-[9.5px] text-white/40">Tu pareja</p>
+      </article>
+    </div>
+  );
+}
+
+function PhoneRow({
+  initial,
+  label,
+  amount,
+  fresh,
+}: {
+  initial: string;
+  label: string;
+  amount: string;
+  fresh?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-md px-1.5 py-1.5 transition-colors",
+        fresh ? "bg-primary/10 border border-primary/30" : "",
+      )}
+    >
+      <span className="flex h-5 w-5 items-center justify-center rounded-md bg-white/[0.07] text-[9px] font-bold text-white/70">
+        {initial}
+      </span>
+      <span className="flex-1 truncate text-[10px] text-white/80">{label}</span>
+      <span className="text-[10px] font-bold tabular-nums text-rose-300">
+        {amount}
+      </span>
+    </div>
   );
 }
 

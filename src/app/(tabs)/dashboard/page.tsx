@@ -278,6 +278,20 @@ function formatMoney(amount: number, currency: Currency = "PEN"): string {
   }).format(amount);
 }
 
+/** Helper para los toasts de cuenta compartida (Fase 5). Recibe
+ *  amount_minor y currency directo del row de la DB y devuelve algo
+ *  como "S/ 89.50". No usamos formatMoney() arriba porque ese pone
+ *  "PEN" o "USD" como prefix con Intl currency formatting; aca
+ *  queremos el formato corto del resto de la app. */
+function formatPartnerAmount(amountMinor: number, currency: Currency): string {
+  const symbol = currency === "USD" ? "$" : "S/";
+  const formatted = new Intl.NumberFormat("es-PE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amountMinor / 100));
+  return `${symbol} ${formatted}`;
+}
+
 // ─── Category color ladder ────────────────────────────────────────────────
 // Used to assign a stable color per category bucket in donut + bar charts.
 const CHART_COLOR_LADDER = [
@@ -1374,6 +1388,32 @@ export default function DashboardPage() {
   useTransactionsRealtime({
     enabled: SUPABASE_ENABLED,
     onEvent: window.refetch,
+    // Fase 5: cuando el partner toca una tx en una cuenta compartida,
+    // mostramos un toast contextual ademas del refetch silencioso.
+    // No bloqueante, no urgente — solo le da al user senal de que
+    // su pareja esta moviendose en la cuenta.
+    onPartnerEvent: (payload) => {
+      const row = payload.new ?? payload.old;
+      if (!row) return;
+      const isMyCurrency = row.currency === currency;
+      if (!isMyCurrency) return; // si el user esta viendo otra moneda, no molestar.
+      const amountStr = formatPartnerAmount(row.amount_minor, row.currency);
+      if (payload.event === "INSERT") {
+        toast(`Tu pareja registró ${amountStr}.`, { duration: 4500 });
+      } else if (
+        payload.event === "UPDATE" &&
+        payload.old?.archived_at === null &&
+        payload.new?.archived_at !== null
+      ) {
+        toast(`Tu pareja archivó un movimiento de ${amountStr}.`, {
+          duration: 4500,
+        });
+      } else if (payload.event === "UPDATE") {
+        toast(`Tu pareja editó un movimiento de ${amountStr}.`, {
+          duration: 3500,
+        });
+      }
+    },
     debounceMs: 250,
   });
 
