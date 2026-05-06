@@ -313,10 +313,23 @@ export async function updateCommitment(
 ): Promise<CommitmentView> {
   const supabase = createSupabaseClient();
 
-  // Para reusar el validador, si el patch trae todos los campos del
-  // draft, lo pasamos por toInsertPayload. Sino, construimos el update
-  // manualmente con los pocos campos que vinieron.
-  const updates: Record<string, unknown> = {};
+  // Tipo explicito (no Record<string, unknown>) para que el cliente
+  // tipado de postgrest-js v2.45+ acepte el .update — sino tipa el
+  // payload como never y rompe el build.
+  const updates: {
+    kind?: CommitmentKind;
+    title?: string;
+    amount_minor?: number;
+    currency?: Currency;
+    due_date?: string;
+    recurrence?: CommitmentRecurrence;
+    status?: CommitmentStatus;
+    category_id?: string | null;
+    account_id?: string | null;
+    counterparty?: string | null;
+    notes?: string | null;
+    remind_days_before?: number;
+  } = {};
 
   if (patch.kind !== undefined) updates.kind = patch.kind;
   if (patch.title !== undefined) {
