@@ -489,6 +489,15 @@ export type Database = {
         Args: { p_account_id: string };
         Returns: void;
       };
+      // ─── Added by migration 00028_invitation_preview.sql ─────────
+      preview_account_invitation: {
+        Args: { p_code: string };
+        Returns: {
+          account_name: string;
+          inviter_name: string;
+          expires_at: string;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
