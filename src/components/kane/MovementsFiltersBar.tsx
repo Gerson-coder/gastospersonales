@@ -64,18 +64,44 @@ export type MovementsFiltersBarProps = {
   currency: Currency;
 };
 
-function formatAmount(amount: number, currency: Currency): string {
+/**
+ * Formato compacto para que la celda KPI quepa en una sola linea aun
+ * cuando los montos crecen. Estrategia:
+ *
+ *   - >= 1,000,000 -> "S/ 1.4M" (1 decimal). Si >= 100M, sin decimales.
+ *   - >= 10,000    -> "S/ 10.2K" (1 decimal). Si >= 100K, sin decimales.
+ *   - <  10,000    -> "S/ 9,999.99" (full, dos decimales).
+ *
+ * El umbral 10K para empezar a abreviar matchea el viewport mobile
+ * angosto donde la celda mide ~110px y "S/ 12,345.67" empuja a
+ * wrap. Por debajo de 10K caben 6 chars (incluyendo separadores),
+ * suficiente para rendear completo.
+ */
+function formatAmountCompact(amount: number, currency: Currency): string {
   const symbol = currency === "USD" ? "$" : "S/";
+  const abs = Math.abs(amount);
+
+  if (abs >= 1_000_000) {
+    const value = abs / 1_000_000;
+    return `${symbol} ${value.toFixed(value >= 100 ? 0 : 1)}M`;
+  }
+  if (abs >= 10_000) {
+    const value = abs / 1_000;
+    return `${symbol} ${value.toFixed(value >= 100 ? 0 : 1)}K`;
+  }
   const formatted = new Intl.NumberFormat("es-PE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
+  }).format(abs);
   return `${symbol} ${formatted}`;
 }
 
-function formatSignedAmount(amount: number, currency: Currency): string {
+function formatSignedAmountCompact(
+  amount: number,
+  currency: Currency,
+): string {
   const sign = amount > 0 ? "+ " : amount < 0 ? "− " : "";
-  return `${sign}${formatAmount(amount, currency)}`;
+  return `${sign}${formatAmountCompact(amount, currency)}`;
 }
 
 export function MovementsFiltersBar({
@@ -99,12 +125,14 @@ export function MovementsFiltersBar({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Fila 1 — chips de tipo. Scroll horizontal en mobile estrecho
-          para que "Transferencias" no fuerce overflow del viewport. */}
+      {/* Fila 1 — chips de tipo. flex-wrap permite que "Transferencias"
+          baje a una segunda linea en viewports angostos en lugar de
+          desbordar el ancho de la pagina. min-w-0 sobre el wrapper para
+          que el flex-col padre no le pase ancho intrinseco-content. */}
       <div
         role="radiogroup"
         aria-label="Filtrar por tipo de movimiento"
-        className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex flex-wrap gap-2 min-w-0"
       >
         {FILTER_CHIPS.map((c) => {
           const selected = c.id === filter;
@@ -129,11 +157,10 @@ export function MovementsFiltersBar({
         })}
       </div>
 
-      {/* Fila 2 — pills-dropdown. Estilo más liviano que los chips de
-          arriba para que la jerarquia se lea: tipo > corte. Cuando un
-          filtro tiene valor activo, sub-icon X aparece para limpiar
-          en un solo tap sin re-abrir el sheet. */}
-      <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Fila 2 — pills-dropdown. Mismo flex-wrap para que cuando los
+          labels crecen (ej: "Mayo 2026" + "Servicios" + "BCP Sueldo ·
+          Sueldo") no fuercen scroll horizontal del viewport. */}
+      <div className="flex flex-wrap gap-2 min-w-0">
         <DropdownPill
           icon={<Calendar size={14} aria-hidden />}
           label={periodLabel}
@@ -250,13 +277,16 @@ type KpiCellProps = {
 function KpiCell({ label, amount, currency, tone, signed }: KpiCellProps) {
   const isZero = amount === 0;
   return (
-    <div className="px-4 py-3.5 text-left">
-      <div className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="min-w-0 px-3 py-3.5 text-left">
+      <div className="truncate text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div
         className={cn(
-          "mt-1 text-[15px] font-bold leading-tight tabular-nums",
+          // truncate + whitespace-nowrap garantizan 1 sola linea aun
+          // cuando los montos llegan al limite del formato compacto
+          // ("S/ 999.9K", "S/ 1.4M") en celdas estrechas.
+          "mt-1 truncate whitespace-nowrap text-[15px] font-bold leading-tight tabular-nums",
           isZero
             ? "text-muted-foreground"
             : tone === "positive"
@@ -267,7 +297,9 @@ function KpiCell({ label, amount, currency, tone, signed }: KpiCellProps) {
         )}
         style={TNUM_STYLE}
       >
-        {signed ? formatSignedAmount(amount, currency) : formatAmount(amount, currency)}
+        {signed
+          ? formatSignedAmountCompact(amount, currency)
+          : formatAmountCompact(amount, currency)}
       </div>
     </div>
   );
