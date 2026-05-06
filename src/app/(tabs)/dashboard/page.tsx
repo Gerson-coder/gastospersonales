@@ -74,6 +74,10 @@ import {
   IncomeSubline,
 } from "@/components/kane/MobileTodayCard";
 import { CategoryDonut, type CategoryDonutItem } from "@/components/kane/CategoryDonut";
+import {
+  CategoryDrillDownSheet,
+  type CategoryDrillDownRow,
+} from "@/components/kane/CategoryDrillDownSheet";
 import { AdvisorCard } from "@/components/kane/AdvisorCard";
 import { ThemeToggle } from "@/components/kane/ThemeToggle";
 import { ProfileMenu } from "@/components/kane/ProfileMenu";
@@ -1839,6 +1843,159 @@ export default function DashboardPage() {
     }));
   }, [isDemo, spent, window.byCategoryCurrentMonth]);
 
+  // ── CategoryDonut drill-down ─────────────────────────────────────────
+  // Cuando el user tap en una fila de la leyenda (o un slice del donut),
+  // guardamos el id de la categoría aquí. El sheet lee este estado +
+  // recompone los buckets de comercios en memoria — sin queries nuevos a
+  // Supabase, porque el hook ya tiene los rows del window completo.
+  const [drillCategoryId, setDrillCategoryId] = React.useState<string | null>(
+    null,
+  );
+
+  // Datos del drill-down — se derivan solo cuando hay una categoría
+  // abierta. Mientras `drillCategoryId` sea null no recalculamos los
+  // buckets, lo que mantiene el cost de scroll del dashboard intacto.
+  // En modo demo (sin Supabase) la función devuelve buckets sintéticos.
+  const drillData = React.useMemo(() => {
+    if (!drillCategoryId) return null;
+    const item = donutItems.find((d) => d.id === drillCategoryId);
+    if (!item) return null;
+
+    // Demo path — datos suficientes para hacer click y ver el shape del
+    // sheet aun sin Supabase. La landing screenshot luce más viva.
+    if (isDemo) {
+      const demoRows: CategoryDrillDownRow[] = [
+        {
+          merchantId: "demo-1",
+          merchantName: "Sedapal",
+          logoSlug: null,
+          count: 1,
+          amount: item.amount * 0.32,
+          lastOccurredAt: new Date().toISOString(),
+        },
+        {
+          merchantId: "demo-2",
+          merchantName: "Luz del Sur",
+          logoSlug: null,
+          count: 1,
+          amount: item.amount * 0.41,
+          lastOccurredAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+        },
+        {
+          merchantId: "demo-3",
+          merchantName: "Cálidda",
+          logoSlug: null,
+          count: 1,
+          amount: item.amount * 0.27,
+          lastOccurredAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+        },
+      ];
+      return {
+        categoryName: item.label,
+        categoryColor: item.color,
+        rows: demoRows,
+        totalAmount: item.amount,
+        totalCount: demoRows.reduce((acc, r) => acc + r.count, 0),
+        prevTotalAmount: item.amount * 0.92,
+      };
+    }
+
+    // Bordes del mes actual / mes anterior — derivados con los mismos
+    // helpers que usa el hook internamente. Solo se evalúa cuando el
+    // sheet abre, no en cada render.
+    const now = new Date();
+    const currentMonthStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const prevMonthStart = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+
+    // Sentinel "__uncat__" representa transacciones con category_id null
+    // — el donut las agrupa visualmente como "(sin categoría)". El drill
+    // entonces filtra rows donde categoryId === null.
+    const isUncatBucket = drillCategoryId === "__uncat__";
+    const matchesCategory = (row: TransactionView) =>
+      isUncatBucket
+        ? row.categoryId === null
+        : row.categoryId === drillCategoryId;
+
+    type Bucket = {
+      merchantId: string | null;
+      merchantName: string;
+      logoSlug: string | null;
+      count: number;
+      amount: number;
+      lastOccurredAt: string;
+    };
+    const byMerchant = new Map<string, Bucket>();
+    let totalAmount = 0;
+    let totalCount = 0;
+    let prevTotalAmount = 0;
+    let prevHasData = false;
+
+    for (const row of window.filteredRows) {
+      if (row.kind !== "expense") continue;
+      if (!matchesCategory(row)) continue;
+      const occurred = new Date(row.occurredAt);
+
+      if (occurred >= currentMonthStart) {
+        // Bucket del mes actual.
+        totalAmount += row.amount;
+        totalCount += 1;
+        // Comercios sin merchant_id se agrupan bajo el mismo bucket
+        // sintético "(sin comercio)" — clave reservada para no chocar
+        // con uuids reales.
+        const key = row.merchantId ?? "__no_merchant__";
+        const existing = byMerchant.get(key);
+        if (existing) {
+          existing.count += 1;
+          existing.amount += row.amount;
+          if (row.occurredAt > existing.lastOccurredAt) {
+            existing.lastOccurredAt = row.occurredAt;
+          }
+        } else {
+          byMerchant.set(key, {
+            merchantId: row.merchantId,
+            merchantName: row.merchantName ?? "(sin comercio)",
+            logoSlug: row.merchantLogoSlug,
+            count: 1,
+            amount: row.amount,
+            lastOccurredAt: row.occurredAt,
+          });
+        }
+      } else if (occurred >= prevMonthStart && occurred < currentMonthStart) {
+        prevTotalAmount += row.amount;
+        prevHasData = true;
+      }
+    }
+
+    const rows: CategoryDrillDownRow[] = Array.from(byMerchant.values()).sort(
+      (a, b) => b.amount - a.amount,
+    );
+
+    return {
+      categoryName: item.label,
+      categoryColor: item.color,
+      rows,
+      totalAmount,
+      totalCount,
+      prevTotalAmount: prevHasData ? prevTotalAmount : null,
+    };
+  }, [drillCategoryId, donutItems, isDemo, window.filteredRows]);
+
   // Empty: no rows for the active currency in the entire window. We only
   // show the full-page empty card in this case. If rows exist but the current
   // month is zero we just render the dashboard with zero values + a subtle
@@ -2176,7 +2333,12 @@ export default function DashboardPage() {
                         Ver reporte
                       </Link>
                     </div>
-                    <CategoryDonut items={donutItems} currency={currency} variant="full" />
+                    <CategoryDonut
+                      items={donutItems}
+                      currency={currency}
+                      variant="full"
+                      onItemClick={(it) => setDrillCategoryId(it.id)}
+                    />
                   </div>
 
                   {/* Vas por buen camino — moved here from above the stat
@@ -2381,6 +2543,7 @@ export default function DashboardPage() {
                         items={donutItems}
                         currency={currency}
                         periodLabel="Este mes"
+                        onItemClick={(it) => setDrillCategoryId(it.id)}
                       />
                       <AdvisorCard
                         onTalk={() =>
@@ -2420,6 +2583,26 @@ export default function DashboardPage() {
         onEdit={handleDetailEdit}
         onArchive={(tx) => void handleDetailArchive(tx)}
       />
+
+      {/* Category drill-down sheet — abierto al tappear una fila de
+          la leyenda del CategoryDonut o un slice. Renderiza nada
+          mientras drillData es null (sentinel "no abierto"). */}
+      {drillData ? (
+        <CategoryDrillDownSheet
+          open={drillCategoryId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDrillCategoryId(null);
+          }}
+          categoryName={drillData.categoryName}
+          categoryColor={drillData.categoryColor}
+          periodLabel="Este mes"
+          totalAmount={drillData.totalAmount}
+          totalCount={drillData.totalCount}
+          prevTotalAmount={drillData.prevTotalAmount}
+          rows={drillData.rows}
+          currency={currency}
+        />
+      ) : null}
 
     </div>
   );

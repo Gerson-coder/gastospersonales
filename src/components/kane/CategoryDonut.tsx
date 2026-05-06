@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,13 @@ export interface CategoryDonutProps {
   periodLabel?: string;
   className?: string;
   variant?: "semicircle" | "full"; // default: "semicircle"
+  /**
+   * Cuando se setea, cada fila de la leyenda y cada slice del donut se
+   * convierten en botones que disparan este callback al tap. El padre
+   * decide qué hacer (típicamente abrir un drill-down). Si la fila tiene
+   * id sentinel "__uncat__" la pasamos igual — el padre filtra si quiere.
+   */
+  onItemClick?: (item: CategoryDonutItem) => void;
   /**
    * @deprecated Kept for backwards-compat with callers that still
    * pass it; the chart no longer renders a centre label.
@@ -65,6 +72,7 @@ export function CategoryDonut({
   periodLabel = "Este mes",
   className,
   variant = "semicircle",
+  onItemClick,
 }: CategoryDonutProps) {
   const hasItems = items.length > 0;
   const total = items.reduce((acc, it) => acc + Math.max(0, it.value), 0);
@@ -155,16 +163,47 @@ export function CategoryDonut({
                 {/* Drop a subtle inner stroke so adjacent slices keep their
                     visual separation even with the brand-tinted palette
                     (some hues are too close to read otherwise). */}
-                {slices.map((s) => (
-                  <path
-                    key={s.id}
-                    d={s.d}
-                    fill={s.color}
-                    stroke="var(--card)"
-                    strokeWidth="1"
-                    strokeLinejoin="round"
-                  />
-                ))}
+                {slices.map((s) => {
+                  const item = items.find((it) => it.id === s.id);
+                  const clickable = Boolean(onItemClick && item);
+                  return (
+                    <path
+                      key={s.id}
+                      d={s.d}
+                      fill={s.color}
+                      stroke="var(--card)"
+                      strokeWidth="1"
+                      strokeLinejoin="round"
+                      className={
+                        clickable
+                          ? "cursor-pointer transition-opacity hover:opacity-80 focus:outline-none"
+                          : undefined
+                      }
+                      onClick={
+                        clickable && item
+                          ? () => onItemClick?.(item)
+                          : undefined
+                      }
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      aria-label={
+                        clickable && item
+                          ? `Ver detalle de ${item.label}`
+                          : undefined
+                      }
+                      onKeyDown={
+                        clickable && item
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onItemClick?.(item);
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  );
+                })}
               </svg>
             ) : (
               <svg
@@ -173,38 +212,107 @@ export function CategoryDonut({
                 role="img"
                 aria-label="Gráfico semicircular de distribución de gastos por categoría"
               >
-                {slices.map((s) => (
-                  <path key={s.id} d={s.d} fill={s.color} />
-                ))}
+                {slices.map((s) => {
+                  const item = items.find((it) => it.id === s.id);
+                  const clickable = Boolean(onItemClick && item);
+                  return (
+                    <path
+                      key={s.id}
+                      d={s.d}
+                      fill={s.color}
+                      className={
+                        clickable
+                          ? "cursor-pointer transition-opacity hover:opacity-80 focus:outline-none"
+                          : undefined
+                      }
+                      onClick={
+                        clickable && item
+                          ? () => onItemClick?.(item)
+                          : undefined
+                      }
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      aria-label={
+                        clickable && item
+                          ? `Ver detalle de ${item.label}`
+                          : undefined
+                      }
+                      onKeyDown={
+                        clickable && item
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onItemClick?.(item);
+                              }
+                            }
+                          : undefined
+                      }
+                    />
+                  );
+                })}
               </svg>
             )}
           </div>
 
           {/* Leyenda — 60%. Sólo etiqueta + monto: el porcentaje quedaba
               redundante con el peso visual del slice y empujaba el monto
-              contra el borde derecho en cards angostas. */}
-          <ul className="flex-1 min-w-0 space-y-3">
-            {items.map((it) => (
-              <li
-                key={it.id}
-                className="flex items-center gap-2.5"
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-card"
-                  style={{ backgroundColor: it.color }}
-                  aria-hidden
-                />
-                <span className="text-[13.5px] font-medium text-foreground truncate flex-1 min-w-0">
-                  {it.label}
-                </span>
-                <span
-                  className="text-[12.5px] font-semibold text-foreground tabular-nums shrink-0 text-right"
-                  style={TNUM_STYLE}
-                >
-                  {formatAmount(it.amount, currency)}
-                </span>
-              </li>
-            ))}
+              contra el borde derecho en cards angostas.
+
+              Cuando hay onItemClick, cada fila es un <button> con chevron
+              al final para señalar el affordance de drill-down. Sin
+              onItemClick mantenemos el layout original (li + flex) para
+              no introducir regresiones visuales en callers heredados. */}
+          <ul
+            className={cn(
+              "flex-1 min-w-0",
+              onItemClick ? "space-y-1" : "space-y-3",
+            )}
+          >
+            {items.map((it) => {
+              const clickable = Boolean(onItemClick);
+              const content = (
+                <>
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-card"
+                    style={{ backgroundColor: it.color }}
+                    aria-hidden
+                  />
+                  <span className="text-[13.5px] font-medium text-foreground truncate flex-1 min-w-0 text-left">
+                    {it.label}
+                  </span>
+                  <span
+                    className="text-[12.5px] font-semibold text-foreground tabular-nums shrink-0 text-right"
+                    style={TNUM_STYLE}
+                  >
+                    {formatAmount(it.amount, currency)}
+                  </span>
+                  {clickable ? (
+                    <ChevronRight
+                      className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                      aria-hidden
+                    />
+                  ) : null}
+                </>
+              );
+              return (
+                <li key={it.id}>
+                  {clickable ? (
+                    <button
+                      type="button"
+                      onClick={() => onItemClick?.(it)}
+                      aria-label={`Ver detalle de ${it.label}`}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-1.5 py-1.5 -mx-1.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2.5">
+                      {content}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
