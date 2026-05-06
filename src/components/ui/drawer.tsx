@@ -11,6 +11,19 @@ function Drawer({
   return <DrawerPrimitive.Root data-slot="drawer" {...props} />
 }
 
+/**
+ * NestedDrawer — vaul Drawer.NestedRoot. Usar cuando un drawer abre
+ * dentro de otro drawer ya abierto (ej: un picker dentro de un form
+ * sheet). NestedRoot avisa al drawer padre que el cierre del hijo
+ * NO debe propagar el dismiss al padre — sin esto, seleccionar una
+ * opcion en el picker cierra el form sheet entero.
+ */
+function NestedDrawer({
+  ...props
+}: React.ComponentProps<typeof DrawerPrimitive.NestedRoot>) {
+  return <DrawerPrimitive.NestedRoot data-slot="drawer-nested" {...props} />
+}
+
 function DrawerTrigger({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
@@ -122,6 +135,7 @@ function DrawerDescription({
 
 export {
   Drawer,
+  NestedDrawer,
   DrawerPortal,
   DrawerOverlay,
   DrawerTrigger,

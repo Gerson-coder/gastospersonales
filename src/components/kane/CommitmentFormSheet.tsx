@@ -528,32 +528,40 @@ export function CommitmentFormSheet(props: CommitmentFormSheetProps) {
               </Button>
             </div>
           </form>
+
+          {/* Pickers internos. nested={true} le dice a vaul que estos
+              drawers viven dentro del form sheet — sin esto, vaul
+              cierra ambos drawers cuando el user selecciona una
+              opcion en el picker. NestedRoot necesita estar dentro
+              del arbol React de su Root padre para acceder al
+              contexto, por eso los renderizo aca dentro de
+              DrawerContent (no como sibling fuera del Drawer). */}
+          {categoryPickerOpen ? (
+            <CategoryFilterPicker
+              nested
+              open={categoryPickerOpen}
+              onOpenChange={setCategoryPickerOpen}
+              value={categoryId}
+              onSelect={(id, name) => {
+                setCategoryId(id);
+                setCategoryName(name);
+              }}
+            />
+          ) : null}
+          {accountPickerOpen ? (
+            <AccountFilterPicker
+              nested
+              open={accountPickerOpen}
+              onOpenChange={setAccountPickerOpen}
+              value={accountId}
+              onSelect={(id, label) => {
+                setAccountId(id);
+                setAccountName(label);
+              }}
+            />
+          ) : null}
         </DrawerContent>
       </Drawer>
-
-      {/* Pickers internos. */}
-      {categoryPickerOpen ? (
-        <CategoryFilterPicker
-          open={categoryPickerOpen}
-          onOpenChange={setCategoryPickerOpen}
-          value={categoryId}
-          onSelect={(id, name) => {
-            setCategoryId(id);
-            setCategoryName(name);
-          }}
-        />
-      ) : null}
-      {accountPickerOpen ? (
-        <AccountFilterPicker
-          open={accountPickerOpen}
-          onOpenChange={setAccountPickerOpen}
-          value={accountId}
-          onSelect={(id, label) => {
-            setAccountId(id);
-            setAccountName(label);
-          }}
-        />
-      ) : null}
     </>
   );
 }

@@ -27,6 +27,7 @@ import {
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
+  NestedDrawer,
 } from "@/components/ui/drawer";
 import { listCategories, type Category } from "@/lib/data/categories";
 import { listAccounts, type Account, accountDisplayLabel } from "@/lib/data/accounts";
@@ -42,6 +43,13 @@ export type CategoryFilterPickerProps = {
   /** null → "Todas". */
   value: string | null;
   onSelect: (categoryId: string | null, name: string | null) => void;
+  /**
+   * Cuando true, usa Drawer.NestedRoot en lugar de Drawer.Root.
+   * Necesario cuando este picker se abre dentro de otro drawer
+   * (ej: el form sheet de compromisos) — sin nested, vaul cierra
+   * ambos drawers al seleccionar una opcion.
+   */
+  nested?: boolean;
 };
 
 export function CategoryFilterPicker({
@@ -49,6 +57,7 @@ export function CategoryFilterPicker({
   onOpenChange,
   value,
   onSelect,
+  nested = false,
 }: CategoryFilterPickerProps) {
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -87,8 +96,12 @@ export function CategoryFilterPicker({
     onOpenChange(false);
   }
 
+  // Switch dinamico Root vs NestedRoot. NestedRoot avisa al padre
+  // que no debe auto-dismiss cuando este se cierra.
+  const Root = nested ? NestedDrawer : Drawer;
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Root open={open} onOpenChange={onOpenChange}>
       <DrawerContent
         aria-describedby="category-filter-desc"
         className="bg-background md:!max-w-xl"
@@ -138,7 +151,7 @@ export function CategoryFilterPicker({
           </ul>
         </div>
       </DrawerContent>
-    </Drawer>
+    </Root>
   );
 }
 
@@ -150,6 +163,8 @@ export type AccountFilterPickerProps = {
   /** null → "Todas". */
   value: string | null;
   onSelect: (accountId: string | null, label: string | null) => void;
+  /** Igual que CategoryFilterPicker — true cuando se abre dentro de otro drawer. */
+  nested?: boolean;
 };
 
 export function AccountFilterPicker({
@@ -157,6 +172,7 @@ export function AccountFilterPicker({
   onOpenChange,
   value,
   onSelect,
+  nested = false,
 }: AccountFilterPickerProps) {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -191,8 +207,10 @@ export function AccountFilterPicker({
     onOpenChange(false);
   }
 
+  const Root = nested ? NestedDrawer : Drawer;
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Root open={open} onOpenChange={onOpenChange}>
       <DrawerContent
         aria-describedby="account-filter-desc"
         className="bg-background md:!max-w-xl"
@@ -258,7 +276,7 @@ export function AccountFilterPicker({
           </ul>
         </div>
       </DrawerContent>
-    </Drawer>
+    </Root>
   );
 }
 
