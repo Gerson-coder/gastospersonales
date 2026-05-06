@@ -24,6 +24,7 @@ import {
   Target,
   User,
   Wallet,
+  Zap,
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -80,6 +81,13 @@ const GROUPS: MoreGroup[] = [
         label: "Compromisos",
         description: "Recibos, alquileres, préstamos por venir",
         icon: CalendarClock,
+        badge: "new",
+      },
+      {
+        href: "/templates",
+        label: "Templates",
+        description: "Gastos frecuentes con un solo tap",
+        icon: Zap,
         badge: "new",
       },
     ],

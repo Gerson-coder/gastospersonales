@@ -29,6 +29,7 @@ import {
   Settings,
   Download,
   ChevronDown,
+  Zap,
 } from "lucide-react";
 
 import { Separator } from "@/components/ui/separator";
@@ -68,6 +69,7 @@ const SIDEBAR_NAV_ITEMS: SidebarNavItem[] = [
   { href: "/goals",      label: "Metas",         icon: Target    },
   { href: "/accounts",   label: "Cuentas",       icon: Wallet    },
   { href: "/commitments", label: "Compromisos",   icon: CalendarClock, badge: "new" },
+  { href: "/templates",  label: "Templates",     icon: Zap,      badge: "new" },
   { href: "/insights",   label: "Reportes",      icon: BarChart2 },
   { href: "/advisor",    label: "Asesor IA",     icon: Bot,      badge: "new" },
   { href: "/settings",   label: "Configuración", icon: Settings  },

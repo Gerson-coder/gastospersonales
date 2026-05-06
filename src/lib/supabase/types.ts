@@ -352,6 +352,39 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["goals"]["Row"]>;
         Relationships: [];
       };
+      // ─── Added by migration 00026_transaction_templates.sql ───────
+      transaction_templates: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          kind: "expense" | "income";
+          amount_minor: number;
+          currency: Currency;
+          category_id: string | null;
+          account_id: string | null;
+          merchant_id: string | null;
+          note: string | null;
+          usage_count: number;
+          last_used_at: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<
+          Database["public"]["Tables"]["transaction_templates"]["Row"]
+        > & {
+          user_id: string;
+          title: string;
+          kind: "expense" | "income";
+          amount_minor: number;
+          currency: Currency;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["transaction_templates"]["Row"]
+        >;
+        Relationships: [];
+      };
       // ─── Added by migration 00025_commitments.sql ──────────────────
       commitments: {
         Row: {

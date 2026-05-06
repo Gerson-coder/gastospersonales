@@ -79,6 +79,8 @@ import {
   type CategoryDrillDownRow,
 } from "@/components/kane/CategoryDrillDownSheet";
 import { UpcomingCommitmentsCard } from "@/components/kane/UpcomingCommitmentsCard";
+import { TemplatesQuickRow } from "@/components/kane/TemplatesQuickRow";
+import { ProactiveInsightsBanner } from "@/components/kane/ProactiveInsightsBanner";
 import { AdvisorCard } from "@/components/kane/AdvisorCard";
 import { ThemeToggle } from "@/components/kane/ThemeToggle";
 import { ProfileMenu } from "@/components/kane/ProfileMenu";
@@ -2249,6 +2251,13 @@ export default function DashboardPage() {
                     últimas transacciones flat, donut de distribución,
                     AdvisorCard. */}
                 <div className="mx-4 mt-4 flex flex-col gap-4 md:hidden">
+                  {/* Templates quick row — chips horizontales para
+                      registrar gastos frecuentes con un solo tap. Render
+                      null cuando no hay templates activos. Va arriba de
+                      los stat cards porque es la accion mas rapida del
+                      dashboard. */}
+                  <TemplatesQuickRow />
+
                   {/* Today snapshot — Gasto de hoy / Último ingreso. Two
                       compact cards focused on RECENT activity (today's
                       spending recap + the latest income event). Replaces
@@ -2328,6 +2337,19 @@ export default function DashboardPage() {
                       espacio en el dashboard del user que no usa
                       /commitments. */}
                   <UpcomingCommitmentsCard />
+
+                  {/* Insight proactivo — banner sutil que muestra UN
+                      signal relevante (categoría con delta alto,
+                      presupuesto cerca del límite, ritmo elevado). Se
+                      auto-oculta cuando no hay nada fuerte que mostrar. */}
+                  {!isDemo && (
+                    <ProactiveInsightsBanner
+                      currency={currency}
+                      monthTotals={window.monthTotals}
+                      byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                      expenseCurrentMonth={window.expenseCurrentMonth}
+                    />
+                  )}
 
                   {/* Distribución de gastos */}
                   <div>
@@ -2499,6 +2521,13 @@ export default function DashboardPage() {
                     </div>
                   </Card>
 
+                  {/* ROW 3.5 — Templates quick row.
+                      Va entre QuickActions y el grid de movimientos
+                      porque es acceso rapido — misma jerarquia que
+                      las acciones pero con datos del user. Self-hides
+                      cuando no hay templates activos. */}
+                  <TemplatesQuickRow />
+
                   {/* ROW 4 — Grid 3-col: Movimientos (col-span-2) + columna derecha. */}
                   <div className="md:grid md:grid-cols-3 md:gap-6 items-start">
                     {/* Últimos movimientos — col-span-2 */}
@@ -2543,11 +2572,22 @@ export default function DashboardPage() {
                       </div>
                     </Card>
 
-                    {/* Columna derecha — col-span-1: Compromisos + Donut + Advisor + Budgets + Goals */}
+                    {/* Columna derecha — col-span-1: Compromisos + Insight + Donut + Advisor + Budgets + Goals */}
                     <div className="flex flex-col gap-6 md:col-span-1">
                       {/* Próximos compromisos — primero en la columna
                           porque "lo que vence" es lo mas accionable. */}
                       <UpcomingCommitmentsCard />
+                      {/* Insight proactivo — segundo en la columna,
+                          arriba del donut. Se auto-oculta cuando no hay
+                          un signal fuerte. */}
+                      {!isDemo && (
+                        <ProactiveInsightsBanner
+                          currency={currency}
+                          monthTotals={window.monthTotals}
+                          byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                          expenseCurrentMonth={window.expenseCurrentMonth}
+                        />
+                      )}
                       <CategoryDonut
                         variant="full"
                         items={donutItems}

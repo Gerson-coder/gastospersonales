@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "@/components/kane/AppHeader";
+import { MonthlyReportButton } from "@/components/kane/MonthlyReportButton";
 import { getMoneyDisplaySizeClass, CURRENCY_LABEL } from "@/lib/money";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
 import {
@@ -2036,17 +2037,35 @@ export default function InsightsPage() {
   return (
     <main className="relative min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-[720px] space-y-6 px-5 pt-6 md:max-w-7xl md:space-y-10 md:px-8 md:pt-10">
-        {/* Header */}
-        <AppHeader
-          eyebrow={
-            currentBucket
-              ? `${monthLabel} · ${currentBucket.monthKey.slice(0, 4)}`
-              : "Reportes"
-          }
-          title="Reportes"
-          titleStyle="page"
-          className="px-0 pt-0"
-        />
+        {/* Header — reports include a "Reporte del mes" PDF download.
+            For period === "month" we use the active period's start month;
+            for q3 / year (trailing windows) we fall back to the current
+            calendar month so the download matches what the user expects. */}
+        {(() => {
+          const refDate =
+            period === "month" ? scope.startDate : new Date();
+          const reportYear = refDate.getFullYear();
+          const reportMonth = refDate.getMonth() + 1;
+          return (
+            <AppHeader
+              eyebrow={
+                currentBucket
+                  ? `${monthLabel} · ${currentBucket.monthKey.slice(0, 4)}`
+                  : "Reportes"
+              }
+              title="Reportes"
+              titleStyle="page"
+              className="px-0 pt-0"
+              actionsBefore={
+                <MonthlyReportButton
+                  year={reportYear}
+                  month={reportMonth}
+                  currency={currency}
+                />
+              }
+            />
+          );
+        })()}
 
         {/* Period selector — sticky on desktop so it stays visible while scrolling cards */}
         <div className="md:sticky md:top-0 md:z-10 md:-mx-8 md:bg-background/95 md:px-8 md:py-3 md:backdrop-blur-sm">
