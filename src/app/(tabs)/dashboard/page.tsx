@@ -78,6 +78,7 @@ import {
   CategoryDrillDownSheet,
   type CategoryDrillDownRow,
 } from "@/components/kane/CategoryDrillDownSheet";
+import { UpcomingCommitmentsCard } from "@/components/kane/UpcomingCommitmentsCard";
 import { AdvisorCard } from "@/components/kane/AdvisorCard";
 import { ThemeToggle } from "@/components/kane/ThemeToggle";
 import { ProfileMenu } from "@/components/kane/ProfileMenu";
@@ -2322,6 +2323,12 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
+                  {/* Próximos compromisos — render null cuando no hay
+                      vencidos ni proximos en 7 dias, asi no se carga
+                      espacio en el dashboard del user que no usa
+                      /commitments. */}
+                  <UpcomingCommitmentsCard />
+
                   {/* Distribución de gastos */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
@@ -2536,8 +2543,11 @@ export default function DashboardPage() {
                       </div>
                     </Card>
 
-                    {/* Columna derecha — col-span-1: Donut + Advisor + Budgets + Goals */}
+                    {/* Columna derecha — col-span-1: Compromisos + Donut + Advisor + Budgets + Goals */}
                     <div className="flex flex-col gap-6 md:col-span-1">
+                      {/* Próximos compromisos — primero en la columna
+                          porque "lo que vence" es lo mas accionable. */}
+                      <UpcomingCommitmentsCard />
                       <CategoryDonut
                         variant="full"
                         items={donutItems}

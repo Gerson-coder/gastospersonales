@@ -5,18 +5,21 @@
  * prestamos, cuotas). Mismo patron de layout que /budgets y /goals:
  * mobile-first, max-w-3xl al centro en desktop, cards rounded-2xl.
  *
- * PR1 — solo CRUD basico:
+ * Funcionalidad actual:
  *   - Crear / editar / archivar via CommitmentFormSheet.
- *   - "Marcar como pagado" cambia status (sin crear transaccion aun).
+ *   - "Pagado" navega a /capture?commitmentId=X — /capture precarga
+ *     el form, el user confirma la tx, y al guardar se marca el
+ *     compromiso como completado (rolando al proximo periodo si
+ *     es recurrente).
  *   - Lista agrupada por status derivado (Vencido / Pronto / Mas
  *     adelante / Completado).
  *
- * PR2 — markCompleted abrira /capture precargado para crear la tx.
  * PR3 — push notifications via Web Push.
  */
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -44,7 +47,6 @@ import {
   deriveStatus,
   KIND_LABEL,
   listCommitments,
-  markCompleted,
   RECURRENCE_LABEL,
   unarchiveCommitment,
   updateCommitment,
@@ -138,6 +140,7 @@ function formatDueLong(dueDate: string): string {
 // ─── Page ─────────────────────────────────────────────────────────────
 
 export default function CommitmentsPage(): React.ReactElement {
+  const router = useRouter();
   const [items, setItems] = React.useState<CommitmentView[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
@@ -252,23 +255,19 @@ export default function CommitmentsPage(): React.ReactElement {
     }
   }
 
-  async function handleMarkCompleted(c: CommitmentView) {
-    try {
-      await markCompleted(c.id);
-      // markCompleted es un "tap rapido" — un toast efimero rinde
-      // mejor que abrir un drawer cada vez. El feedback visual ya
-      // viene de la lista que se reordena (el row sale de Pronto y
-      // entra a Completados / o avanza al proximo periodo).
-      toast.success(
-        c.recurrence === "none"
-          ? "Marcado como completado."
-          : `Marcado. Próxima fecha actualizada.`,
-      );
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "No pudimos marcar el compromiso.",
-      );
-    }
+  /**
+   * Navega a /capture con el commitmentId — /capture precarga el
+   * form con los datos del compromiso (kind, monto, moneda,
+   * categoria, cuenta, nota), y al guardar la transaccion ademas
+   * marca el compromiso como completado (rolando al proximo
+   * periodo si es recurrente).
+   *
+   * Antes esta accion solo cambiaba el status sin crear la tx
+   * real — el user tenia que registrar el gasto a mano despues.
+   * Ahora /capture cierra el loop con un solo flujo.
+   */
+  function handleMarkCompleted(c: CommitmentView) {
+    router.push(`/capture?commitmentId=${c.id}`);
   }
 
   async function handleArchive(c: CommitmentView) {
@@ -615,11 +614,15 @@ function CommitmentRow({
           <button
             type="button"
             onClick={onMarkCompleted}
-            aria-label="Marcar como completado"
+            aria-label={
+              c.kind === "income" || c.kind === "lent"
+                ? "Registrar cobro"
+                : "Registrar pago"
+            }
             className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Check size={11} aria-hidden />
-            Pagado
+            {c.kind === "income" || c.kind === "lent" ? "Cobrar" : "Pagar"}
           </button>
         ) : (
           <button

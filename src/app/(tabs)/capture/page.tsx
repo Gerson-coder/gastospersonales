@@ -81,6 +81,11 @@ import {
   type TransactionDraft,
 } from "@/lib/data/transactions";
 import {
+  getCommitmentById,
+  markCompleted as markCommitmentCompleted,
+  type CommitmentKind,
+} from "@/lib/data/commitments";
+import {
   checkExpenseBalance,
   BALANCE_GUARD_TITLE,
 } from "@/lib/data/balances";
@@ -378,10 +383,29 @@ function CapturePageFallback() {
   );
 }
 
+/**
+ * Mapea el kind del commitment al kind de la transaction.
+ *
+ *   payment   (recibo, cuota)        → expense (egreso)
+ *   borrowed  (me prestaron, devolver) → expense (egreso al devolver)
+ *   income    (alquiler cobrado)     → income  (ingreso)
+ *   lent      (le presté, recuperar) → income  (ingreso al recuperar)
+ */
+function commitmentToTxKind(kind: CommitmentKind): "expense" | "income" {
+  if (kind === "payment" || kind === "borrowed") return "expense";
+  return "income";
+}
+
 function CapturePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
+  // ?commitmentId=<id> precarga el form con los datos de un compromiso
+  // pendiente. Tras guardar la tx, /capture llama markCompleted sobre
+  // el commitment para que pase a "completado" (o avance al proximo
+  // periodo si es recurrente). Mismo patron que ?edit= pero con un
+  // estado adicional que se persiste hasta el save.
+  const commitmentIdParam = searchParams.get("commitmentId");
   // ?kind=income arranca el form en modo "Ingreso" (típicamente el botón
   // "Abonar saldo" desde el dashboard empty state). Sin el param, default
   // es "expense" — la mayoría de las captures son gastos.
@@ -396,13 +420,24 @@ function CapturePageInner() {
   // Edit-mode hydration flag — when `?edit=<id>` is present we block the form
   // until `getTransactionById` resolves, so we never render an empty keypad
   // with stale defaults that the user might accidentally save over the row.
-  const [hydrating, setHydrating] = React.useState<boolean>(Boolean(editId));
+  // Mismo lock se usa para `?commitmentId=<id>` mientras se prefilllea el
+  // form con los datos del compromiso.
+  const [hydrating, setHydrating] = React.useState<boolean>(
+    Boolean(editId) || Boolean(commitmentIdParam),
+  );
   // When editing, preserve the original `occurred_at` so re-saving doesn't
   // shift the row's timestamp to "now". Captured during hydration; sent
   // verbatim in `updateTransaction`.
   const [editOriginalOccurredAt, setEditOriginalOccurredAt] = React.useState<
     string | null
   >(null);
+  // Commitment id que vino por URL — persiste desde el mount hasta el
+  // save para que handleSave sepa que tiene que llamar markCompleted
+  // post-create. Se setea null si la hidratacion falla (commitment no
+  // existe, archivado, etc.).
+  const [commitmentId, setCommitmentId] = React.useState<string | null>(
+    commitmentIdParam,
+  );
 
   // Buffer is the raw keypad string; "" means "nothing typed yet" (shows 0).
   const [amountBuffer, setAmountBuffer] = React.useState("");
@@ -657,6 +692,61 @@ function CapturePageInner() {
       cancelled = true;
     };
   }, [editId, router, setCurrency]);
+
+  // Commitment-mode hydration — cuando viene `?commitmentId=<id>`,
+  // precargamos el form con kind/amount/currency/category/account/note
+  // del compromiso. Tras el save, handleSave llamara markCompleted
+  // sobre el compromiso para que pase a "completado" (o avance al
+  // proximo periodo si es recurrente).
+  React.useEffect(() => {
+    if (!commitmentIdParam) return;
+    if (editId) return; // edit pisa commitment — no mezclar dos hydrations
+    if (!SUPABASE_ENABLED) {
+      router.replace("/commitments");
+      return;
+    }
+    let cancelled = false;
+    setHydrating(true);
+    void (async () => {
+      try {
+        const c = await getCommitmentById(commitmentIdParam);
+        if (cancelled) return;
+        if (!c) {
+          toast.error("Este compromiso ya no existe.");
+          setCommitmentId(null);
+          router.replace("/commitments");
+          return;
+        }
+        setAmountBuffer(formatAmountToBuffer(c.amount));
+        setCurrency(c.currency);
+        setKind(commitmentToTxKind(c.kind));
+        if (c.categoryId) setCategoryId(c.categoryId);
+        if (c.accountId) setAccountId(c.accountId);
+        // Note: usamos el title del compromiso como nota — le da
+        // contexto al user en /movements ("Sedapal", "Alquiler Juan").
+        if (c.title) {
+          setNote(c.title);
+          setNoteOpen(true);
+        }
+        setTxDate(todayLimaDate());
+      } catch (err) {
+        if (cancelled) return;
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "No pudimos cargar el compromiso.",
+        );
+        setCommitmentId(null);
+        router.replace("/commitments");
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [commitmentIdParam, editId, router, setCurrency]);
+
   const [categoryDrawerOpen, setCategoryDrawerOpen] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
   // Saved state — { ts } is stamped in handleSave (post-mount, not during
@@ -1051,12 +1141,33 @@ function CapturePageInner() {
         // previous active card. Was the source of bug #X: "I capture from
         // BBVA but the dashboard opens on Yape."
         setActiveAccountId(accountId);
-        // `router.refresh()` invalidates the App Router cache so the
-        // dashboard's server boundary re-runs. Combined with the
-        // `tx:upserted` listener mounted in /dashboard, this collapses
-        // the user-perceived stale-numbers window to zero.
-        router.refresh();
-        router.push("/dashboard");
+
+        // Si esta capture vino de un compromiso (?commitmentId=X),
+        // marcamos el compromiso como pagado/cobrado tras el save de
+        // la tx. Para recurrentes esto rolla al proximo periodo. Si
+        // el markCompleted falla, no abortamos — la tx ya esta
+        // creada, asi que toasteamos warning y dejamos al user
+        // marcar manualmente desde /commitments.
+        if (commitmentId) {
+          try {
+            await markCommitmentCompleted(commitmentId);
+          } catch (err) {
+            toast.error(
+              err instanceof Error
+                ? err.message
+                : "Tu pago se registro, pero no pudimos marcar el compromiso como completado.",
+            );
+          }
+          router.refresh();
+          router.push("/commitments");
+        } else {
+          // `router.refresh()` invalidates the App Router cache so the
+          // dashboard's server boundary re-runs. Combined with the
+          // `tx:upserted` listener mounted in /dashboard, this collapses
+          // the user-perceived stale-numbers window to zero.
+          router.refresh();
+          router.push("/dashboard");
+        }
       }
       // Don't reset state on success: the page is unmounting via navigation.
       // Keeping `submitting=true` until unmount also blocks any double-tap.
@@ -1086,6 +1197,7 @@ function CapturePageInner() {
     note,
     editId,
     editOriginalOccurredAt,
+    commitmentId,
     txDate,
     router,
     categories,
