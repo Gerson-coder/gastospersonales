@@ -336,6 +336,15 @@ export function useTransactionsWindow(
         setRows(data);
       } catch (e) {
         if (cancelled) return;
+        // Log completo para que el dev DevTools capture el detalle
+        // (code de Postgres, status HTTP, body de la respuesta, etc).
+        // Sin este log, ErrorInsightsCard solo mostraba `e.message`
+        // y diagnosticar bugs intermitentes era ciego.
+        console.error("[useTransactionsWindow] fetch failed", {
+          currency,
+          fromISO,
+          error: e,
+        });
         setError(e instanceof Error ? e : new Error(String(e)));
         setRows([]);
       } finally {

@@ -633,7 +633,23 @@ export async function listTransactionsWindow(opts: {
       .order("id", { ascending: false });
 
     if (error) {
-      throw new Error(error.message || "No pudimos cargar los movimientos.");
+      // Log detallado al console asi DevTools captura code/details/hint
+      // de Postgres. El throw solo lleva message human-friendly al UI;
+      // el resto queda en logs para diagnosticar bugs intermitentes
+      // como "No pudimos cargar tu reporte" sin contexto.
+      console.error("[listTransactionsWindow] supabase error", {
+        currency: opts.currency,
+        fromISO: opts.fromISO,
+        code: (error as { code?: string }).code,
+        message: error.message,
+        details: (error as { details?: string }).details,
+        hint: (error as { hint?: string }).hint,
+      });
+      const codeStr = (error as { code?: string }).code;
+      const suffix = codeStr ? ` (${codeStr})` : "";
+      throw new Error(
+        (error.message || "No pudimos cargar los movimientos.") + suffix,
+      );
     }
 
     const rows = (data ?? []) as unknown as TransactionRow[];

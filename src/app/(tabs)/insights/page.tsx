@@ -1437,12 +1437,22 @@ function ErrorInsightsCard({
   message: string;
   onRetry: () => void;
 }) {
+  // Mensaje "default" cuando el error no trae nada util — antes mostraba
+  // un texto generico que no daba pista al user para reportar el bug.
+  // Ahora le pedimos que verifique conexion y reintente.
+  const trimmed = (message ?? "").trim();
+  const friendly =
+    trimmed.length > 0
+      ? trimmed
+      : "Revisa tu conexión y vuelve a intentar. Si persiste, cuéntanos qué viste.";
   return (
     <Card className="rounded-2xl border-destructive/40 bg-destructive/5 p-5 text-center md:p-6">
       <h2 className="text-[15px] font-semibold text-destructive">
         No pudimos cargar tu reporte
       </h2>
-      <p className="mt-1 text-[13px] text-muted-foreground">{message}</p>
+      <p className="mt-1 break-words text-[13px] text-muted-foreground">
+        {friendly}
+      </p>
       <button
         type="button"
         onClick={onRetry}
