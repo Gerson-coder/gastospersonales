@@ -101,6 +101,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUserName } from "@/lib/use-user-name";
 import { useActiveCurrency } from "@/hooks/use-active-currency";
+import { useActiveAccountId } from "@/hooks/use-active-account-id";
 import {
   useTransactionsWindow,
   type CategoryBucket,
@@ -1376,6 +1377,14 @@ export default function DashboardPage() {
   // when the user has more than one account; with a single account the
   // chip strip would be a no-op.
   const [selectedAccountId, setSelectedAccountId] = React.useState<string | null>(null);
+  // activeAccountId del kane-prefs — escrito por /capture y /receipt al
+  // guardar una tx (`setActiveAccountId(accountId)`). El dashboard lo
+  // escucha para resincronizar selectedAccountId cuando viene una tx
+  // nueva en una cuenta que no esta en el carousel actual (caso comun:
+  // cuenta de currency distinta a la activa). Sin esto, "Ultimos
+  // movimientos" se queda filtrando por la cuenta vieja y no muestra
+  // la nueva tx hasta que el user navega manualmente al carousel.
+  const { activeAccountId } = useActiveAccountId();
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   // Distinguishes "listAccounts hasn't returned yet" from "user genuinely
   // has zero accounts". Without it, the dashboard's empty-state CTA flashes
@@ -1617,23 +1626,38 @@ export default function DashboardPage() {
       skip: !SUPABASE_ENABLED,
     });
 
-  // Account-filter selector — currency-aware. Two responsibilities folded
-  // into one effect:
+  // Account-filter selector — currency-aware. Three responsibilities:
   //   1. First-paint default: pick the most-recently-used account in the
   //      active currency once accounts load.
   //   2. Currency switch retarget: when the active currency flips (e.g.
   //      via the CurrencySwitch on capture's same-tab StorageEvent), the
   //      previously-selected account may belong to the OTHER currency.
-  //      That mismatch is the "I added a USD movement but the dashboard
-  //      stays empty until I refresh" bug — `filteredRows` filters by
-  //      accountId, and a PEN-account filter eats the new USD row. We
-  //      retarget to the first account in the new currency (preferring
-  //      most-recent-used) so the saldo card and tx list reflect the
-  //      writes immediately.
-  // Falls back to `null` if the user has no account in the active
-  // currency — the chip strip and drawer empty-states handle that path.
+  //   3. activeAccountId sync: cuando /capture o /receipt escriben
+  //      kane-prefs.activeAccountId tras guardar una tx, traemos esa
+  //      cuenta al filtro AUNQUE no este en el carousel actual (caso
+  //      comun: cuenta de currency distinta a la activa). Sin este
+  //      branch, "Ultimos movimientos" filtraba por la cuenta vieja y
+  //      no mostraba la nueva tx — el carousel solo dispara
+  //      onActiveAccountChange para cuentas que matchean su filtro de
+  //      currency, dejando un agujero asimetrico (Yape PEN-only siempre
+  //      pasaba; Efectivo USD vs dashboard PEN no).
+  // Falls back to `null` si el user no tiene cuenta en la currency activa.
   React.useEffect(() => {
     if (accounts.length === 0) return;
+    // Branch 3: si activeAccountId apunta a una cuenta valida y NO
+    // coincide con selectedAccountId, sincronizar. Si esa cuenta esta
+    // en otra currency, ALSO flipear la currency activa para que el
+    // resto del dashboard (carousel, KPIs, donut) quede consistente.
+    if (activeAccountId && activeAccountId !== selectedAccountId) {
+      const target = accounts.find((a) => a.id === activeAccountId);
+      if (target) {
+        setSelectedAccountId(target.id);
+        if (target.currency !== currency) {
+          setCurrency(target.currency);
+        }
+        return;
+      }
+    }
     if (selectedAccountId !== null) {
       const current = accounts.find((a) => a.id === selectedAccountId);
       if (current && current.currency === currency) return;
@@ -1643,7 +1667,14 @@ export default function DashboardPage() {
       accounts.find((a) => a.currency === currency) ??
       null;
     setSelectedAccountId(next?.id ?? null);
-  }, [currency, accounts, orderedAccounts, selectedAccountId]);
+  }, [
+    currency,
+    accounts,
+    orderedAccounts,
+    selectedAccountId,
+    activeAccountId,
+    setCurrency,
+  ]);
 
   // ── Branch on the data source ──────────────────────────────────────────
   // Demo mode: feed the legacy in-file dataset. Real mode: derive everything

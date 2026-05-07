@@ -1583,6 +1583,17 @@ function ReceiptPageInner() {
       // aparecía en "Últimos movimientos". Bug confirmado por 5
       // agentes investigadores en paralelo.
       setActiveAccountId(accountId);
+      // Defensa en profundidad para el bug "Ultimos movimientos solo
+      // se actualiza para Yape": si la cuenta destino tiene currency
+      // distinta a la activa, flipeamos la currency tambien. Asi
+      // cuando el dashboard monte, su carousel YA tendra la cuenta
+      // visible (filtra por currency) y la sincronizacion via
+      // onActiveAccountChange funciona normalmente. El effect del
+      // dashboard tiene un branch defensivo para esto tambien (A+C).
+      const savedAccount = accounts.find((a) => a.id === accountId);
+      if (savedAccount && savedAccount.currency !== currency) {
+        setCurrency(savedAccount.currency);
+      }
       // Fase 3: drop the queued receipt now that the user committed.
       // Fire-and-forget — failure here would be cosmetic (the row
       // resurfaces on next /receipt mount, harmless).

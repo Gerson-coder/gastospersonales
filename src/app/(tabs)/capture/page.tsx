@@ -1148,6 +1148,15 @@ function CapturePageInner() {
         // previous active card. Was the source of bug #X: "I capture from
         // BBVA but the dashboard opens on Yape."
         setActiveAccountId(accountId);
+        // Defensa: si la cuenta destino es de currency distinta a la
+        // activa, flipear tambien la currency para que el dashboard
+        // vea la cuenta en su carousel y "Ultimos movimientos" filtre
+        // correctamente. Cubre el bug "tx en cuenta USD no aparece
+        // en dashboard PEN hasta refrescar".
+        const savedAccount = accounts.find((a) => a.id === accountId);
+        if (savedAccount && savedAccount.currency !== currency) {
+          setCurrency(savedAccount.currency);
+        }
 
         // Si esta capture vino de un compromiso (?commitmentId=X),
         // marcamos el compromiso como pagado/cobrado tras el save de
