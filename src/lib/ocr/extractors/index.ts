@@ -17,7 +17,11 @@ export { extractYape, extractPlin, extractBbva, extractBcp, extractGeneric };
  */
 export type ExtractorFn = (
   imageBase64: string,
-  opts?: { model?: OcrModel; onUsage?: (u: VisionUsage) => void },
+  opts?: {
+    model?: OcrModel;
+    onUsage?: (u: VisionUsage) => void;
+    signal?: AbortSignal;
+  },
 ) => Promise<LlmOutput>;
 
 /**

@@ -77,6 +77,14 @@ export interface CallVisionModelOpts<T> {
   timeoutMs?: number;
   /** Called once per attempt with token usage. Use for cost telemetry. */
   onUsage?: (usage: VisionUsage) => void;
+  /**
+   * External abort signal. Linked to the per-attempt timeout controller
+   * so the upstream caller (e.g. the SSE route on client disconnect, or
+   * the speculative-Yape canceller) can drop the in-flight OpenAI fetch
+   * without waiting for the timeout. AbortError is surfaced as
+   * `OcrPipelineError("TIMEOUT", ...)` to keep the retry path uniform.
+   */
+  signal?: AbortSignal;
 }
 
 interface OpenAIChatResponse {
@@ -132,6 +140,18 @@ export async function callVisionModel<T>(
     const controller = new AbortController();
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    // Forward an external abort (caller cancellation) onto the same
+    // controller. We don't replace the timeout — both reasons to abort
+    // funnel through one signal so the fetch sees a single cancellation.
+    const onExternalAbort = () => controller.abort();
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        controller.abort();
+      } else {
+        opts.signal.addEventListener("abort", onExternalAbort, { once: true });
+      }
+    }
 
     try {
       const res = await fetch(OPENAI_API_URL, {
@@ -211,6 +231,9 @@ export async function callVisionModel<T>(
       throw err;
     } finally {
       clearTimeout(timeoutHandle);
+      if (opts.signal) {
+        opts.signal.removeEventListener("abort", onExternalAbort);
+      }
     }
   };
 

@@ -31,6 +31,7 @@ export async function extractGeneric(
   opts: {
     model?: OcrModel;
     onUsage?: (u: VisionUsage) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LlmOutput> {
   return callVisionModel({
@@ -42,5 +43,6 @@ export async function extractGeneric(
     maxTokens: 1000,
     timeoutMs: 30_000,
     onUsage: opts.onUsage,
+    signal: opts.signal,
   });
 }

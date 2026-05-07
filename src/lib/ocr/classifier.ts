@@ -35,7 +35,7 @@ import { classificationSchema, type Classification } from "./types";
  */
 export async function classifyReceipt(
   imageBase64: string,
-  opts: { onUsage?: (u: VisionUsage) => void } = {},
+  opts: { onUsage?: (u: VisionUsage) => void; signal?: AbortSignal } = {},
 ): Promise<Classification> {
   return callVisionModel({
     model: "gpt-4o-mini",
@@ -46,5 +46,6 @@ export async function classifyReceipt(
     maxTokens: 80,
     timeoutMs: 15_000,
     onUsage: opts.onUsage,
+    signal: opts.signal,
   });
 }

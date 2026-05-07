@@ -97,7 +97,18 @@ import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import { AccountBrandIcon } from "@/components/kane/AccountBrandIcon";
 import { MerchantPicker } from "@/components/kane/MerchantPicker";
+import {
+  ReceiptScanFill,
+  type ScanFillFields,
+  type ScanFillStage,
+} from "@/components/receipt/ReceiptScanFill";
 import { accountChipBgClass } from "@/lib/account-brand-slug";
+import {
+  parseSseStream,
+  type OcrStreamEvent,
+  type OcrStreamErrorKind,
+  type OcrStreamSource,
+} from "@/lib/ocr/stream-events";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -118,8 +129,6 @@ type FieldKey =
   | "suggested_category"
   | "kind";
 type ConfidenceMap = Record<FieldKey, number>;
-
-type LoadingPhase = 0 | 1 | 2;
 
 // ─── Initial form defaults ────────────────────────────────────────────────
 // Used for: (a) the very first paint before any OCR has run, and (b) reset
@@ -297,12 +306,6 @@ function prettySourceName(source: string): string {
       return "Comprobante";
   }
 }
-
-const LOADING_STEPS = [
-  "Leyendo texto",
-  "Identificando montos",
-  "Sugiriendo categoría",
-] as const;
 
 // ─── Money formatting ─────────────────────────────────────────────────────
 // TODO: replace with formatMoney from @/lib/money once Batch B lands.
@@ -483,112 +486,6 @@ function PreviewState({
   );
 }
 
-// ─── Loading state ────────────────────────────────────────────────────────
-function LoadingState({
-  imageUrl,
-  phase,
-  onCancel,
-}: {
-  imageUrl: string;
-  phase: LoadingPhase;
-  onCancel: () => void;
-}) {
-  return (
-    <div
-      className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-start px-4 pb-12 pt-6 md:py-16"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        Procesando
-      </div>
-      <h1 className="mt-1 text-3xl font-bold leading-tight">
-        Leyendo el ticket…
-      </h1>
-
-      {/* Image with scan-line overlay. The scan-line is `motion-reduce:hidden`
-          so users with reduced-motion preference see a still image — the
-          textual progress steps below carry the load there. */}
-      <div className="relative mt-6 w-full overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">
-        {/* eslint-disable-next-line @next/next/no-img-element -- local blob URL, not optimisable */}
-        <img
-          src={imageUrl}
-          alt=""
-          aria-hidden="true"
-          className="block max-h-[42vh] w-full object-contain bg-[oklch(0.94_0.005_95)] dark:bg-[oklch(0.22_0.005_95)]"
-        />
-        {/* Scanner sweep — thin gradient line, ~1.8s linear loop. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-full motion-reduce:hidden"
-        >
-          <div
-            className="absolute inset-x-0 h-12 animate-kane-scan"
-            style={{
-              background:
-                "linear-gradient(180deg, transparent 0%, oklch(0.78 0.16 162 / 0.18) 45%, oklch(0.78 0.16 162 / 0.55) 50%, oklch(0.78 0.16 162 / 0.18) 55%, transparent 100%)",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Step indicator — three pills that fill in sequence as `phase` ticks.
-          Purely a UX device; not synced to actual OCR progress. */}
-      <ol className="mt-6 flex w-full flex-col gap-2">
-        {LOADING_STEPS.map((step, i) => {
-          const active = i === phase;
-          const done = i < phase;
-          return (
-            <li
-              key={step}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-[13px] transition-colors",
-                done
-                  ? "border-transparent bg-[var(--color-primary-soft)] text-[var(--color-primary-soft-foreground)]"
-                  : active
-                    ? "border-primary/40 bg-card text-foreground"
-                    : "border-border bg-card text-muted-foreground",
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
-                  done
-                    ? "bg-primary text-primary-foreground"
-                    : active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                {done ? (
-                  <Check size={12} strokeWidth={3} />
-                ) : active ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <span className="text-[10px] font-bold tabular-nums">{i + 1}</span>
-                )}
-              </span>
-              <span className={cn("flex-1 font-semibold", done && "line-through opacity-80")}>
-                {step}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={onCancel}
-        className="mt-6 h-11 rounded-full text-[13px] font-semibold text-muted-foreground hover:text-foreground"
-      >
-        Cancelar
-      </Button>
-    </div>
-  );
-}
-
 // ─── Failed state ─────────────────────────────────────────────────────────
 function FailedState({
   onRetry,
@@ -716,10 +613,16 @@ function dataUrlToFile(dataUrl: string, mime: string, name: string): File | null
 // and is enough resolution for OpenAI's vision model to read screenshot
 // text. The model itself crops to 512×512 internally on `imageDetail:
 // "low"`, so going higher than 1024 is wasted bytes.
-async function compressImageToDataUrl(
+//
+// Off-thread by default: spawns a Web Worker that owns the
+// createImageBitmap → OffscreenCanvas → JPEG → data URL pipeline so the
+// main thread keeps painting at 60fps during the loading screen. Falls
+// back to the main-thread implementation when OffscreenCanvas isn't
+// available (older Safari) so we never break a capture.
+async function compressImageOnMainThread(
   file: File,
-  maxDim = 1024,
-  quality = 0.8,
+  maxDim: number,
+  quality: number,
 ): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const ratio = Math.min(maxDim / bitmap.width, maxDim / bitmap.height, 1);
@@ -748,6 +651,62 @@ async function compressImageToDataUrl(
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+async function compressImageInWorker(
+  file: File,
+  maxDim: number,
+  quality: number,
+): Promise<string> {
+  // `new URL(...)` with a static, relative specifier is the convention
+  // both webpack and Turbopack recognize for client-side workers.
+  const worker = new Worker(
+    new URL("../../../workers/image-compressor.worker.ts", import.meta.url),
+    { type: "module" },
+  );
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      worker.addEventListener(
+        "message",
+        (ev: MessageEvent<{ ok: true; dataUrl: string } | { ok: false; error: string }>) => {
+          const data = ev.data;
+          if (data.ok) resolve(data.dataUrl);
+          else reject(new Error(data.error));
+        },
+        { once: true },
+      );
+      worker.addEventListener(
+        "error",
+        (ev) => reject(new Error(ev.message || "worker-error")),
+        { once: true },
+      );
+      worker.postMessage({ blob: file, maxDim, quality });
+    });
+  } finally {
+    worker.terminate();
+  }
+}
+
+async function compressImageToDataUrl(
+  file: File,
+  maxDim = 1024,
+  quality = 0.8,
+): Promise<string> {
+  const canUseWorker =
+    typeof Worker !== "undefined" &&
+    typeof OffscreenCanvas !== "undefined" &&
+    typeof createImageBitmap !== "undefined";
+  if (canUseWorker) {
+    try {
+      return await compressImageInWorker(file, maxDim, quality);
+    } catch (err) {
+      // Worker bootstrap or runtime failure (e.g. Safari < 16.4 missing
+      // convertToBlob) — fall back to the main-thread path so capture
+      // never hard-fails on a perfectly valid image.
+      console.warn("[receipt] worker_compress_failed_falling_back", err);
+    }
+  }
+  return await compressImageOnMainThread(file, maxDim, quality);
 }
 
 // Mirror of the API route's response. Kept loose because the route can
@@ -818,6 +777,98 @@ type OcrApiResponse =
             };
           };
     };
+
+// ─── Streaming-state reducer ───────────────────────────────────────────────
+// Pure state shape that mirrors the SSE event union. The page reads
+// `stage`, `classified`, `fields`, and `error` to feed the skeleton-fill
+// UI; `result` is only used to mark the moment we hand off to the review
+// state via `applyOcrSuccessData` (which already exists).
+//
+// Why a reducer instead of N useStates: each event needs to update
+// multiple pieces atomically (e.g. an `error` event clears the stage AND
+// freezes `fields`). The reducer also makes it easy to assert the SSE
+// contract is exhaustively handled — TypeScript barks if a new event
+// `type` is added to the union but missing here.
+type StreamState = {
+  stage: ScanFillStage;
+  classified: { source: OcrStreamSource; confidence: number } | null;
+  fields: ScanFillFields;
+  /** Set when an `error` event interrupts the stream OR a `result.ok=false`
+   *  with a hard-failure kind lands. The page surfaces this as a soft
+   *  banner and freezes the current fields. */
+  error: { kind: OcrStreamErrorKind | "TRANSPORT"; message: string } | null;
+};
+
+type StreamAction =
+  | { type: "reset" }
+  | { type: "event"; event: OcrStreamEvent }
+  | { type: "transport_error"; message: string };
+
+const INITIAL_STREAM_STATE: StreamState = {
+  stage: "idle",
+  classified: null,
+  fields: {},
+  error: null,
+};
+
+function streamReducer(state: StreamState, action: StreamAction): StreamState {
+  if (action.type === "reset") return INITIAL_STREAM_STATE;
+  if (action.type === "transport_error") {
+    return {
+      ...state,
+      error: { kind: "TRANSPORT", message: action.message },
+    };
+  }
+  const event = action.event;
+  switch (event.type) {
+    case "stage":
+      return { ...state, stage: event.stage };
+    case "classified":
+      return {
+        ...state,
+        classified: { source: event.source, confidence: event.confidence },
+      };
+    case "partial": {
+      // Discriminated update — `value` is `unknown` per protocol; we
+      // forward it as-is and let the consumer component shape it.
+      const next: ScanFillFields = {
+        ...state.fields,
+        [event.field]: { value: event.value, confidence: event.confidence },
+      };
+      return { ...state, fields: next };
+    }
+    case "result":
+      // The page handles the result branching directly (success →
+      // applyOcrSuccessData, failure → toast + review/failed). The
+      // reducer just records that something terminal happened; we
+      // don't keep the data here because it would duplicate state
+      // that's already captured by `status` flipping to review/failed.
+      if (!event.ok) {
+        return {
+          ...state,
+          error: { kind: event.error.kind, message: event.error.message },
+        };
+      }
+      return state;
+    case "error":
+      return {
+        ...state,
+        error: { kind: "INTERNAL", message: event.message },
+      };
+    case "done":
+      // Terminal — don't mutate state, the page transitions out of
+      // loading via setStatus from the for-await consumer.
+      return state;
+    default: {
+      // Exhaustive-check guard: TypeScript narrows `event` to `never`
+      // here, so a new variant added to OcrStreamEvent without updating
+      // this switch will fail at compile time.
+      const _exhaustive: never = event;
+      void _exhaustive;
+      return state;
+    }
+  }
+}
 
 function ReceiptPageInner() {
   const router = useRouter();
@@ -972,8 +1023,14 @@ function ReceiptPageInner() {
   // guardar" button while the network request is in flight.
   const [isSaving, setIsSaving] = React.useState(false);
 
-  // Loading phase ticks 0 → 1 → 2 every ~800ms while in the loading state.
-  const [loadingPhase, setLoadingPhase] = React.useState<LoadingPhase>(0);
+  // ── OCR streaming state ─────────────────────────────────────────────────
+  // Drives the skeleton-fill UI in `<ReceiptScanFill />`. Each SSE event
+  // dispatches a single action; the reducer is intentionally dumb so the
+  // event handler stays a switch that mirrors the discriminated union.
+  const [streamState, dispatchStream] = React.useReducer(
+    streamReducer,
+    INITIAL_STREAM_STATE,
+  );
 
   // UI state
   const [isZoomOpen, setIsZoomOpen] = React.useState(false);
@@ -1115,6 +1172,92 @@ function ReceiptPageInner() {
   );
 
   /**
+   * Apply a LOW_CONFIDENCE partial result to the form. The model could
+   * not produce a high-confidence extract, but whatever it DID return
+   * we surface so the user only fills the gaps. Mirrors
+   * `applyOcrSuccessData` field-by-field — same auto-assign / category
+   * hint logic — but every branch is gated on the field being present.
+   *
+   * Final confidence values are zeroed out for fields the OCR didn't
+   * return; the present ones get the partial confidence the model
+   * reported (or 0.5 as a defensive fallback so the amber "review"
+   * ring lights up rather than the green "trust me" one).
+   */
+  const applyLowConfidencePartial = React.useCallback(
+    (partial: Partial<OcrSuccessData>): void => {
+      const fallbackConfidence =
+        typeof partial.confidence === "number" ? partial.confidence : 0.5;
+
+      if (typeof partial.receiptId === "string") {
+        setReceiptId(partial.receiptId);
+      }
+
+      const merchantName =
+        partial.counterparty?.name ??
+        (partial.source ? prettySourceName(partial.source) : "");
+      if (merchantName) setMerchant(merchantName);
+
+      if (partial.amount && typeof partial.amount.minor === "number") {
+        setAmount((partial.amount.minor / 100).toFixed(2));
+        setCurrency(partial.amount.currency);
+      }
+
+      // Always default the date to today (Lima TZ) — never trust the
+      // partial occurredAt because LOW_CONFIDENCE often means the date
+      // line was the field the model gave up on.
+      setOccurredAt(formatLimaDate(new Date()));
+      setTransactionKind("expense");
+
+      const matchKey = partial.destinationApp ?? partial.source;
+      if (matchKey && matchKey !== "unknown" && fallbackConfidence >= 0.6) {
+        const result = suggestAccountIdForSource(matchKey, accounts);
+        if (result.kind === "matched") {
+          setAccountId(result.accountId);
+          setSuggestedSource({
+            label: result.sourceLabel,
+            accountId: result.accountId,
+          });
+          setMissingAccountSourceLabel(null);
+        } else if (result.kind === "unsupported") {
+          setAccountId(null);
+          setSuggestedSource(null);
+          setMissingAccountSourceLabel(result.sourceLabel);
+        } else {
+          setSuggestedSource(null);
+          setMissingAccountSourceLabel(null);
+        }
+      } else {
+        setSuggestedSource(null);
+        setMissingAccountSourceLabel(null);
+      }
+
+      const hintCategoryId = resolveCategoryIdFromHint(
+        partial.categoryHint,
+        categories,
+        "expense",
+      );
+      if (hintCategoryId) setCategoryId(hintCategoryId);
+
+      setConfidences({
+        merchant: merchantName ? fallbackConfidence : 0,
+        amount: partial.amount ? fallbackConfidence : 0,
+        occurred_at: 0,
+        suggested_category: hintCategoryId ? fallbackConfidence : 0,
+        kind: 0,
+      });
+
+      // Soft surface — toast + drop into review so the user can finish
+      // by hand. Same treatment the legacy LOW_CONFIDENCE branch had.
+      toast.warning(
+        "La lectura no fue del todo clara. Revisa y completa lo que falte.",
+      );
+      setDirty(false);
+      setStatus("review");
+    },
+    [accounts, categories, setCurrency],
+  );
+
+  /**
    * Fase 3 — load a queued receipt that was OCR-processed offline.
    * Runs once after accounts + categories arrive (so auto-assign has
    * the data it needs). We pick the OLDEST `ready` row; subsequent
@@ -1172,13 +1315,26 @@ function ReceiptPageInner() {
     setPendingReceiptResult(null);
   }, [pendingReceiptResult, accounts, categories, applyOcrSuccessData]);
 
-  // OCR pipeline: ticks the 3-phase animation (cosmetic, ~2.4s) in
-  // parallel with the real /api/ocr/extract call. We resolve either when
-  // the API answers AND a 1.5s minimum has elapsed (so a cache-warm 600ms
-  // response doesn't feel rushed), or after a 35s ceiling (covers mini +
-  // optional 4o escalation with margin). On unmount/cancel we abort the
-  // fetch and clear all timers so a stale response doesn't transition a
-  // remounted component.
+  // Track the abort controller for the in-flight SSE call. Stored in a
+  // ref so the cancel button (a separate render-cycle handler) can call
+  // `.abort()` without coupling to the effect's closure. The effect
+  // resets it on every loading transition and aborts on unmount.
+  const ocrAbortRef = React.useRef<AbortController | null>(null);
+
+  // OCR pipeline — Wave 2: SSE consumer.
+  //
+  // Replaces the old `await fetch + await res.json` flow with a streaming
+  // consumer that dispatches each event into `streamReducer`. The
+  // skeleton-fill UI (`<ReceiptScanFill />`) reads `streamState` and
+  // animates the form into existence as `partial` events arrive. The
+  // moment a `result` event lands we hand off to the existing review
+  // pipeline via `applyOcrSuccessData` — that function still owns the
+  // account auto-suggest, category-hint resolution, and confidence-ring
+  // wiring, so the review screen behaves identically to before.
+  //
+  // Cancel: `ocrAbortRef.current.abort()` aborts the fetch AND the
+  // for-await loop (parseSseStream propagates AbortError out). We catch
+  // and ignore that specific error.
   React.useEffect(() => {
     if (status !== "loading") return;
     if (!imageFile) {
@@ -1187,13 +1343,16 @@ function ReceiptPageInner() {
       return;
     }
 
-    setLoadingPhase(0);
-    const t1 = window.setTimeout(() => setLoadingPhase(1), 800);
-    const t2 = window.setTimeout(() => setLoadingPhase(2), 1600);
+    dispatchStream({ type: "reset" });
 
-    const minDelay = new Promise<void>((res) => window.setTimeout(res, 1500));
     const controller = new AbortController();
+    ocrAbortRef.current = controller;
     let cancelled = false;
+    // Whether the stream produced a terminal `result` event. Used to
+    // distinguish "stream ended cleanly with a result" from "stream
+    // ended without one" (which would be a backend bug; we surface a
+    // toast and drop to failed).
+    let terminated = false;
 
     (async () => {
       try {
@@ -1201,16 +1360,22 @@ function ReceiptPageInner() {
 
         const res = await fetch("/api/ocr/extract", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            // Hint to the backend that we want SSE. Wave 2A's route
+            // returns text/event-stream when this is present.
+            Accept: "text/event-stream",
+          },
           body: JSON.stringify({ imageBase64: dataUrl }),
           signal: controller.signal,
         });
 
-        // Wait for the minimum animation time before flipping state.
-        await minDelay;
         if (cancelled) return;
 
-        if (!res.ok && res.status !== 200) {
+        // Pre-stream HTTP failure (auth, ratelimit before stream opens,
+        // etc.). The route may still return a JSON error here without
+        // ever opening the SSE channel — same fallback as before.
+        if (!res.ok) {
           let message = "No pude procesar la imagen.";
           try {
             const j = (await res.json()) as { error?: string };
@@ -1223,102 +1388,70 @@ function ReceiptPageInner() {
           return;
         }
 
-        const json = (await res.json()) as OcrApiResponse;
+        // ── Consume SSE events ─────────────────────────────────────────
+        for await (const event of parseSseStream(res)) {
+          if (cancelled) return;
 
-        if (json.ok) {
-          // All the auto-assign / category-hint logic moved into
-          // `applyOcrSuccessData` so the queued-receipt loader
-          // (Fase 3) can reuse it.
-          applyOcrSuccessData(json.data, accounts, categories);
-          return;
-        }
+          // Mirror the event into the reducer first so the UI updates
+          // even if we don't take a side-effect on this iteration.
+          dispatchStream({ type: "event", event });
 
-        // Error branches
-        if (json.error.kind === "LOW_CONFIDENCE") {
-          const p = json.error.partial;
-          setReceiptId(p.receiptId);
-          if (p.counterparty?.name) setMerchant(p.counterparty.name);
-          else if (p.source) setMerchant(prettySourceName(p.source));
-          if (p.amount) {
-            setAmount((p.amount.minor / 100).toFixed(2));
-            setCurrency(p.amount.currency);
+          if (event.type === "result" && event.ok) {
+            terminated = true;
+            // applyOcrSuccessData owns the auto-assign / category-hint
+            // logic and transitions us into the review state. It also
+            // resets `dirty` so the user sees a clean slate.
+            applyOcrSuccessData(event.data, accounts, categories);
+            // Don't `return` here — let the loop drain `done` so the
+            // reader closes cleanly. The reducer is idempotent.
+            continue;
           }
-          // Default a hoy en zona Lima (mismo criterio que
-          // applyOcrSuccessData). NO usar toISOString().slice(0,10)
-          // porque devuelve UTC y se desfasa de noche en Peru.
-          setOccurredAt(formatLimaDate(new Date()));
-          // Eslint hint: p.occurredAt podria llegar a usarse a futuro
-          // como prefill si el user pide undo del default.
-          void p.occurredAt;
-          if (p.categoryHint) {
-            const hintCategoryId = resolveCategoryIdFromHint(
-              p.categoryHint,
-              categories,
-              transactionKind,
-            );
-            if (hintCategoryId) setCategoryId(hintCategoryId);
-          }
-          // transactionKind stays hardcoded to "expense" — we ignore
-          // p.kind even on partials (see state declaration above).
-          //
-          // Auto-assign account only when the partial confidence is
-          // ≥ 0.6 AND the source is firmly classified. The 0.4 default
-          // for partials would have us routing on noise — better to let
-          // the user pick.
-          const c = p.confidence ?? 0.4;
-          const matchKey = p.destinationApp ?? p.source;
-          if (matchKey && matchKey !== "unknown" && c >= 0.6) {
-            const result = suggestAccountIdForSource(matchKey, accounts);
-            if (result.kind === "matched") {
-              setAccountId(result.accountId);
-              setSuggestedSource({
-                label: result.sourceLabel,
-                accountId: result.accountId,
-              });
-              setMissingAccountSourceLabel(null);
-            } else if (result.kind === "unsupported") {
-              setAccountId(null);
-              setSuggestedSource(null);
-              setMissingAccountSourceLabel(result.sourceLabel);
-            } else {
-              setSuggestedSource(null);
-              setMissingAccountSourceLabel(null);
+
+          if (event.type === "result" && !event.ok) {
+            terminated = true;
+            const err = event.error;
+            if (err.kind === "LOW_CONFIDENCE") {
+              applyLowConfidencePartial(err.partial ?? {});
+              continue;
             }
-          } else {
-            setSuggestedSource(null);
-            setMissingAccountSourceLabel(null);
+            if (err.kind === "VALIDATION") {
+              // Schema reject → "no pude leer la foto" modal.
+              setUnprocessableReason("invalid_image");
+              setUnprocessableOpen(true);
+              setStatus("failed");
+              continue;
+            }
+            if (err.kind === "RATE_LIMIT" || err.kind === "TIMEOUT") {
+              toast.error(
+                "El servicio no respondió. Reintenta en unos segundos.",
+              );
+              setStatus("failed");
+              continue;
+            }
+            if (err.kind === "AUTH") {
+              toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
+              setStatus("failed");
+              continue;
+            }
+            // INTERNAL or any other kind → unprocessable modal.
+            setUnprocessableReason("model_failure");
+            setUnprocessableOpen(true);
+            setStatus("failed");
+            continue;
           }
-          setConfidences({
-            merchant: c,
-            amount: c,
-            occurred_at: c,
-            suggested_category: 0,
-            kind: 0,
-          });
-          setDirty(false);
-          toast.warning("Revisa los datos. No estoy del todo seguro.");
-          setStatus("review");
-          return;
+          // `error` events get reflected in the reducer (soft banner)
+          // and we keep listening — the backend follows them with a
+          // `done` to close the stream.
         }
 
-        if (json.error.kind === "INVALID_IMAGE") {
-          setUnprocessableReason("invalid_image");
-          setUnprocessableOpen(true);
+        if (cancelled) return;
+        if (!terminated) {
+          // Stream closed without a terminal `result`. Backend bug or
+          // network drop mid-stream — we lose extraction progress, so
+          // surface a generic failure rather than silently freezing.
+          toast.error("La conexión se cortó antes de terminar. Reintenta.");
           setStatus("failed");
-          return;
         }
-
-        // MODEL_FAILURE — los retryable (5xx, timeout) van por toast
-        // porque son transitorios; el user reintenta y suele andar.
-        // Los no-retryable (parse imposible, schema reject) abren el
-        // modal "no pudimos procesar" con CTA a ingresar manualmente.
-        if (json.error.retryable) {
-          toast.error("El servicio no respondió. Reintenta en unos segundos.");
-        } else {
-          setUnprocessableReason("model_failure");
-          setUnprocessableOpen(true);
-        }
-        setStatus("failed");
       } catch (err) {
         if (cancelled) return;
         if (err instanceof Error && err.name === "AbortError") return;
@@ -1359,8 +1492,9 @@ function ReceiptPageInner() {
     return () => {
       cancelled = true;
       controller.abort();
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
+      if (ocrAbortRef.current === controller) {
+        ocrAbortRef.current = null;
+      }
     };
     // imageFile is captured at loading start; we don't want to retrigger
     // when it changes mid-flight (e.g. user re-picks during the call).
@@ -1461,6 +1595,15 @@ function ReceiptPageInner() {
   }, []);
 
   const handleCancelLoading = React.useCallback(() => {
+    // Abort the in-flight SSE fetch immediately. The status-change
+    // effect's cleanup ALSO calls abort, but doing it here first kills
+    // the network request before the next render cycle so the user
+    // perceives the cancel as instant.
+    if (ocrAbortRef.current) {
+      ocrAbortRef.current.abort();
+      ocrAbortRef.current = null;
+    }
+    dispatchStream({ type: "reset" });
     setStatus("preview");
   }, []);
 
@@ -1723,13 +1866,26 @@ function ReceiptPageInner() {
   }
 
   if (status === "loading" && imageUrl) {
+    // Skeleton-fill: the user watches their data appear in the same
+    // layout they're about to edit, driven by real SSE events.
+    // `streamState` is the reduced view of the OCR pipeline; the soft
+    // error banner only renders when an `error` event interrupts the
+    // stream (transport drops, INTERNAL events) — partial fields stay
+    // visible so the user can edit whatever was extracted before.
+    const errorBanner =
+      streamState.error
+        ? "Algo falló al analizar. Usa los datos parciales o reintenta."
+        : null;
     return (
       <div className="relative min-h-dvh bg-background text-foreground md:min-h-0 md:max-w-2xl md:mx-auto md:my-12 md:rounded-3xl md:border md:border-border md:bg-card md:shadow-[var(--shadow-card)] md:overflow-hidden">
         {hiddenInputs}
-        <LoadingState
+        <ReceiptScanFill
           imageUrl={imageUrl}
-          phase={loadingPhase}
           onCancel={handleCancelLoading}
+          stage={streamState.stage}
+          classified={streamState.classified}
+          fields={streamState.fields}
+          errorBanner={errorBanner}
         />
       </div>
     );

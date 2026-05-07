@@ -26,6 +26,7 @@ export async function extractYape(
   opts: {
     model?: OcrModel;
     onUsage?: (u: VisionUsage) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LlmOutput> {
   return callVisionModel({
@@ -37,5 +38,6 @@ export async function extractYape(
     maxTokens: 600,
     timeoutMs: 25_000,
     onUsage: opts.onUsage,
+    signal: opts.signal,
   });
 }

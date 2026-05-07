@@ -19,6 +19,7 @@ export async function extractPlin(
   opts: {
     model?: OcrModel;
     onUsage?: (u: VisionUsage) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LlmOutput> {
   return callVisionModel({
@@ -30,5 +31,6 @@ export async function extractPlin(
     maxTokens: 600,
     timeoutMs: 25_000,
     onUsage: opts.onUsage,
+    signal: opts.signal,
   });
 }

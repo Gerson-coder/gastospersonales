@@ -22,6 +22,7 @@ export async function extractBcp(
   opts: {
     model?: OcrModel;
     onUsage?: (u: VisionUsage) => void;
+    signal?: AbortSignal;
   } = {},
 ): Promise<LlmOutput> {
   return callVisionModel({
@@ -33,5 +34,6 @@ export async function extractBcp(
     maxTokens: 800,
     timeoutMs: 25_000,
     onUsage: opts.onUsage,
+    signal: opts.signal,
   });
 }
