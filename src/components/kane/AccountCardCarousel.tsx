@@ -128,24 +128,6 @@ export function AccountCardCarousel({
   // Carousel → store. Whenever the user swipes (or scrollTo lands), persist
   // the new active id and notify the dashboard so it re-scopes the other
   // widgets. This is the WRITE side of the bidirectional sync.
-  //
-  // Bug históricamente intermitente — race condition tras hard nav desde
-  // /receipt: la página llamaba `setActiveAccountId(yapeId)` antes del
-  // `window.location.assign("/dashboard")`, pero al remontar el dashboard
-  // desde cero, `accounts` cargaba async. En el primer render `accounts=[]`
-  // y embla nacía con `startIndex=0`. Cuando `accounts` finalmente arribaba,
-  // este effect se re-corría con `accounts=[Cash, Yape, ...]` y el
-  // `onSelect()` explícito leía `selectedScrollSnap()=0` (boot value, embla
-  // todavía no había scrolleado), tomaba `accounts[0]=Cash` y lo persistía,
-  // SOBRESCRIBIENDO la yapeId que /receipt acababa de escribir. Resultado:
-  // el carousel terminaba en Cash en vez de Yape.
-  //
-  // Fix: NO disparar el writeback durante la inicialización. Solo escribir
-  // cuando embla emite `select` por un swipe genuino del user. La
-  // sincronización inicial la maneja el effect de "Store → carousel" más
-  // abajo (scrollTo al índice del activeAccountId persistido). Para que el
-  // local `activeIndex` arranque alineado, sí leemos el snap actual sin
-  // persistirlo.
   React.useEffect(() => {
     if (!emblaApi) return;
     const onSelect = () => {
@@ -158,21 +140,7 @@ export function AccountCardCarousel({
       }
     };
     emblaApi.on("select", onSelect);
-    // Inicial: NOTIFICAMOS al parent (para que el dashboard sincronice
-    // su selectedAccountId y la saldo card pinte correctamente desde el
-    // primer render) pero NO escribimos a kane-prefs.activeAccountId.
-    // El write durante el boot causaba el race tras hard nav desde
-    // /receipt: accounts cargaba async, embla nacia con startIndex=0, y
-    // este handler escribia accounts[0].id (Cash) sobre la yapeId que
-    // /receipt acababa de persistir. La sincronizacion correcta del
-    // carousel hacia la cuenta persistida la hace el effect
-    // "Store -> carousel" mas abajo (scrollTo).
-    const idx = emblaApi.selectedScrollSnap();
-    setActiveIndex(idx);
-    const acct = accounts[idx];
-    if (acct) {
-      onActiveAccountChangeRef.current?.(acct.id);
-    }
+    onSelect(); // run once for initial mount so consumers see the boot state
 
     return () => {
       emblaApi.off("select", onSelect);
