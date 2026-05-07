@@ -781,7 +781,7 @@ export async function getAccountBalances(
       const cached = await readTransactionsCache<TransactionView>({
         currency,
       });
-      const pending = await readPendingViewsForCurrency(currency);
+      const pending = await readPendingViewsForCurrency({ currency });
       const balances: Record<string, number> = {};
       for (const r of [...cached, ...pending]) {
         const sign = r.kind === "income" ? 1 : -1;
