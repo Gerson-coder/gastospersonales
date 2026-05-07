@@ -1612,6 +1612,11 @@ function ReceiptPageInner() {
     pendingReceiptLocalId,
     receiptId,
     router,
+    // Critico: cuando transactionKind paso de const a state (toggle
+    // Gasto/Ingreso) el callback empezo a capturar el valor inicial
+    // "expense" en su closure y NUNCA se actualizaba — los ingresos
+    // se persistian como gastos. Agregar a deps lo arregla.
+    transactionKind,
   ]);
 
   const handleDiscard = React.useCallback(() => {
