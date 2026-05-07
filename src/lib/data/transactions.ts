@@ -308,6 +308,24 @@ export async function listTransactionsByCurrency(opts: {
   fromISO?: string;
   /** Optional exclusive upper bound for `occurred_at`. ISO timestamp. */
   toISO?: string;
+  /**
+   * Server-side filters (auditoria perf 2026-05-07). Antes /movements
+   * filtraba en cliente sobre el set ya cargado: si el ultimo gasto en
+   * la categoria X era de hace 4 meses, el user veia "sin resultados"
+   * hasta hacer "Cargar mas" varias veces. Pasar el filtro al server
+   * usa los indices `transactions_user_category_occurred_idx` y
+   * `transactions_user_account_occurred_idx` (ver migracion 00001).
+   */
+  /** Filtrar por id de categoria. `null` se trata como "todas". */
+  categoryId?: string | null;
+  /** Filtrar por id de cuenta. `null` se trata como "todas". */
+  accountId?: string | null;
+  /** Filtrar por tipo de movimiento. */
+  kind?: TransactionKind;
+  /** True => solo filas que son una pierna de transferencia. */
+  transferOnly?: boolean;
+  /** True => excluir filas que son piernas de transferencia. */
+  excludeTransfers?: boolean;
 }): Promise<ListResult> {
   const limit = opts.limit ?? 50;
   const supabase = createSupabaseClient();
@@ -327,6 +345,20 @@ export async function listTransactionsByCurrency(opts: {
     }
     if (opts.toISO) {
       query = query.lt("occurred_at", opts.toISO);
+    }
+    if (opts.categoryId) {
+      query = query.eq("category_id", opts.categoryId);
+    }
+    if (opts.accountId) {
+      query = query.eq("account_id", opts.accountId);
+    }
+    if (opts.kind) {
+      query = query.eq("kind", opts.kind);
+    }
+    if (opts.transferOnly) {
+      query = query.not("transfer_group_id", "is", null);
+    } else if (opts.excludeTransfers) {
+      query = query.is("transfer_group_id", null);
     }
 
     if (opts.cursor) {
@@ -359,6 +391,17 @@ export async function listTransactionsByCurrency(opts: {
     // page so cursor pagination through the same window is hot.
     void cacheTransactions(baseRows);
 
+    const viewFilter: ViewFilter = {
+      currency: opts.currency,
+      fromISO: opts.fromISO,
+      toISO: opts.toISO,
+      categoryId: opts.categoryId ?? null,
+      accountId: opts.accountId ?? null,
+      kind: opts.kind,
+      transferOnly: opts.transferOnly,
+      excludeTransfers: opts.excludeTransfers,
+    };
+
     // Read merge (Fase 2): pending rows are the freshest by definition,
     // so we prepend them to page 1 only. On paginated calls (cursor !=
     // null) we're paginating into the past; pending rows already showed
@@ -366,11 +409,7 @@ export async function listTransactionsByCurrency(opts: {
     const merged = opts.cursor
       ? baseRows
       : [
-          ...(await readPendingViewsForCurrency(
-            opts.currency,
-            opts.fromISO,
-            opts.toISO,
-          )),
+          ...(await readPendingViewsForCurrency(viewFilter)),
           ...baseRows,
         ];
 
@@ -382,21 +421,37 @@ export async function listTransactionsByCurrency(opts: {
     // Offline fallback — read from IndexedDB cache. Same shape as the
     // online return so the consumer doesn't need to branch.
     if (isOfflineError(err)) {
+      const viewFilter: ViewFilter = {
+        currency: opts.currency,
+        fromISO: opts.fromISO,
+        toISO: opts.toISO,
+        categoryId: opts.categoryId ?? null,
+        accountId: opts.accountId ?? null,
+        kind: opts.kind,
+        transferOnly: opts.transferOnly,
+        excludeTransfers: opts.excludeTransfers,
+      };
       const cached = await readTransactionsCache<TransactionView>({
         currency: opts.currency,
         fromISO: opts.fromISO,
         toISO: opts.toISO,
       });
+      // Aplicar el resto de los filtros del server (categoryId, accountId,
+      // kind, transferOnly/excludeTransfers) sobre el cache para mantener
+      // paridad online/offline.
+      const cachedFiltered = cached.filter((r) =>
+        matchesViewFilter(r, viewFilter),
+      );
       // Apply cursor predicate locally so /movements pagination keeps
       // working offline against the cache.
       const filtered = opts.cursor
-        ? cached.filter(
+        ? cachedFiltered.filter(
             (r) =>
               r.occurredAt < opts.cursor!.occurredAt ||
               (r.occurredAt === opts.cursor!.occurredAt &&
                 r.id < opts.cursor!.id),
           )
-        : cached;
+        : cachedFiltered;
       const sliced = filtered.slice(0, limit);
       const hasMore = filtered.length > limit;
       const nextCursor: ListCursor | null = hasMore
@@ -408,17 +463,42 @@ export async function listTransactionsByCurrency(opts: {
       const merged = opts.cursor
         ? sliced
         : [
-            ...(await readPendingViewsForCurrency(
-              opts.currency,
-              opts.fromISO,
-              opts.toISO,
-            )),
+            ...(await readPendingViewsForCurrency(viewFilter)),
             ...sliced,
           ];
       return { rows: merged, nextCursor };
     }
     throw err;
   }
+}
+
+/**
+ * Predicado compartido entre el query online y los fallbacks offline /
+ * pending queue. Mantiene la paridad: si el server filtra por categoria
+ * X, el cache cliente y la pending queue tambien filtran por categoria X
+ * antes de mergear.
+ */
+type ViewFilter = {
+  currency: Currency;
+  fromISO?: string;
+  toISO?: string;
+  categoryId?: string | null;
+  accountId?: string | null;
+  kind?: TransactionKind;
+  transferOnly?: boolean;
+  excludeTransfers?: boolean;
+};
+
+function matchesViewFilter(view: TransactionView, f: ViewFilter): boolean {
+  if (view.currency !== f.currency) return false;
+  if (f.fromISO && view.occurredAt < f.fromISO) return false;
+  if (f.toISO && view.occurredAt >= f.toISO) return false;
+  if (f.categoryId && view.categoryId !== f.categoryId) return false;
+  if (f.accountId && view.accountId !== f.accountId) return false;
+  if (f.kind && view.kind !== f.kind) return false;
+  if (f.transferOnly && view.transferGroupId === null) return false;
+  if (f.excludeTransfers && view.transferGroupId !== null) return false;
+  return true;
 }
 
 /**
@@ -431,9 +511,7 @@ export async function listTransactionsByCurrency(opts: {
  * `pendingError` for failed rows so the UI can render the right badge.
  */
 async function readPendingViewsForCurrency(
-  currency: Currency,
-  fromISO?: string,
-  toISO?: string,
+  filter: ViewFilter,
 ): Promise<TransactionView[]> {
   if (typeof window === "undefined") return [];
   const queue = await listPendingTransactions();
@@ -442,9 +520,7 @@ async function readPendingViewsForCurrency(
     if (row.operation !== "createTransaction") continue;
     const wrapper = row.payload as { view?: TransactionView };
     if (!wrapper?.view) continue;
-    if (wrapper.view.currency !== currency) continue;
-    if (fromISO && wrapper.view.occurredAt < fromISO) continue;
-    if (toISO && wrapper.view.occurredAt >= toISO) continue;
+    if (!matchesViewFilter(wrapper.view, filter)) continue;
     views.push({
       ...wrapper.view,
       id: row.localId,
@@ -462,6 +538,68 @@ async function readPendingViewsForCurrency(
 }
 
 /**
+ * In-memory cache compartido entre llamadas a `listTransactionsWindow`.
+ * Auditoria perf 2026-05-07: dashboard (6mo) y /insights (12mo) montan
+ * cada uno su propio `useTransactionsWindow` y refetcheaban a Supabase
+ * en cada navegacion entre tabs aunque la data fuera la misma. Un cache
+ * en memoria con TTL corto deduplica los refetch sin tocar la logica
+ * del hook ni introducir SWR/React-Query como dep.
+ *
+ * Llave: `currency:fromISO`. Si dashboard pidio "PEN, hace 6 meses" y
+ * el user va a /insights ("PEN, hace 12 meses"), las llaves difieren =>
+ * miss => fetch fresh. Cuando el user vuelve a /dashboard dentro del
+ * TTL, hit => no network.
+ *
+ * Solo cacheamos las filas remotas (server). Las pending del offline
+ * queue se mergean al hit con el cache para que el set siempre incluya
+ * las captures locales mas frescas.
+ *
+ * Invalidacion: TTL natural + `emitTxUpserted` la limpia explicitamente
+ * para que cualquier write reciente fuerce el siguiente fetch.
+ */
+type WindowCacheEntry = {
+  rows: TransactionView[];
+  fetchedAt: number;
+};
+const WINDOW_CACHE_TTL_MS = 60_000;
+const windowCache = new Map<string, WindowCacheEntry>();
+
+function windowCacheKey(currency: Currency, fromISO: string): string {
+  return `${currency}:${fromISO}`;
+}
+
+function readWindowCache(
+  currency: Currency,
+  fromISO: string,
+): TransactionView[] | null {
+  const entry = windowCache.get(windowCacheKey(currency, fromISO));
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > WINDOW_CACHE_TTL_MS) {
+    windowCache.delete(windowCacheKey(currency, fromISO));
+    return null;
+  }
+  return entry.rows;
+}
+
+function writeWindowCache(
+  currency: Currency,
+  fromISO: string,
+  rows: TransactionView[],
+): void {
+  windowCache.set(windowCacheKey(currency, fromISO), {
+    rows,
+    fetchedAt: Date.now(),
+  });
+}
+
+/** Limpia el cache en memoria. Llamado por `emitTxUpserted` para que
+ *  los writes invaliden el set inmediatamente. Tambien expuesto por si
+ *  un futuro flujo necesita forzar refetch. */
+export function invalidateTransactionsWindowCache(): void {
+  windowCache.clear();
+}
+
+/**
  * Fetch a window of transactions from `fromISO` to now (no upper bound).
  * Used by aggregations (`useTransactionsWindow`) where we want the whole
  * 6-month dataset client-side, no pagination. Filters by currency +
@@ -471,6 +609,18 @@ export async function listTransactionsWindow(opts: {
   currency: Currency;
   fromISO: string;
 }): Promise<TransactionView[]> {
+  // Cache hit en memoria — dedup tab-to-tab dentro del TTL. Las pending
+  // siguen leyendose fresh para que un capture offline reciente nunca
+  // quede invisible detras de un cache stale.
+  const cached = readWindowCache(opts.currency, opts.fromISO);
+  if (cached) {
+    const pending = await readPendingViewsForCurrency({
+      currency: opts.currency,
+      fromISO: opts.fromISO,
+    });
+    return [...pending, ...cached];
+  }
+
   const supabase = createSupabaseClient();
   try {
     const { data, error } = await supabase
@@ -490,23 +640,24 @@ export async function listTransactionsWindow(opts: {
     const baseRows = rows.map(toView);
     // Mirror to offline cache.
     void cacheTransactions(baseRows);
+    writeWindowCache(opts.currency, opts.fromISO, baseRows);
     // Read merge (Fase 2) — see `readPendingViewsForCurrency`.
-    const pending = await readPendingViewsForCurrency(
-      opts.currency,
-      opts.fromISO,
-    );
+    const pending = await readPendingViewsForCurrency({
+      currency: opts.currency,
+      fromISO: opts.fromISO,
+    });
     return [...pending, ...baseRows];
   } catch (err) {
     if (isOfflineError(err)) {
-      const cached = await readTransactionsCache<TransactionView>({
+      const cachedIDB = await readTransactionsCache<TransactionView>({
         currency: opts.currency,
         fromISO: opts.fromISO,
       });
-      const pending = await readPendingViewsForCurrency(
-        opts.currency,
-        opts.fromISO,
-      );
-      return [...pending, ...cached];
+      const pending = await readPendingViewsForCurrency({
+        currency: opts.currency,
+        fromISO: opts.fromISO,
+      });
+      return [...pending, ...cachedIDB];
     }
     throw err;
   }
@@ -545,37 +696,47 @@ export async function getTransactionById(
  * — `TransactionView.amount` is also major, so callers can compare directly
  * (`balances[id] < draft.amount`) without unit conversions. Accounts with
  * no movements are absent from the map; treat absence as zero.
+ *
+ * Implementacion: invoca el RPC `get_account_balances` (migracion 00033)
+ * que hace `SUM(...) GROUP BY account_id` server-side. Antes el cliente
+ * traia `(account_id, kind, amount_minor)` de TODAS las filas no archivadas
+ * y sumaba en JS — para usuarios con anios de historial eran miles de filas
+ * por la red en cada mount del dashboard / cambio de currency / tx:upserted.
+ *
+ * Fallback: si el RPC no esta deployado todavia (codigo en prod antes que
+ * la migracion), degradamos al SELECT + sum cliente del comportamiento
+ * previo. Asi el deploy de Vercel + el `db push` manual pueden ir en
+ * cualquier orden sin romper el saldo guard.
  */
 export async function getAccountBalances(
   currency: TransactionDraft["currency"],
 ): Promise<Record<string, number>> {
   const supabase = createSupabaseClient();
   try {
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("account_id, kind, amount_minor")
-      .is("archived_at", null)
-      .eq("currency", currency);
+    const { data, error } = await supabase.rpc("get_account_balances", {
+      p_currency: currency,
+    });
 
     if (error) {
+      // RPC ausente => migracion 00033 todavia no aplicada. Caemos al
+      // fetch directo + sum cliente para mantener el saldo guard funcional.
+      if (error.code === "42883" || error.code === "PGRST202") {
+        return await getAccountBalancesClientFold(currency);
+      }
       throw new Error(error.message || "No pudimos calcular el saldo.");
     }
 
-    const minor: Record<string, number> = {};
-    type Row = {
-      account_id: string;
-      kind: "income" | "expense";
-      amount_minor: number;
-    };
-    for (const row of (data ?? []) as Row[]) {
-      const sign = row.kind === "income" ? 1 : -1;
-      minor[row.account_id] =
-        (minor[row.account_id] ?? 0) + sign * row.amount_minor;
-    }
-    // Convert to major in a second pass — keeps the inner sum on integers
-    // (no float drift) and only divides once per account.
+    type Row = { account_id: string; balance_minor: number | string };
     const balances: Record<string, number> = {};
-    for (const id in minor) balances[id] = minor[id] / 100;
+    for (const row of (data ?? []) as Row[]) {
+      // bigint de Postgres puede serializarse como string en algunos
+      // adapters; aceptamos ambos para no depender del runtime exacto.
+      const minor =
+        typeof row.balance_minor === "string"
+          ? Number(row.balance_minor)
+          : row.balance_minor;
+      balances[row.account_id] = minor / 100;
+    }
     return balances;
   } catch (err) {
     if (isOfflineError(err)) {
@@ -598,6 +759,45 @@ export async function getAccountBalances(
     }
     throw err;
   }
+}
+
+/**
+ * Fallback usado cuando el RPC `get_account_balances` no esta deployado
+ * (codigo en prod antes que la migracion 00033). Equivale al fetch
+ * directo + fold cliente que existia antes de la optimizacion.
+ *
+ * NO uses esto fuera del fallback — es proporcionalmente mas lento para
+ * usuarios con historial extenso. Existe solo para zero-downtime durante
+ * la transicion al RPC.
+ */
+async function getAccountBalancesClientFold(
+  currency: TransactionDraft["currency"],
+): Promise<Record<string, number>> {
+  const supabase = createSupabaseClient();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("account_id, kind, amount_minor")
+    .is("archived_at", null)
+    .eq("currency", currency);
+
+  if (error) {
+    throw new Error(error.message || "No pudimos calcular el saldo.");
+  }
+
+  const minor: Record<string, number> = {};
+  type Row = {
+    account_id: string;
+    kind: "income" | "expense";
+    amount_minor: number;
+  };
+  for (const row of (data ?? []) as Row[]) {
+    const sign = row.kind === "income" ? 1 : -1;
+    minor[row.account_id] =
+      (minor[row.account_id] ?? 0) + sign * row.amount_minor;
+  }
+  const balances: Record<string, number> = {};
+  for (const id in minor) balances[id] = minor[id] / 100;
+  return balances;
 }
 
 /**
@@ -625,6 +825,10 @@ export const TX_UPSERTED_EVENT = "tx:upserted";
  * resolvió.
  */
 export function emitTxUpserted(): void {
+  // Invalidar cache en memoria del window — sin esto, dos refetch
+  // consecutivos dentro del TTL devolverian la misma data stale al
+  // dashboard / insights aunque acabamos de escribir una tx nueva.
+  invalidateTransactionsWindowCache();
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(TX_UPSERTED_EVENT));
 }

@@ -37,6 +37,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  invalidateTransactionsWindowCache,
   listTransactionsWindow,
   type TransactionView,
 } from "@/lib/data/transactions";
@@ -303,6 +304,10 @@ export function useTransactionsWindow(
   const [tick, setTick] = useState(0);
 
   const refetch = useCallback(() => {
+    // Invalidar cache en memoria antes de bumpear tick — sin esto, un
+    // refetch disparado por realtime / tx:upserted dentro del TTL del
+    // cache devolveria la data stale guardada por el fetch anterior.
+    invalidateTransactionsWindowCache();
     setTick((t) => t + 1);
   }, []);
 
