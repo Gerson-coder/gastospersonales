@@ -45,12 +45,20 @@ type Result = {
 };
 
 /** Convierte una clave base64-url (formato VAPID) a Uint8Array para
- *  pasarla a pushManager.subscribe(). */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+ *  pasarla a pushManager.subscribe().
+ *
+ *  Devuelve `Uint8Array<ArrayBuffer>` explicitamente (no
+ *  `Uint8Array<ArrayBufferLike>`) porque desde TS 5.7 el lib.dom.d.ts
+ *  diferencia ArrayBuffer vs SharedArrayBuffer en `BufferSource`, y
+ *  `pushManager.subscribe({ applicationServerKey })` espera el primero.
+ *  Construir el buffer via `new ArrayBuffer(...)` garantiza el subtype
+ *  correcto. */
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
