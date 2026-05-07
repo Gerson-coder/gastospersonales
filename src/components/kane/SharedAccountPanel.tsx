@@ -177,11 +177,17 @@ export function SharedAccountPanel({
           <Loader2 size={14} aria-hidden className="mr-1.5 animate-spin" />
           Cargando estado…
         </div>
-      ) : sharedWithPartner && partnerInfo ? (
-        // Estado: ya compartida.
+      ) : sharedWithPartner ? (
+        // Estado: ya compartida. La FUENTE DE VERDAD es el flag
+        // accounts.shared_with_partner (lo trae el parent en la prop) —
+        // NUNCA `partnerInfo`, porque ese viene de una RPC opcional
+        // que puede fallar / no estar aplicada (migration 00030) sin
+        // que eso signifique que la cuenta dejo de estar compartida.
+        // El nombre del partner es info adicional con fallback "tu
+        // pareja" / "el dueño".
         isOwner ? (
           <OwnerSharedView
-            partnerName={partnerInfo.partnerName}
+            partnerName={partnerInfo?.partnerName ?? "tu pareja"}
             confirmKick={confirmKick}
             submitting={submitting}
             onArmKick={() => setConfirmKick(true)}
@@ -190,7 +196,7 @@ export function SharedAccountPanel({
           />
         ) : (
           <PartnerSharedView
-            partnerName={partnerInfo.partnerName}
+            partnerName={partnerInfo?.partnerName ?? "el dueño"}
             confirmLeave={confirmLeave}
             submitting={submitting}
             onArmLeave={() => setConfirmLeave(true)}
