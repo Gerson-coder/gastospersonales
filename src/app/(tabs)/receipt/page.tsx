@@ -938,7 +938,16 @@ function ReceiptPageInner() {
   // /capture: refetches on currency switch so the OCR flow's saldo
   // guard always sees the right pool. A Yape (or any) account can't go
   // negative through this entry point either.
-  const { balances, balancesLoaded } = useAccountBalances(currency);
+  //
+  // `reload` se invoca al abrir el drawer del picker para garantizar que
+  // los saldos esten frescos en el momento que el user los necesita. Sin
+  // esto, si el fetch inicial al mount se resolvio en una ventana donde
+  // RLS / auth / supabase aun no estaban listos (caso comun cuando se
+  // entra via "share to PWA" desde Yape), los saldos quedaban en {} y
+  // todas las cuentas mostraban S/ 0.00 hasta navegar a otra ruta y
+  // volver. Disparar reload al abrir el modal cierra esa ventana.
+  const { balances, balancesLoaded, reload: reloadBalances } =
+    useAccountBalances(currency);
   // Modal triggered when an OCR-captured amount would overdraft the
   // picked account. Same two-state contract as /capture: "empty"
   // (saldo <= 0) vs "insufficient" (saldo < amount).
@@ -1087,6 +1096,17 @@ function ReceiptPageInner() {
     // handleFile's revoke; this effect runs once on unmount with the final URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refrescar balances cada vez que se abre el drawer del picker. Defensa
+  // en profundidad: si el fetch inicial del mount se resolvió en una
+  // ventana donde RLS / auth no estaban listos (entrada via "share to
+  // PWA" de Yape), los saldos quedaban en `{}` y todas las cuentas
+  // mostraban S/ 0.00. Forzar reload al abrir el modal garantiza datos
+  // frescos en el momento que el user los necesita para decidir.
+  React.useEffect(() => {
+    if (!isAccountOpen) return;
+    void reloadBalances();
+  }, [isAccountOpen, reloadBalances]);
 
   /**
    * Apply a successful OCR result to the form state. Extracted from the
