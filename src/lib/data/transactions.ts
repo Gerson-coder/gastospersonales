@@ -713,7 +713,24 @@ export async function getAccountBalances(
 ): Promise<Record<string, number>> {
   const supabase = createSupabaseClient();
   try {
-    const { data, error } = await supabase.rpc("get_account_balances", {
+    // Cast el .rpc en un binding tipado a mano. El tipo Database
+    // generado por `supabase gen types` aun no incluye
+    // `get_account_balances` (migracion 00033 recien creada). En lugar
+    // de regenerar tipos en el repo, usamos un cast localizado para
+    // que el codigo compile y siga siendo type-safe en su uso interno.
+    type GetAccountBalancesRow = {
+      account_id: string;
+      balance_minor: number | string;
+    };
+    type RpcFn = (
+      name: "get_account_balances",
+      args: { p_currency: string },
+    ) => Promise<{
+      data: GetAccountBalancesRow[] | null;
+      error: { message?: string; code?: string } | null;
+    }>;
+    const rpc = supabase.rpc as unknown as RpcFn;
+    const { data, error } = await rpc("get_account_balances", {
       p_currency: currency,
     });
 
@@ -726,9 +743,8 @@ export async function getAccountBalances(
       throw new Error(error.message || "No pudimos calcular el saldo.");
     }
 
-    type Row = { account_id: string; balance_minor: number | string };
     const balances: Record<string, number> = {};
-    for (const row of (data ?? []) as Row[]) {
+    for (const row of data ?? []) {
       // bigint de Postgres puede serializarse como string en algunos
       // adapters; aceptamos ambos para no depender del runtime exacto.
       const minor =
