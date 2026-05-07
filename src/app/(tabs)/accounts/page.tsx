@@ -30,8 +30,6 @@ import {
   Trash2,
   Loader2,
   Heart,
-  LogOut,
-  Settings2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -248,14 +246,6 @@ function AccountsPageInner() {
   // dentro del row) para que la animacion de cierre del Drawer no se
   // recorte cuando el row se re-renderiza.
   const [invitingAccount, setInvitingAccount] = React.useState<Account | null>(
-    null,
-  );
-  // Cuenta cuyo SharedAccountPanel abrir en modo "gestion" — para
-  // cuentas YA compartidas. Sin esto el user tenia que entrar al form
-  // de editar y scrollear al fondo para encontrar "Quitar pareja" /
-  // "Salir de la cuenta". Ahora lo abrimos directo desde el pill del
-  // row.
-  const [managingAccount, setManagingAccount] = React.useState<Account | null>(
     null,
   );
   // user.id — para distinguir owner vs partner cuando una cuenta esta
@@ -498,26 +488,22 @@ function AccountsPageInner() {
                   const KindIcon = ACCOUNT_KIND_ICON[account.kind];
                   const isOwner = !!user && user.id === account.userId;
                   const pending = pendingInvites.get(account.id) ?? null;
-                  // El pill al costado del row tiene 4 estados posibles
-                  // segun lo que el user puede hacer con la cuenta:
-                  //   1. owner sin compartir → CTA "Invitar"
-                  //   2. owner con invitacion pendiente → "Pendiente"
-                  //   3. owner con cuenta compartida → "Gestionar" (revoke)
-                  //   4. partner con cuenta compartida → "Salir"
-                  // En demo (no Supabase) o si no hay user todavia, no
-                  // renderizamos pill (no hay nada que hacer).
-                  type PartnershipAction =
-                    | "invite"
-                    | "pending"
-                    | "manage"
-                    | "leave";
+                  // El pill al costado del row es solo para DESCUBRIMIENTO
+                  // de "Invitar a tu pareja" — accion high-value que el
+                  // user no encontraria sin un CTA prominente. Cuando la
+                  // cuenta YA esta compartida, el badge verde en el label
+                  // es suficiente como indicador, y la gestion (quitar
+                  // pareja / salir) vive dentro del form de editar para
+                  // mantener UNA superficie y un row limpio.
+                  type PartnershipAction = "invite" | "pending";
                   let partnershipAction: PartnershipAction | null = null;
-                  if (SUPABASE_ENABLED && user) {
-                    if (account.sharedWithPartner) {
-                      partnershipAction = isOwner ? "manage" : "leave";
-                    } else if (isOwner) {
-                      partnershipAction = pending ? "pending" : "invite";
-                    }
+                  if (
+                    SUPABASE_ENABLED &&
+                    user &&
+                    isOwner &&
+                    !account.sharedWithPartner
+                  ) {
+                    partnershipAction = pending ? "pending" : "invite";
                   }
                   const showPartnershipAction = partnershipAction !== null;
                   return (
@@ -595,68 +581,36 @@ function AccountsPageInner() {
                             />
                           ) : null}
                         </button>
-                        {/* Partnership action — pill mutable segun
-                            estado. Click siempre se queda en este sub-
-                            button (no propaga al row principal) y abre
-                            el drawer apropiado: invitar / ver invitacion
-                            pendiente / gestionar (revoke o leave). */}
+                        {/* Partnership action — solo para descubrimiento
+                            de "Invitar a tu pareja" cuando aun no la
+                            invitaste, o "Pendiente" mientras espera
+                            aceptacion. Una vez compartida, el row queda
+                            limpio (badge verde en el label es suficiente)
+                            y la gestion (quitar pareja / salir) vive en
+                            el form de editar cuenta — UNA sola superficie. */}
                         {showPartnershipAction ? (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (
-                                partnershipAction === "manage" ||
-                                partnershipAction === "leave"
-                              ) {
-                                setManagingAccount(account);
-                              } else {
-                                setInvitingAccount(account);
-                              }
+                              setInvitingAccount(account);
                             }}
                             aria-label={
-                              partnershipAction === "manage"
-                                ? `Gestionar cuenta compartida ${account.label}`
-                                : partnershipAction === "leave"
-                                  ? `Salir de cuenta compartida ${account.label}`
-                                  : partnershipAction === "pending"
-                                    ? `Ver invitación pendiente de ${account.label}`
-                                    : `Invitar a tu pareja a ${account.label}`
+                              partnershipAction === "pending"
+                                ? `Ver invitación pendiente de ${account.label}`
+                                : `Invitar a tu pareja a ${account.label}`
                             }
                             title={
-                              partnershipAction === "manage"
-                                ? "Gestionar cuenta compartida"
-                                : partnershipAction === "leave"
-                                  ? "Salir de la cuenta compartida"
-                                  : partnershipAction === "pending"
-                                    ? "Invitación pendiente"
-                                    : "Invitar a tu pareja"
+                              partnershipAction === "pending"
+                                ? "Invitación pendiente"
+                                : "Invitar a tu pareja"
                             }
                             className={cn(
                               "flex min-h-[64px] flex-shrink-0 items-center justify-center px-3 transition-colors md:min-h-[80px] md:px-4",
                               "border-l border-border/60 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
                             )}
                           >
-                            {partnershipAction === "manage" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40">
-                                <Settings2
-                                  size={11}
-                                  aria-hidden="true"
-                                  strokeWidth={2.5}
-                                  className="text-emerald-600 dark:text-emerald-400"
-                                />
-                                Gestionar
-                              </span>
-                            ) : partnershipAction === "leave" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/12 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-destructive ring-1 ring-inset ring-destructive/30">
-                                <LogOut
-                                  size={11}
-                                  aria-hidden="true"
-                                  strokeWidth={2.5}
-                                />
-                                Salir
-                              </span>
-                            ) : partnershipAction === "pending" ? (
+                            {partnershipAction === "pending" ? (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
                                 <span
                                   aria-hidden
@@ -765,48 +719,6 @@ function AccountsPageInner() {
         />
       ) : null}
 
-      {/* Manage sheet — abre el SharedAccountPanel standalone sin
-          forzar al user a entrar al form completo de editar cuenta.
-          Cubre los 2 casos de cuenta compartida: owner ve "Quitar
-          pareja"; partner ve "Salir de la cuenta". El panel internamente
-          tiene confirm inline destructivo para ambas acciones. */}
-      <Drawer
-        open={managingAccount !== null}
-        onOpenChange={(open) => {
-          if (!open) setManagingAccount(null);
-        }}
-      >
-        <DrawerContent
-          aria-describedby="manage-shared-desc"
-          className="bg-background md:!max-w-2xl"
-        >
-          <DrawerHeader className="text-left">
-            <DrawerTitle className="font-sans not-italic text-base font-semibold">
-              Cuenta compartida
-            </DrawerTitle>
-            <DrawerDescription
-              id="manage-shared-desc"
-              className="text-[12px]"
-            >
-              {managingAccount?.label ?? ""}
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-6">
-            {managingAccount ? (
-              <SharedAccountPanel
-                accountId={managingAccount.id}
-                accountLabel={managingAccount.label}
-                ownerUserId={managingAccount.userId}
-                sharedWithPartner={managingAccount.sharedWithPartner}
-                onChange={() => {
-                  setManagingAccount(null);
-                  void reload();
-                }}
-              />
-            ) : null}
-          </div>
-        </DrawerContent>
-      </Drawer>
     </main>
   );
 }
