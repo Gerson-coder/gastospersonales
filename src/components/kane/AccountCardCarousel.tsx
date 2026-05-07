@@ -158,10 +158,21 @@ export function AccountCardCarousel({
       }
     };
     emblaApi.on("select", onSelect);
-    // Solo sincronizamos el `activeIndex` local — NO disparamos el
-    // writeback. Los swipes reales del user emiten `select` nativamente y
-    // van por el handler completo.
-    setActiveIndex(emblaApi.selectedScrollSnap());
+    // Inicial: NOTIFICAMOS al parent (para que el dashboard sincronice
+    // su selectedAccountId y la saldo card pinte correctamente desde el
+    // primer render) pero NO escribimos a kane-prefs.activeAccountId.
+    // El write durante el boot causaba el race tras hard nav desde
+    // /receipt: accounts cargaba async, embla nacia con startIndex=0, y
+    // este handler escribia accounts[0].id (Cash) sobre la yapeId que
+    // /receipt acababa de persistir. La sincronizacion correcta del
+    // carousel hacia la cuenta persistida la hace el effect
+    // "Store -> carousel" mas abajo (scrollTo).
+    const idx = emblaApi.selectedScrollSnap();
+    setActiveIndex(idx);
+    const acct = accounts[idx];
+    if (acct) {
+      onActiveAccountChangeRef.current?.(acct.id);
+    }
 
     return () => {
       emblaApi.off("select", onSelect);
