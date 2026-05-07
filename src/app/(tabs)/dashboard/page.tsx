@@ -82,6 +82,7 @@ import { UpcomingCommitmentsCard } from "@/components/kane/UpcomingCommitmentsCa
 import { TemplatesQuickRow } from "@/components/kane/TemplatesQuickRow";
 import { ProactiveInsightsBanner } from "@/components/kane/ProactiveInsightsBanner";
 import { AdvisorCard } from "@/components/kane/AdvisorCard";
+import { DeferUntilIdle } from "@/components/kane/DeferUntilIdle";
 import { ThemeToggle } from "@/components/kane/ThemeToggle";
 import { ProfileMenu } from "@/components/kane/ProfileMenu";
 
@@ -1361,6 +1362,27 @@ function MobileInsightCard({
   );
 }
 
+// Placeholders pintados mientras los cards secundarios estan diferidos
+// detras de `requestIdleCallback`. Reservan alto aproximado para evitar
+// layout shift cuando el card real aparece tras el primer paint.
+function DeferredCardPlaceholder({ height = 96 }: { height?: number }) {
+  return (
+    <div
+      aria-hidden
+      className="rounded-2xl border border-border/60 bg-muted/30"
+      style={{ height: `${height}px` }}
+    />
+  );
+}
+function DeferredRowPlaceholder() {
+  return (
+    <div
+      aria-hidden
+      className="h-12 rounded-full bg-muted/30"
+    />
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
@@ -1438,33 +1460,46 @@ export default function DashboardPage() {
     debounceMs: 250,
   });
 
-  // Refetch when the dashboard regains visibility / focus. App Router
-  // caches client pages, so coming back from /capture via router.push
-  // doesn't unmount this page — without this hook the user could be
-  // staring at the pre-insert numbers until the realtime broadcast
-  // arrives (often 500-1500ms). This fires synchronously on tab focus
-  // and on bfcache restore too. See bugfix: insight banner stuck after
-  // a fresh expense.
+  // Refetch when the dashboard regains visibility / signals a tx change.
+  //
+  // Diseno revisado tras la auditoria de performance: antes el dashboard
+  // tenia 4 listeners (visibilitychange + focus + pageshow + TX_UPSERTED)
+  // que en una sola navegacion /capture -> /dashboard podian disparar 3
+  // refetch consecutivos a Supabase sobre la misma data. Mismo patron que
+  // /movements ya consolido tras un reporte de "se siente lento".
+  //
+  // Ahora:
+  //   - Solo TX_UPSERTED_EVENT (cambios reales) y visibilitychange
+  //     (volver al tab tras un rato). focus + pageshow se quitan: en un
+  //     SPA + bfcache normal son redundantes con visibilitychange.
+  //   - Coalesce window de 1s: dos eventos consecutivos dentro de 1s
+  //     colapsan a un solo refetch. Cubre el caso "TX_UPSERTED + visible
+  //     casi simultaneos" que aplastaba dos queries identicas a
+  //     listTransactionsWindow + getAccountBalances.
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) return;
     const refetch = window.refetch;
+    let lastRefetchAt = 0;
+    const COALESCE_MS = 1000;
+    const fire = () => {
+      const now = Date.now();
+      if (now - lastRefetchAt < COALESCE_MS) return;
+      lastRefetchAt = now;
+      refetch();
+    };
     const onVisible = () => {
-      if (document.visibilityState === "visible") refetch();
+      if (document.visibilityState === "visible") fire();
     };
     document.addEventListener("visibilitychange", onVisible);
-    globalThis.addEventListener("focus", refetch);
-    globalThis.addEventListener("pageshow", refetch);
-    // App Router caches client pages, so `/capture` → `/dashboard` doesn't
+    // App Router caches client pages, so `/capture` -> `/dashboard` doesn't
     // remount this page. Realtime alone has 500-1500ms latency and
     // `router.refresh()` only invalidates server data. Listening to a
     // synchronous in-app event guarantees the saldo card + per-account card
     // refresh the moment a write ACKs in the same tab.
-    globalThis.addEventListener(TX_UPSERTED_EVENT, refetch);
+    globalThis.addEventListener(TX_UPSERTED_EVENT, fire);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
-      globalThis.removeEventListener("focus", refetch);
-      globalThis.removeEventListener("pageshow", refetch);
-      globalThis.removeEventListener(TX_UPSERTED_EVENT, refetch);
+      globalThis.removeEventListener(TX_UPSERTED_EVENT, fire);
     };
   }, [window.refetch]);
 
@@ -2401,8 +2436,12 @@ export default function DashboardPage() {
                       registrar gastos frecuentes con un solo tap. Render
                       null cuando no hay templates activos. Va arriba de
                       los stat cards porque es la accion mas rapida del
-                      dashboard. */}
-                  <TemplatesQuickRow />
+                      dashboard. Diferido detras de requestIdleCallback
+                      asi su listTemplates() no compite con el primer
+                      paint del hero + saldo. */}
+                  <DeferUntilIdle fallback={<DeferredRowPlaceholder />}>
+                    <TemplatesQuickRow />
+                  </DeferUntilIdle>
 
                   {/* Today snapshot — Gasto de hoy / Último ingreso. Two
                       compact cards focused on RECENT activity (today's
@@ -2481,20 +2520,25 @@ export default function DashboardPage() {
                   {/* Próximos compromisos — render null cuando no hay
                       vencidos ni proximos en 7 dias, asi no se carga
                       espacio en el dashboard del user que no usa
-                      /commitments. */}
-                  <UpcomingCommitmentsCard />
+                      /commitments. Diferido detras de idle callback. */}
+                  <DeferUntilIdle>
+                    <UpcomingCommitmentsCard />
+                  </DeferUntilIdle>
 
                   {/* Insight proactivo — banner sutil que muestra UN
                       signal relevante (categoría con delta alto,
                       presupuesto cerca del límite, ritmo elevado). Se
-                      auto-oculta cuando no hay nada fuerte que mostrar. */}
+                      auto-oculta cuando no hay nada fuerte que mostrar.
+                      Diferido detras de idle callback. */}
                   {!isDemo && (
-                    <ProactiveInsightsBanner
-                      currency={currency}
-                      monthTotals={window.monthTotals}
-                      byCategoryCurrentMonth={window.byCategoryCurrentMonth}
-                      expenseCurrentMonth={window.expenseCurrentMonth}
-                    />
+                    <DeferUntilIdle>
+                      <ProactiveInsightsBanner
+                        currency={currency}
+                        monthTotals={window.monthTotals}
+                        byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                        expenseCurrentMonth={window.expenseCurrentMonth}
+                      />
+                    </DeferUntilIdle>
                   )}
 
                   {/* Distribución de gastos */}
@@ -2535,12 +2579,22 @@ export default function DashboardPage() {
                       Each section renders its own graphical preview
                       (top 3 items with progress bars) and a 'Ver mis
                       …' link at the bottom that routes to the full
-                      management screen. */}
-                  <DashboardBudgetsSection
-                    currency={currency}
-                    byCategoryCurrentMonth={window.byCategoryCurrentMonth}
-                  />
-                  <DashboardGoalsSection currency={currency} />
+                      management screen. Diferidos detras de idle —
+                      `listBudgets` y `listGoals` no son criticos para
+                      el primer paint. */}
+                  <DeferUntilIdle
+                    fallback={<DeferredCardPlaceholder height={140} />}
+                  >
+                    <DashboardBudgetsSection
+                      currency={currency}
+                      byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                    />
+                  </DeferUntilIdle>
+                  <DeferUntilIdle
+                    fallback={<DeferredCardPlaceholder height={140} />}
+                  >
+                    <DashboardGoalsSection currency={currency} />
+                  </DeferUntilIdle>
 
                 </div>
 
@@ -2668,12 +2722,13 @@ export default function DashboardPage() {
                     </div>
                   </Card>
 
-                  {/* ROW 3.5 — Templates quick row.
-                      Va entre QuickActions y el grid de movimientos
-                      porque es acceso rapido — misma jerarquia que
-                      las acciones pero con datos del user. Self-hides
-                      cuando no hay templates activos. */}
-                  <TemplatesQuickRow />
+                  {/* ROW 3.5 — Templates quick row. Diferido detras
+                      de requestIdleCallback (auditoria perf): su
+                      listTemplates() puede esperar al idle del primer
+                      paint para no competir con hero + movimientos. */}
+                  <DeferUntilIdle fallback={<DeferredRowPlaceholder />}>
+                    <TemplatesQuickRow />
+                  </DeferUntilIdle>
 
                   {/* ROW 4 — Grid 3-col: Movimientos (col-span-2) + columna derecha. */}
                   <div className="md:grid md:grid-cols-3 md:gap-6 items-start">
@@ -2719,21 +2774,29 @@ export default function DashboardPage() {
                       </div>
                     </Card>
 
-                    {/* Columna derecha — col-span-1: Compromisos + Insight + Donut + Advisor + Budgets + Goals */}
+                    {/* Columna derecha — col-span-1: Compromisos + Insight + Donut + Advisor + Budgets + Goals.
+                        La mayoria de las cards (excepto el donut, que se
+                        deriva del window ya cargado) hacen su propio fetch
+                        en mount. Las diferimos detras de requestIdleCallback
+                        para que no compitan con el primer paint del hero. */}
                     <div className="flex flex-col gap-6 md:col-span-1">
                       {/* Próximos compromisos — primero en la columna
                           porque "lo que vence" es lo mas accionable. */}
-                      <UpcomingCommitmentsCard />
+                      <DeferUntilIdle>
+                        <UpcomingCommitmentsCard />
+                      </DeferUntilIdle>
                       {/* Insight proactivo — segundo en la columna,
                           arriba del donut. Se auto-oculta cuando no hay
                           un signal fuerte. */}
                       {!isDemo && (
-                        <ProactiveInsightsBanner
-                          currency={currency}
-                          monthTotals={window.monthTotals}
-                          byCategoryCurrentMonth={window.byCategoryCurrentMonth}
-                          expenseCurrentMonth={window.expenseCurrentMonth}
-                        />
+                        <DeferUntilIdle>
+                          <ProactiveInsightsBanner
+                            currency={currency}
+                            monthTotals={window.monthTotals}
+                            byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                            expenseCurrentMonth={window.expenseCurrentMonth}
+                          />
+                        </DeferUntilIdle>
                       )}
                       <CategoryDonut
                         variant="full"
@@ -2742,18 +2805,30 @@ export default function DashboardPage() {
                         periodLabel="Este mes"
                         onItemClick={(it) => setDrillCategoryId(it.id)}
                       />
-                      <AdvisorCard
-                        onTalk={() =>
-                          toast.info("El asesor financiero llegará pronto", {
-                            description: "Próximamente podrás conversar con tu asistente IA.",
-                          })
-                        }
-                      />
-                      <DashboardBudgetsSection
-                        currency={currency}
-                        byCategoryCurrentMonth={window.byCategoryCurrentMonth}
-                      />
-                      <DashboardGoalsSection currency={currency} />
+                      <DeferUntilIdle
+                        fallback={<DeferredCardPlaceholder height={120} />}
+                      >
+                        <AdvisorCard
+                          onTalk={() =>
+                            toast.info("El asesor financiero llegará pronto", {
+                              description: "Próximamente podrás conversar con tu asistente IA.",
+                            })
+                          }
+                        />
+                      </DeferUntilIdle>
+                      <DeferUntilIdle
+                        fallback={<DeferredCardPlaceholder height={140} />}
+                      >
+                        <DashboardBudgetsSection
+                          currency={currency}
+                          byCategoryCurrentMonth={window.byCategoryCurrentMonth}
+                        />
+                      </DeferUntilIdle>
+                      <DeferUntilIdle
+                        fallback={<DeferredCardPlaceholder height={140} />}
+                      >
+                        <DashboardGoalsSection currency={currency} />
+                      </DeferUntilIdle>
                     </div>
                   </div>
 
