@@ -75,6 +75,7 @@ import {
   listAccounts,
 } from "@/lib/data/accounts";
 import { type Category, listCategories } from "@/lib/data/categories";
+import { formatLimaDate } from "@/lib/format-tx-date";
 import {
   createTransaction,
   type TransactionKind,
@@ -135,7 +136,8 @@ const INITIAL_FORM: {
   merchant: "",
   amount: "0.00",
   currency: "PEN",
-  occurred_at: () => new Date().toISOString().slice(0, 10),
+  // Lima TZ — toISOString() devuelve UTC y se desfasa de noche en Peru.
+  occurred_at: () => formatLimaDate(new Date()),
   // null = no category selected. El picker muestra la lista REAL del user
   // (mismas categorías que ve en /capture); el OCR sólo pre-selecciona si
   // el `categoryHint` resuelve a una categoría que el user ya tiene.
@@ -1045,14 +1047,14 @@ function ReceiptPageInner() {
       setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
       setAmount((d.amount.minor / 100).toFixed(2));
       setCurrency(d.amount.currency);
-      // FECHA DEFAULT = hoy (NO la del OCR). Consistencia con /capture
-      // manual: cuando registras un movimiento, queda con la fecha del
-      // momento en que lo registraste, no con la fecha del receipt
-      // original. Asi /movements lo muestra como "Hoy, 22:22" en lugar
-      // de "7 may, 22:22" para una foto subida hoy. El user puede
-      // editar el campo si quiere registrar un ticket de ayer con esa
-      // fecha — el input date sigue editable.
-      setOccurredAt(new Date().toISOString().slice(0, 10));
+      // FECHA DEFAULT = hoy en zona Lima (NO la del OCR, NI la del UTC).
+      // Bug previo: usabamos new Date().toISOString().slice(0,10) que
+      // devuelve la fecha UTC. En Lima a las 22:00 ya son ~03:00 UTC
+      // del dia siguiente → la tx se guardaba con fecha de "mañana" y
+      // /movements la mostraba como "X may" en lugar de "Hoy". Con
+      // formatLimaDate respetamos el dia segun el reloj de pared del
+      // user peruano (mismo helper que usa formatTxDate al renderizar).
+      setOccurredAt(formatLimaDate(new Date()));
       // Reset kind a "expense" en cada foto nueva — default conservador.
       // El user puede flipear a "income" con el toggle si la foto es de
       // un Yape recibido. No leemos d.kind del OCR (no confiable para
@@ -1241,10 +1243,10 @@ function ReceiptPageInner() {
             setAmount((p.amount.minor / 100).toFixed(2));
             setCurrency(p.amount.currency);
           }
-          // Default a hoy aunque venga del queue offline — mismo criterio
-          // que applyOcrSuccessData. La fecha del ticket queda como hint
-          // del OCR pero el storage usa la fecha del momento de guardado.
-          setOccurredAt(new Date().toISOString().slice(0, 10));
+          // Default a hoy en zona Lima (mismo criterio que
+          // applyOcrSuccessData). NO usar toISOString().slice(0,10)
+          // porque devuelve UTC y se desfasa de noche en Peru.
+          setOccurredAt(formatLimaDate(new Date()));
           // Eslint hint: p.occurredAt podria llegar a usarse a futuro
           // como prefill si el user pide undo del default.
           void p.occurredAt;
@@ -1958,8 +1960,9 @@ function ReceiptPageInner() {
                 type="date"
                 value={occurredAt}
                 onChange={(e) => {
-                  const next =
-                    e.target.value || new Date().toISOString().slice(0, 10);
+                  // Fallback Lima-aware si el user vacia el campo;
+                  // toISOString() devuelve UTC y se desfasa de noche.
+                  const next = e.target.value || formatLimaDate(new Date());
                   setOccurredAt(next);
                   markDirty();
                 }}
