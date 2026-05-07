@@ -25,7 +25,7 @@
 "use client";
 
 import * as React from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Heart } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -47,6 +47,20 @@ export type AccountCardProps = {
   onToggleHide?: () => void;
   variant?: AccountCardVariant;
   className?: string;
+  /**
+   * Marca esta tarjeta como cuenta compartida con la pareja. Habilita
+   * el badge "COMPARTIDA" en la meta strip y, si tambien viene
+   * partnerName, la sub-line "Compartida con {nombre}" debajo del
+   * saldo.
+   */
+  sharedWithPartner?: boolean;
+  /**
+   * Nombre del "otro" en la cuenta compartida — partner si soy owner,
+   * owner si soy partner. Resuelto con getAccountCounterpartInfo /
+   * listAccountCounterparts. Opcional: cuando es null/undefined el
+   * badge "COMPARTIDA" sigue saliendo pero sin la sub-line nominal.
+   */
+  partnerName?: string | null;
   /** Click handler (mini variant uses this; full ignores it). */
   onClick?: () => void;
   /**
@@ -224,6 +238,8 @@ export function AccountCard({
   onToggleHide,
   variant = "full",
   className,
+  sharedWithPartner = false,
+  partnerName,
   onClick,
   style,
   "data-shine": dataShine,
@@ -257,8 +273,20 @@ export function AccountCard({
       data-shine={dataShine}
       className={cn(
         "kane-account-card group relative flex flex-col overflow-hidden text-left",
-        "rounded-2xl shadow-[0_14px_40px_-14px_rgba(0,0,0,0.55)]",
-        "ring-1 ring-white/10",
+        "rounded-2xl",
+        // Sombra: cuando es compartida, glow emerald visible para que la
+        // tarjeta "irradie" diferente del resto incluso a la distancia.
+        // Cuando no, sombra neutra clasica.
+        sharedWithPartner
+          ? "shadow-[0_14px_40px_-12px_rgba(16,185,129,0.55)]"
+          : "shadow-[0_14px_40px_-14px_rgba(0,0,0,0.55)]",
+        // Ring exterior: 2px emerald cuando es compartida — el cue mas
+        // fuerte de "esta es distinta". El white/10 del default se ve
+        // bien en cualquier color; el emerald destaca sin pelear con el
+        // gradient de la marca de banco que va por dentro.
+        sharedWithPartner
+          ? "ring-2 ring-emerald-400/85"
+          : "ring-1 ring-white/10",
         // Aspect ratio 1.586:1 (ID-1 credit card standard).
         "aspect-[1.586]",
         // Padding scales with variant.
@@ -330,6 +358,33 @@ export function AccountCard({
             variant === "full" ? "gap-2.5" : "gap-1",
           )}
         >
+          {sharedWithPartner && (
+            <span
+              aria-label={
+                partnerName
+                  ? `Cuenta compartida con ${partnerName}`
+                  : "Cuenta compartida con tu pareja"
+              }
+              className={cn(
+                // Bg solido emerald — pega fuerte sobre cualquier
+                // gradient de banco, no se pierde como el translucido
+                // anterior. Shadow propio para despegarlo del fondo.
+                "inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500 font-bold uppercase tracking-wider text-white",
+                "shadow-[0_2px_8px_-2px_rgba(16,185,129,0.6)] ring-1 ring-inset ring-white/25",
+                variant === "full"
+                  ? "h-[22px] px-2.5 text-[10.5px]"
+                  : "h-[15px] px-1.5 text-[7.5px] gap-0.5",
+              )}
+            >
+              <Heart
+                size={variant === "full" ? 11 : 8}
+                aria-hidden="true"
+                strokeWidth={2.6}
+                className="fill-white text-white"
+              />
+              Compartida
+            </span>
+          )}
           {subtypeLabel && (
             <span
               className={cn(
@@ -370,7 +425,9 @@ export function AccountCard({
       {/* SPACER — pushes the saldo block to the bottom */}
       <div aria-hidden="true" className="flex-1" />
 
-      {/* BOTTOM — saldo only (gastado section removed per design feedback) */}
+      {/* BOTTOM — saldo + sub-line "Compartida con X" cuando aplica.
+          La sub-line solo en variant full (en mini el header ya carga
+          el badge de compartida y no hay espacio para mas texto). */}
       <div className="relative">
         <p
           className={cn(
@@ -389,6 +446,31 @@ export function AccountCard({
         >
           {saldoText}
         </p>
+        {variant === "full" && sharedWithPartner ? (
+          // Sub-line en emerald-300 (no white/65) para que sea visible
+          // en modo oscuro sobre cualquier gradient de tarjeta. Cuando
+          // hay partnerName lo destacamos en bold; si la counterpart
+          // info aun no cargo, mostramos solo "Cuenta compartida" para
+          // que el cue siga estando.
+          <p className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-emerald-300">
+            <Heart
+              size={10}
+              aria-hidden="true"
+              strokeWidth={2.6}
+              className="fill-emerald-300 text-emerald-300"
+            />
+            {partnerName ? (
+              <>
+                Compartida con{" "}
+                <span className="font-bold text-emerald-200">
+                  {partnerName}
+                </span>
+              </>
+            ) : (
+              "Cuenta compartida"
+            )}
+          </p>
+        ) : null}
       </div>
     </Container>
   );

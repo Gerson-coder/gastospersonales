@@ -44,7 +44,6 @@ import {
   buildInvitationUrl,
   createInvitation,
   listPendingInvitations,
-  PARTNERSHIP_UPSERTED_EVENT,
   revokeInvitation,
   type AccountInvitation,
 } from "@/lib/data/partnerships";
@@ -57,8 +56,38 @@ export type InvitePartnerSheetProps = {
   accountLabel: string;
 };
 
-const WHATSAPP_TEMPLATE = (url: string, account: string) =>
-  `Hola, te invito a la cuenta compartida "${account}" en Kane. Acepta acá: ${url}`;
+/**
+ * Sanitiza el nombre de cuenta antes de meterlo en cualquier texto que
+ * vaya a una app de chat. Comillas tipograficas, slashes y backslashes
+ * rompen el autodetector de URLs en Yape (chat interno), Messenger y
+ * algunos clientes de Telegram, dejando el link como texto plano.
+ */
+function sanitizeAccountLabel(raw: string): string {
+  return raw
+    .replace(/["“”]/g, "")
+    .replace(/[\\/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Texto plano para WhatsApp deep link (wa.me) y como fallback para apps
+ * que solo aceptan `text` en el Web Share API. Pone la URL en linea propia
+ * con doble salto antes — eso maximiza la chance de que cualquier parser
+ * de chat (incluyendo Yape) la detecte como link standalone y no como
+ * pegado al texto previo.
+ */
+const buildWhatsAppText = (url: string, account: string) =>
+  `Te invito a la cuenta compartida ${sanitizeAccountLabel(account)} en Kane.\n\n${url}`;
+
+/**
+ * Descripcion CORTA y SIN url embebida para el Web Share API. La URL
+ * viaja por el campo `url` del ShareData — duplicar el link en `text`
+ * confunde a apps que priorizan uno u otro y termina rompiendo el auto
+ * link en algunos targets (notablemente Yape).
+ */
+const buildShareDescription = (account: string) =>
+  `Te invito a la cuenta compartida ${sanitizeAccountLabel(account)} en Kane.`;
 
 export function InvitePartnerSheet({
   open,
@@ -162,9 +191,13 @@ export function InvitePartnerSheet({
       return;
     }
     try {
+      // text SIN url embebida + url separado: muchas apps de chat (Yape
+      // entre ellas) priorizan `text` y descartan `url`, pero si los
+      // duplicas el autodetector de links no engancha por ruido. Asi
+      // dejamos que cada target arme el mensaje como sabe.
       await navigator.share({
         title: "Kane — invitación a cuenta compartida",
-        text: WHATSAPP_TEMPLATE(url, accountLabel),
+        text: buildShareDescription(accountLabel),
         url,
       });
     } catch (err) {
@@ -177,7 +210,7 @@ export function InvitePartnerSheet({
   function handleWhatsApp() {
     if (!invitation) return;
     const url = buildInvitationUrl(invitation.code);
-    const text = WHATSAPP_TEMPLATE(url, accountLabel);
+    const text = buildWhatsAppText(url, accountLabel);
     const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(waUrl, "_blank", "noopener,noreferrer");
   }
@@ -408,8 +441,5 @@ function formatExpiresHint(expiresAtIso: string): string {
   if (days === 1) return "El link expira mañana.";
   return `El link expira en ${days} días.`;
 }
-
-// Mute unused import warning.
-void PARTNERSHIP_UPSERTED_EVENT;
 
 export default InvitePartnerSheet;

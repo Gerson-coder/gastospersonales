@@ -367,6 +367,80 @@ export async function getAccountPartnerInfo(
 }
 
 /**
+ * Info renderizable del "otro" de una cuenta compartida — partner si
+ * soy owner, owner si soy partner. La UI usa esto para mostrar
+ * "Compartida con {nombre}" sin tener que ramificar segun mi rol.
+ *
+ * RPC: get_account_counterpart_info (migration 00031). SECURITY
+ * DEFINER porque ambos lados pueden leer el nombre del otro y la RLS
+ * de profiles no lo permite directamente.
+ *
+ * Retorna null cuando: la cuenta no esta compartida, no soy
+ * participante, o falla el RPC.
+ */
+export type AccountCounterpartInfo = {
+  counterpartUserId: string;
+  counterpartName: string;
+};
+
+export async function getAccountCounterpartInfo(
+  accountId: string,
+): Promise<AccountCounterpartInfo | null> {
+  const supabase = createSupabaseClient();
+  // Cast a `any` porque la RPC vive en migration 00031; los types
+  // generados de Supabase aun no la conocen hasta que el user regenere
+  // (`supabase gen types`). El runtime es estable y soft-fails con
+  // null si la function no existe en la DB.
+  const { data, error } = await (
+    supabase.rpc as unknown as (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{
+      data:
+        | Array<{ counterpart_user_id: string; counterpart_name: string }>
+        | null;
+      error: { message: string } | null;
+    }>
+  )("get_account_counterpart_info", { p_account_id: accountId });
+  if (error) return null;
+  if (!data || data.length === 0) return null;
+  const row = data[0];
+  return {
+    counterpartUserId: row.counterpart_user_id,
+    counterpartName: row.counterpart_name,
+  };
+}
+
+/**
+ * Bulk lookup de counterparts para varias cuentas. Util para el
+ * dashboard / lista de cuentas: en una sola pasada obtenemos los
+ * nombres de TODAS las cuentas compartidas y los indexamos por
+ * accountId.
+ *
+ * Implementacion: Promise.all sobre llamadas individuales. La RPC es
+ * stable + barata (1 lookup en accounts + 1 en partnerships + 1 en
+ * profiles). Si en el futuro escalamos a 50+ cuentas compartidas, vale
+ * un endpoint bulk con un solo round-trip — por ahora N llamadas en
+ * paralelo es lo mas simple y rapido de codear.
+ */
+export async function listAccountCounterparts(
+  accountIds: string[],
+): Promise<Map<string, AccountCounterpartInfo>> {
+  const out = new Map<string, AccountCounterpartInfo>();
+  if (accountIds.length === 0) return out;
+  const results = await Promise.all(
+    accountIds.map(async (id) => {
+      const info = await getAccountCounterpartInfo(id);
+      return [id, info] as const;
+    }),
+  );
+  for (const [id, info] of results) {
+    if (info) out.set(id, info);
+  }
+  return out;
+}
+
+/**
  * Lista todas las partnerships en las que participa el user (como
  * owner o como partner). Util para el dashboard "tus cuentas
  * compartidas". RLS le deja ver:

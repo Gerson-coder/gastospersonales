@@ -120,6 +120,10 @@ import {
 } from "@/lib/data/transactions";
 import { listBudgets, type Budget } from "@/lib/data/budgets";
 import { listGoals, type Goal } from "@/lib/data/goals";
+import {
+  listAccountCounterparts,
+  PARTNERSHIP_UPSERTED_EVENT,
+} from "@/lib/data/partnerships";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Currency = "PEN" | "USD";
@@ -1379,6 +1383,14 @@ export default function DashboardPage() {
   // even when the user already has accounts.
   const [accountsHydrated, setAccountsHydrated] = React.useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = React.useState(false);
+  // Map accountId → nombre del "otro" en cuentas compartidas (partner si
+  // soy owner, owner si soy partner). Habilita el badge "Compartida con
+  // {nombre}" en las tarjetas del carousel + switcher. Se rellena tras
+  // listAccounts y se refetcha en PARTNERSHIP_UPSERTED_EVENT. Las cuentas
+  // sin entry aca igual muestran el badge "Compartida" sin el nombre.
+  const [partnerNames, setPartnerNames] = React.useState<
+    Record<string, string>
+  >({});
 
   const window = useTransactionsWindow({
     months: 6,
@@ -1522,6 +1534,40 @@ export default function DashboardPage() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
+
+  // Counterpart names — fetch del nombre del "otro" de cada cuenta
+  // compartida. Se dispara cuando cambia la lista de accounts y cuando
+  // entra un PARTNERSHIP_UPSERTED_EVENT (accept/revoke/leave). Las
+  // cuentas no compartidas se filtran fuera; resultado vacio = no
+  // hacer ninguna RPC. La asignacion completa el Record de una sola
+  // pasada para evitar parpadeos visuales en el carousel.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    const sharedIds = accounts
+      .filter((a) => a.sharedWithPartner)
+      .map((a) => a.id);
+    if (sharedIds.length === 0) {
+      setPartnerNames({});
+      return;
+    }
+    let cancelled = false;
+    const reloadCounterparts = async () => {
+      const map = await listAccountCounterparts(sharedIds);
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      map.forEach((info, id) => {
+        next[id] = info.counterpartName;
+      });
+      setPartnerNames(next);
+    };
+    void reloadCounterparts();
+    const handler = () => void reloadCounterparts();
+    globalThis.addEventListener(PARTNERSHIP_UPSERTED_EVENT, handler);
+    return () => {
+      cancelled = true;
+      globalThis.removeEventListener(PARTNERSHIP_UPSERTED_EVENT, handler);
+    };
+  }, [accounts]);
 
   // Currency-filtered accounts for the mobile card carousel. The new
   // wallet-style header on mobile shows one swipeable card per account in
@@ -2261,6 +2307,7 @@ export default function DashboardPage() {
                 <AccountCardCarousel
                   accounts={carouselAccounts}
                   balances={carouselBalances}
+                  partnerNames={partnerNames}
                   currency={currency}
                   loading={!accountsHydrated}
                   onActiveAccountChange={setSelectedAccountId}
@@ -2457,6 +2504,7 @@ export default function DashboardPage() {
                       <AccountCardCarousel
                         accounts={carouselAccounts}
                         balances={carouselBalances}
+                        partnerNames={partnerNames}
                         currency={currency}
                         loading={!accountsHydrated}
                         onActiveAccountChange={setSelectedAccountId}

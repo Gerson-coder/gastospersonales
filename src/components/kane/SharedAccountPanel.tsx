@@ -25,15 +25,7 @@
 
 import * as React from "react";
 import nextDynamic from "next/dynamic";
-import {
-  AlertCircle,
-  Heart,
-  Loader2,
-  LogOut,
-  Send,
-  Trash2,
-  UserMinus,
-} from "lucide-react";
+import { Heart, Loader2, LogOut, Send, UserMinus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -484,9 +476,5 @@ function PartnerSharedView({
     </div>
   );
 }
-
-// Mute warnings de imports que solo se usan a traves de subcomponentes.
-void AlertCircle;
-void Trash2;
 
 export default SharedAccountPanel;

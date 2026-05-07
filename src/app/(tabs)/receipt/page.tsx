@@ -35,7 +35,6 @@ import {
   Image as ImageIcon,
   Landmark,
   Loader2,
-  Lock,
   Maximize2,
   PenLine,
   RotateCcw,
@@ -917,14 +916,16 @@ function ReceiptPageInner() {
   const transactionKind: TransactionKind = "expense";
 
   // When the OCR firmly classifies the receipt source (yape / plin / bbva
-  // / bcp) AND the user has the corresponding account, we auto-assign it
-  // and lock the picker. The string here is the pretty source label
-  // ("Yape", "Plin", "BBVA", "BCP") that the locked row surfaces as info.
-  // null = picker is unlocked (source = unknown, or auto-assign hasn't
-  // resolved yet).
-  const [lockedSourceLabel, setLockedSourceLabel] = React.useState<
-    string | null
-  >(null);
+  // / bcp) AND the user has a matching account, we pre-select it as a
+  // SUGGESTION (no lock) — the user can still pick any other account,
+  // including a shared one. Caso real PE: yo pago con Yape pero quiero
+  // cargar el gasto a la cuenta compartida "Hogar" con mi pareja.
+  // Mantenemos label + accountId para poder destacar la fila sugerida en
+  // el drawer del picker. null = sin sugerencia.
+  const [suggestedSource, setSuggestedSource] = React.useState<{
+    label: string;
+    accountId: string;
+  } | null>(null);
   // Set when the OCR detected a known source but the user has no
   // matching account. The form blocks save and surfaces a CTA to create
   // the missing account. null = no missing-account warning.
@@ -936,6 +937,23 @@ function ReceiptPageInner() {
   // they return [] and the UI shows a helpful empty state.
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
+
+  // Lista de cuentas reordenada para el drawer del picker: la sugerida
+  // por el OCR queda PRIMERA. Mantiene el orden original del resto para
+  // no descolocar al user. El badge "Sugerida" en la fila aclara por
+  // que esa cuenta esta arriba — y el drawer sigue mostrando todas las
+  // demas para que pueda elegir cualquier cuenta (ej cuenta compartida).
+  const orderedAccounts = React.useMemo(() => {
+    if (!suggestedSource) return accounts;
+    const idx = accounts.findIndex(
+      (a) => a.id === suggestedSource.accountId,
+    );
+    if (idx <= 0) return accounts;
+    const out = accounts.slice();
+    const [picked] = out.splice(idx, 1);
+    out.unshift(picked);
+    return out;
+  }, [accounts, suggestedSource]);
   // Fase 3: when the user enters /receipt and there's a queued receipt
   // already processed offline (status=ready), we load its image + OCR
   // result here. `pendingReceiptLocalId` is the queue row id we need
@@ -1032,19 +1050,26 @@ function ReceiptPageInner() {
       if (d.confidence >= 0.6 && matchKey !== "unknown") {
         const result = suggestAccountIdForSource(matchKey, accs);
         if (result.kind === "matched") {
+          // Pre-seleccionamos como sugerencia, NO como obligatorio. El
+          // user puede cambiar a cualquier cuenta — incluso una cuenta
+          // compartida. La sugerencia se destaca en el drawer (primera
+          // posicion + badge) y como sub-line del picker.
           setAccountId(result.accountId);
-          setLockedSourceLabel(result.sourceLabel);
+          setSuggestedSource({
+            label: result.sourceLabel,
+            accountId: result.accountId,
+          });
           setMissingAccountSourceLabel(null);
         } else if (result.kind === "unsupported") {
           setAccountId(null);
-          setLockedSourceLabel(null);
+          setSuggestedSource(null);
           setMissingAccountSourceLabel(result.sourceLabel);
         } else {
-          setLockedSourceLabel(null);
+          setSuggestedSource(null);
           setMissingAccountSourceLabel(null);
         }
       } else {
-        setLockedSourceLabel(null);
+        setSuggestedSource(null);
         setMissingAccountSourceLabel(null);
       }
 
@@ -1224,18 +1249,21 @@ function ReceiptPageInner() {
             const result = suggestAccountIdForSource(matchKey, accounts);
             if (result.kind === "matched") {
               setAccountId(result.accountId);
-              setLockedSourceLabel(result.sourceLabel);
+              setSuggestedSource({
+                label: result.sourceLabel,
+                accountId: result.accountId,
+              });
               setMissingAccountSourceLabel(null);
             } else if (result.kind === "unsupported") {
               setAccountId(null);
-              setLockedSourceLabel(null);
+              setSuggestedSource(null);
               setMissingAccountSourceLabel(result.sourceLabel);
             } else {
-              setLockedSourceLabel(null);
+              setSuggestedSource(null);
               setMissingAccountSourceLabel(null);
             }
           } else {
-            setLockedSourceLabel(null);
+            setSuggestedSource(null);
             setMissingAccountSourceLabel(null);
           }
           setConfidences({
@@ -1917,19 +1945,18 @@ function ReceiptPageInner() {
               }}
             />
 
-            {/* Cuenta — tres estados:
-                  1. missingAccountSourceLabel: el OCR detectó la
-                     fuente (Yape/Plin/BBVA/BCP) pero el matcher no
-                     encontró una cuenta exacta del user. Mostramos
-                     un hint informativo arriba y dejamos el picker
-                     abierto para que el user elija (caso real PE:
-                     Yape vive sobre BCP/BBVA/Interbank y no aparece
-                     como kind=yape).
-                  2. lockedSourceLabel: cuenta auto-asignada por la
-                     foto. Fila informativa con candado, no
-                     clickeable.
-                  3. default: picker normal — el user elige. */}
-            {missingAccountSourceLabel && !lockedSourceLabel && (
+            {/* Cuenta — dos hints contextuales sobre el OCR + UN picker
+                clickeable siempre:
+                  1. missingAccountSourceLabel: el OCR detectó la fuente
+                     (Yape/Plin/BBVA/BCP) pero no hay cuenta del user que
+                     matchee — hint amber para que elija manual.
+                  2. suggestedSource (y selecciona la sugerida): sub-line
+                     "Sugerida por la foto" con icono Sparkles. Cuando
+                     el user cambia a otra cuenta, el sub-line desaparece
+                     y arranca solo. Esto reemplaza el viejo lock con
+                     candado — el user PUEDE elegir cualquier cuenta,
+                     incluso una cuenta compartida con su pareja. */}
+            {missingAccountSourceLabel && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-50/40 p-3 dark:border-amber-500/25 dark:bg-amber-500/10">
                 <div className="flex items-start gap-2.5">
                   <span
@@ -1944,80 +1971,51 @@ function ReceiptPageInner() {
                 </div>
               </div>
             )}
-            {lockedSourceLabel ? (
-              <div className="rounded-xl bg-card p-3.5">
-                <div className="pb-1.5">
-                  <span className="text-[12px] font-semibold text-foreground">
-                    Cuenta
+            <div className="rounded-xl bg-card p-3.5">
+              <div className="pb-1.5">
+                <span className="text-[12px] font-semibold text-foreground">
+                  Cuenta
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={isAccountOpen}
+                className="flex min-h-11 w-full items-center gap-3 rounded-lg text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base font-semibold">
+                    {account ? accountDisplayLabel(account) : "Cargando..."}
                   </span>
-                </div>
-                <div
-                  className="flex h-11 w-full items-center gap-3 rounded-lg"
-                  aria-label={`Cuenta detectada: ${
-                    account ? accountDisplayLabel(account) : ""
-                  }`}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-base font-semibold">
-                      {account ? accountDisplayLabel(account) : "Cargando..."}
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                  {suggestedSource &&
+                  account &&
+                  account.id === suggestedSource.accountId ? (
+                    <span className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                       <Sparkles
                         size={11}
                         aria-hidden="true"
                         className="text-primary"
                       />
-                      Detectada de la foto
+                      Sugerida por la foto · puedes cambiarla
                     </span>
-                  </span>
-                  {account && (
-                    <Badge
-                      variant="outline"
-                      className="h-7 rounded-full px-2 text-[11px] font-semibold"
-                    >
-                      {account.currency}
-                    </Badge>
-                  )}
-                  <Lock
-                    size={14}
-                    aria-hidden="true"
-                    className="text-muted-foreground"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl bg-card p-3.5">
-                <div className="pb-1.5">
-                  <span className="text-[12px] font-semibold text-foreground">
-                    Cuenta
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAccountOpen(true)}
-                  aria-haspopup="dialog"
-                  aria-expanded={isAccountOpen}
-                  className="flex h-11 w-full items-center gap-3 rounded-lg text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="flex-1 text-base font-semibold">
-                    {account ? accountDisplayLabel(account) : "Cargando..."}
-                  </span>
-                  {account && (
-                    <Badge
-                      variant="outline"
-                      className="h-7 rounded-full px-2 text-[11px] font-semibold"
-                    >
-                      {account.currency}
-                    </Badge>
-                  )}
-                  <ChevronRight
-                    size={16}
-                    aria-hidden="true"
-                    className="text-muted-foreground"
-                  />
-                </button>
-              </div>
-            )}
+                  ) : null}
+                </span>
+                {account && (
+                  <Badge
+                    variant="outline"
+                    className="h-7 rounded-full px-2 text-[11px] font-semibold"
+                  >
+                    {account.currency}
+                  </Badge>
+                )}
+                <ChevronRight
+                  size={16}
+                  aria-hidden="true"
+                  className="text-muted-foreground"
+                />
+              </button>
+            </div>
           </div>
         </Card>
 
@@ -2228,8 +2226,10 @@ function ReceiptPageInner() {
                 Aún no tienes cuentas. Crea una desde Cuentas.
               </li>
             )}
-            {accounts.map((a) => {
+            {orderedAccounts.map((a) => {
               const selected = accountId === a.id;
+              const isSuggested =
+                suggestedSource?.accountId === a.id;
               const balance = balances[a.id] ?? 0;
               const balanceTone =
                 !balancesLoaded
@@ -2288,8 +2288,19 @@ function ReceiptPageInner() {
                       />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold">
-                        {accountDisplayLabel(a)}
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-[13px] font-semibold">
+                          {accountDisplayLabel(a)}
+                        </span>
+                        {isSuggested ? (
+                          <span
+                            aria-label="Sugerida por la foto"
+                            className="inline-flex h-[18px] flex-shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 text-[10px] font-bold uppercase tracking-wider text-primary"
+                          >
+                            <Sparkles size={9} aria-hidden="true" />
+                            Sugerida
+                          </span>
+                        ) : null}
                       </span>
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {kindLabel}

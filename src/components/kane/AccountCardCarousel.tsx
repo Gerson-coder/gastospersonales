@@ -49,6 +49,13 @@ export type AccountCardCarouselProps = {
    */
   balances: Record<string, number>;
   /**
+   * Counterpart names indexados por accountId — el "otro" en una cuenta
+   * compartida (partner si soy owner, owner si soy partner). Cargado en
+   * el dashboard via listAccountCounterparts. Una cuenta compartida sin
+   * entry aca todavia muestra el badge "Compartida" pero sin nombre.
+   */
+  partnerNames?: Record<string, string>;
+  /**
    * Active currency from `useActiveCurrency()`. Passed in (instead of read
    * from the hook directly here) so the carousel re-renders synchronously
    * with the rest of the dashboard when the user flips PEN/USD.
@@ -70,6 +77,7 @@ export type AccountCardCarouselProps = {
 export function AccountCardCarousel({
   accounts,
   balances,
+  partnerNames,
   currency,
   loading = false,
   className,
@@ -230,6 +238,8 @@ export function AccountCardCarousel({
                   hideAmounts={hideAmounts}
                   onToggleHide={toggleHideBalances}
                   variant="full"
+                  sharedWithPartner={account.sharedWithPartner}
+                  partnerName={partnerNames?.[account.id] ?? null}
                   // Subtle scale-pulse on the active card — kicks in on snap
                   // via the `kane-account-card--snap` modifier toggled by
                   // `data-active`. Inactive cards stay at scale 1 so when
@@ -302,6 +312,7 @@ export function AccountCardCarousel({
         onOpenChange={setDrawerOpen}
         accounts={accounts}
         balances={balances}
+        partnerNames={partnerNames}
         currency={currency}
         activeIndex={activeIndex}
         onSelectAccount={handleSelectAccount}

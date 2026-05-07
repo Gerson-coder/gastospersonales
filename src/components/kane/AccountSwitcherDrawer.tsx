@@ -45,6 +45,12 @@ export type AccountSwitcherDrawerProps = {
    * la cifra coincida con /accounts. Absence => 0.
    */
   balances: Record<string, number>;
+  /**
+   * Counterpart names indexados por accountId — pasamos la misma data
+   * que recibe el carousel para que las mini cards muestren el badge
+   * "Compartida" consistentemente.
+   */
+  partnerNames?: Record<string, string>;
   currency: "PEN" | "USD";
   activeIndex: number;
   onSelectAccount: (idx: number) => void;
@@ -61,6 +67,7 @@ export function AccountSwitcherDrawer({
   onOpenChange,
   accounts,
   balances,
+  partnerNames,
   currency,
   activeIndex,
   onSelectAccount,
@@ -104,6 +111,8 @@ export function AccountSwitcherDrawer({
                   saldoActual={saldo}
                   hideAmounts={hideAmounts}
                   variant="mini"
+                  sharedWithPartner={account.sharedWithPartner}
+                  partnerName={partnerNames?.[account.id] ?? null}
                   onClick={() => onSelectAccount(idx)}
                   className="w-full"
                   style={getAccountCardStyle(account)}

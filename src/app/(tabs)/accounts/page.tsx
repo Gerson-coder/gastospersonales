@@ -29,6 +29,7 @@ import {
   Plus,
   Trash2,
   Loader2,
+  Heart,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,20 @@ import { useActiveCurrency } from "@/hooks/use-active-currency";
 import { useAccountBalances } from "@/hooks/use-account-balances";
 import { TX_UPSERTED_EVENT } from "@/lib/data/transactions";
 import { SharedAccountPanel } from "@/components/kane/SharedAccountPanel";
+import {
+  listPendingInvitations,
+  PARTNERSHIP_UPSERTED_EVENT,
+  type AccountInvitation,
+} from "@/lib/data/partnerships";
+import { useSession } from "@/lib/use-session";
+
+// Lazy-load InvitePartnerSheet — solo necesario cuando el user toca el
+// CTA "Invitar" / pill "Pendiente" en una row. No participa del primer
+// paint de la lista.
+const InvitePartnerSheet = nextDynamic(
+  () => import("@/components/kane/InvitePartnerSheet"),
+  { ssr: false },
+);
 
 // ─── Demo mode flag ───────────────────────────────────────────────────────
 // Mirrors `useSession` and `/login`: when env vars are absent we skip the
@@ -218,6 +233,25 @@ function AccountsPageInner() {
   const [loading, setLoading] = React.useState<boolean>(SUPABASE_ENABLED);
   const [editing, setEditing] = React.useState<Account | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+  // Invitaciones pendientes indexadas por accountId. Se carga en paralelo
+  // a listAccounts (1 query, listPendingInvitations() sin filtro devuelve
+  // todas las del user) y se refetcha en PARTNERSHIP_UPSERTED_EVENT. Un
+  // soft-fail aca no rompe nada — sin esta data el row se renderea como
+  // "no compartida" en vez de "pendiente", peor UX pero no error.
+  const [pendingInvites, setPendingInvites] = React.useState<
+    Map<string, AccountInvitation>
+  >(new Map());
+  // Cuenta cuyo InvitePartnerSheet abrir. Set desde el pill de la row,
+  // null cuando se cierra el sheet. Lo manejamos a nivel de pagina (no
+  // dentro del row) para que la animacion de cierre del Drawer no se
+  // recorte cuando el row se re-renderiza.
+  const [invitingAccount, setInvitingAccount] = React.useState<Account | null>(
+    null,
+  );
+  // user.id — para distinguir owner vs partner cuando una cuenta esta
+  // compartida. Solo el owner ve el CTA "Invitar"; el partner ve el badge
+  // "Compartida" en modo lectura (la gestion la hace desde el form).
+  const { user } = useSession();
 
   // Saldo total — sumamos los balances (major units) de todas las cuentas
   // de la moneda activa. `getAccountBalances` ya filtra por currency a
@@ -287,6 +321,38 @@ function AccountsPageInner() {
       toast.error("Error al cargar cuentas", { description: msg });
     }
   }, []);
+
+  // Carga el estado de invitaciones pendientes (1 query, todas las del
+  // user). Soft-fail: si rompe, asumimos cero pendientes y la UI muestra
+  // CTA "Invitar" en vez de "Pendiente" — peor UX pero sin error.
+  const reloadPendingInvites = React.useCallback(async () => {
+    if (!SUPABASE_ENABLED) return;
+    try {
+      const list = await listPendingInvitations();
+      const map = new Map<string, AccountInvitation>();
+      for (const inv of list) map.set(inv.account_id, inv);
+      setPendingInvites(map);
+    } catch {
+      // Silent — el listado de cuentas es lo critico, esto es enriquecimiento.
+    }
+  }, []);
+
+  // Mount + bus listener: el evento PARTNERSHIP_UPSERTED_EVENT lo emite
+  // el data layer tras create/revoke invitation y accept/leave/revoke
+  // partnership. Refetcheamos AMBAS cosas porque accept/revoke cambian
+  // el flag accounts.shared_with_partner — la lista visual tambien se
+  // tiene que poner al dia.
+  React.useEffect(() => {
+    if (!SUPABASE_ENABLED) return;
+    void reloadPendingInvites();
+    const handler = () => {
+      void reloadPendingInvites();
+      void reload();
+    };
+    window.addEventListener(PARTNERSHIP_UPSERTED_EVENT, handler);
+    return () =>
+      window.removeEventListener(PARTNERSHIP_UPSERTED_EVENT, handler);
+  }, [reloadPendingInvites, reload]);
 
   React.useEffect(() => {
     if (!SUPABASE_ENABLED) {
@@ -420,61 +486,134 @@ function AccountsPageInner() {
               <ul className="divide-y divide-border md:grid md:grid-cols-2 md:divide-y-0 md:gap-3 lg:grid-cols-3" role="list">
                 {accounts.map((account) => {
                   const KindIcon = ACCOUNT_KIND_ICON[account.kind];
+                  const isOwner = !!user && user.id === account.userId;
+                  const pending = pendingInvites.get(account.id) ?? null;
+                  // El partnership pill solo se renderiza con Supabase real
+                  // (en demo no hay user/userId) y solo si el user puede
+                  // hacer algo: si soy partner ya veo el badge en el label.
+                  const showPartnershipAction =
+                    SUPABASE_ENABLED &&
+                    !!user &&
+                    isOwner &&
+                    !account.sharedWithPartner;
                   return (
-                    <li key={account.id} className="md:rounded-2xl md:border md:border-border md:bg-card md:overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => handleEditAccount(account)}
-                        aria-label={`Editar ${account.label}`}
-                        className={cn(
-                          "flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left transition-colors",
-                          "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-                          "md:min-h-[80px] md:px-5 md:py-4",
-                        )}
-                      >
-                        <div
-                          aria-hidden="true"
+                    <li
+                      key={account.id}
+                      className="md:rounded-2xl md:border md:border-border md:bg-card md:overflow-hidden"
+                    >
+                      {/* Row dividida en dos zonas tappeables: la principal
+                          abre el form de editar; el pill de la derecha
+                          gestiona la invitacion. NO podemos usar un solo
+                          <button> envolvente porque anidar buttons es HTML
+                          invalido — por eso es <div> + 2 <button>. */}
+                      <div className="flex items-stretch">
+                        <button
+                          type="button"
+                          onClick={() => handleEditAccount(account)}
+                          aria-label={`Editar ${account.label}`}
                           className={cn(
-                            "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-foreground",
-                            "md:h-12 md:w-12 md:rounded-2xl",
-                            // Neutral theme-aware chip for every brand;
-                            // Interbank keeps a colored bg because its
-                            // SVG is a green-with-white-cutouts wordmark
-                            // that disappears on a white chip. See
-                            // accountChipBgClass for the rule.
-                            accountChipBgClass(account.label),
+                            "flex min-h-[64px] flex-1 min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors",
+                            "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+                            "md:min-h-[80px] md:px-5 md:py-4",
                           )}
                         >
-                          <AccountBrandIcon
-                            label={account.label}
-                            fallback={<KindIcon size={18} aria-hidden />}
-                            size={22}
-                          />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-[14px] font-semibold">
-                              {accountDisplayLabel(account)}
-                            </span>
-                            {account.sharedWithPartner ? (
-                              <span
-                                aria-label="Cuenta compartida con tu pareja"
-                                className="inline-flex h-[18px] flex-shrink-0 items-center rounded-full bg-emerald-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400"
-                              >
-                                Compartida
+                          <div
+                            aria-hidden="true"
+                            className={cn(
+                              "flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-foreground",
+                              "md:h-12 md:w-12 md:rounded-2xl",
+                              // Neutral theme-aware chip for every brand;
+                              // Interbank keeps a colored bg because its
+                              // SVG is a green-with-white-cutouts wordmark
+                              // that disappears on a white chip. See
+                              // accountChipBgClass for the rule.
+                              accountChipBgClass(account.label),
+                            )}
+                          >
+                            <AccountBrandIcon
+                              label={account.label}
+                              fallback={<KindIcon size={18} aria-hidden />}
+                              size={22}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate text-[14px] font-semibold">
+                                {accountDisplayLabel(account)}
                               </span>
-                            ) : null}
+                              {account.sharedWithPartner ? (
+                                <span
+                                  aria-label="Cuenta compartida con tu pareja"
+                                  className="inline-flex h-[20px] flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 text-[10.5px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40"
+                                >
+                                  <Heart
+                                    size={10}
+                                    aria-hidden="true"
+                                    strokeWidth={2.6}
+                                    className="fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400"
+                                  />
+                                  Compartida
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {CURRENCY_LABEL[account.currency]} · {ACCOUNT_KIND_LABEL[account.kind]}
+                            </div>
                           </div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {CURRENCY_LABEL[account.currency]} · {ACCOUNT_KIND_LABEL[account.kind]}
-                          </div>
-                        </div>
-                        <ChevronRight
-                          size={16}
-                          aria-hidden="true"
-                          className="ml-2 flex-shrink-0 text-muted-foreground"
-                        />
-                      </button>
+                          {/* Chevron solo cuando no hay pill al costado —
+                              si hay pill, ese sub-button ya da el cue
+                              visual de "esta row tiene mas accion". */}
+                          {!showPartnershipAction ? (
+                            <ChevronRight
+                              size={16}
+                              aria-hidden="true"
+                              className="ml-2 flex-shrink-0 text-muted-foreground"
+                            />
+                          ) : null}
+                        </button>
+                        {/* Partnership action — solo owner sin compartir.
+                            Cuando hay pendiente: pill amarillo con dot
+                            animado; cuando no, ícono Heart (CTA discreto
+                            para descubrimiento). Click abre el sheet
+                            directo, sin pasar por el form de editar. */}
+                        {showPartnershipAction ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInvitingAccount(account);
+                            }}
+                            aria-label={
+                              pending
+                                ? `Ver invitación pendiente de ${account.label}`
+                                : `Invitar a tu pareja a ${account.label}`
+                            }
+                            title={
+                              pending
+                                ? "Invitación pendiente"
+                                : "Invitar a tu pareja"
+                            }
+                            className={cn(
+                              "flex min-h-[64px] flex-shrink-0 items-center justify-center px-3 transition-colors md:min-h-[80px] md:px-4",
+                              "border-l border-border/60 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+                            )}
+                          >
+                            {pending ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                                <span
+                                  aria-hidden
+                                  className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"
+                                />
+                                Pendiente
+                              </span>
+                            ) : (
+                              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary md:h-10 md:w-10">
+                                <Heart size={15} aria-hidden strokeWidth={2.4} />
+                              </span>
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}
@@ -549,6 +688,22 @@ function AccountsPageInner() {
           }}
           onOptimisticClose={() => setEditing(null)}
           reload={reload}
+        />
+      ) : null}
+
+      {/* Invite sheet — abierto desde el pill de la row, evita que el
+          user tenga que entrar al form de editar para descubrir la
+          feature de cuentas compartidas. Lazy-loaded; solo se monta
+          mientras invitingAccount no es null para que el cierre del
+          Drawer (animacion + cleanup) corra limpio. */}
+      {invitingAccount ? (
+        <InvitePartnerSheet
+          open={true}
+          accountId={invitingAccount.id}
+          accountLabel={invitingAccount.label}
+          onOpenChange={(open) => {
+            if (!open) setInvitingAccount(null);
+          }}
         />
       ) : null}
     </main>
