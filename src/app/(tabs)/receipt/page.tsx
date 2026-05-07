@@ -1045,11 +1045,14 @@ function ReceiptPageInner() {
       setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
       setAmount((d.amount.minor / 100).toFixed(2));
       setCurrency(d.amount.currency);
-      // Solo la FECHA (YYYY-MM-DD) del OCR — la hora la inyectamos
-      // al guardar con la del sistema (ver handleAccept). Mantenemos
-      // la fecha porque es relevante para ordenar y para que el user
-      // vea "es el ticket de ayer/hoy".
-      setOccurredAt(d.occurredAt.slice(0, 10));
+      // FECHA DEFAULT = hoy (NO la del OCR). Consistencia con /capture
+      // manual: cuando registras un movimiento, queda con la fecha del
+      // momento en que lo registraste, no con la fecha del receipt
+      // original. Asi /movements lo muestra como "Hoy, 22:22" en lugar
+      // de "7 may, 22:22" para una foto subida hoy. El user puede
+      // editar el campo si quiere registrar un ticket de ayer con esa
+      // fecha — el input date sigue editable.
+      setOccurredAt(new Date().toISOString().slice(0, 10));
       // Reset kind a "expense" en cada foto nueva — default conservador.
       // El user puede flipear a "income" con el toggle si la foto es de
       // un Yape recibido. No leemos d.kind del OCR (no confiable para
@@ -1238,9 +1241,13 @@ function ReceiptPageInner() {
             setAmount((p.amount.minor / 100).toFixed(2));
             setCurrency(p.amount.currency);
           }
-          if (p.occurredAt) {
-            setOccurredAt(p.occurredAt.slice(0, 10));
-          }
+          // Default a hoy aunque venga del queue offline — mismo criterio
+          // que applyOcrSuccessData. La fecha del ticket queda como hint
+          // del OCR pero el storage usa la fecha del momento de guardado.
+          setOccurredAt(new Date().toISOString().slice(0, 10));
+          // Eslint hint: p.occurredAt podria llegar a usarse a futuro
+          // como prefill si el user pide undo del default.
+          void p.occurredAt;
           if (p.categoryHint) {
             const hintCategoryId = resolveCategoryIdFromHint(
               p.categoryHint,
