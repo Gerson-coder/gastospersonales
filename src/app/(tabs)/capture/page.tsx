@@ -2335,8 +2335,24 @@ function CapturePageInner() {
                           />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold">
-                            {accountDisplayLabel(a)}
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-[13px] font-semibold">
+                              {accountDisplayLabel(a)}
+                            </span>
+                            {a.sharedWithPartner ? (
+                              <span
+                                aria-label="Cuenta compartida"
+                                className="inline-flex h-[18px] flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40"
+                              >
+                                <Heart
+                                  size={10}
+                                  aria-hidden="true"
+                                  strokeWidth={2.6}
+                                  className="fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400"
+                                />
+                                Compartida
+                              </span>
+                            ) : null}
                           </span>
                           <span className="block truncate text-[11px] text-muted-foreground">
                             {kindLabel}
@@ -2502,8 +2518,24 @@ function CapturePageInner() {
                         />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold">
-                          {accountDisplayLabel(a)}
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[13px] font-semibold">
+                            {accountDisplayLabel(a)}
+                          </span>
+                          {a.sharedWithPartner ? (
+                            <span
+                              aria-label="Cuenta compartida"
+                              className="inline-flex h-[15px] flex-shrink-0 items-center gap-0.5 rounded-full bg-emerald-500/12 px-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-400 dark:ring-emerald-500/35"
+                            >
+                              <Heart
+                                size={8}
+                                aria-hidden="true"
+                                strokeWidth={2.6}
+                                className="fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400"
+                              />
+                              Compartida
+                            </span>
+                          ) : null}
                         </span>
                         <span className="block truncate text-[11px] text-muted-foreground">
                           {kindLabel}
