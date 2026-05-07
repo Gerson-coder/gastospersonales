@@ -863,15 +863,13 @@ function ReceiptPageInner() {
   // queda alineado, lo que permite que la nueva tx OCR pase el filtro
   // de `recentTransactions` en useTransactionsWindow.
   const { setActiveAccountId } = useActiveAccountId();
-  // ISO completo del OCR (con HORA + ZONA). Cuando viene del OCR
-  // queremos preservar la hora real del receipt para que el row aparezca
-  // ordenado correctamente en /movements y /dashboard. Si el user
-  // edita la fecha (input type=date solo cambia YYYY-MM-DD), perdemos
-  // la asociación y caemos al fallback noon-Lima en handleAccept.
-  // null = manual o user editó la fecha → noon.
-  const [occurredAtIso, setOccurredAtIso] = React.useState<string | null>(
-    null,
-  );
+  // NOTA: anteriormente guardabamos occurredAtIso (la HORA exacta del
+  // receipt segun el OCR) para preservar la hora real del ticket. El
+  // user pidio eliminarlo: la hora real del receipt es engañosa cuando
+  // subis fotos varios dias despues, y pierde el orden cronologico
+  // contra movimientos manuales. Ahora SIEMPRE usamos la fecha del
+  // form (YYYY-MM-DD) + la hora ACTUAL del sistema al guardar. Ver
+  // handleAccept.
   const [categoryId, setCategoryId] = React.useState<string | null>(
     INITIAL_FORM.category_id,
   );
@@ -1047,8 +1045,11 @@ function ReceiptPageInner() {
       setMerchant(d.counterparty?.name ?? prettySourceName(d.source));
       setAmount((d.amount.minor / 100).toFixed(2));
       setCurrency(d.amount.currency);
+      // Solo la FECHA (YYYY-MM-DD) del OCR — la hora la inyectamos
+      // al guardar con la del sistema (ver handleAccept). Mantenemos
+      // la fecha porque es relevante para ordenar y para que el user
+      // vea "es el ticket de ayer/hoy".
       setOccurredAt(d.occurredAt.slice(0, 10));
-      setOccurredAtIso(d.occurredAt);
       // Reset kind a "expense" en cada foto nueva — default conservador.
       // El user puede flipear a "income" con el toggle si la foto es de
       // un Yape recibido. No leemos d.kind del OCR (no confiable para
@@ -1239,7 +1240,6 @@ function ReceiptPageInner() {
           }
           if (p.occurredAt) {
             setOccurredAt(p.occurredAt.slice(0, 10));
-            setOccurredAtIso(p.occurredAt);
           }
           if (p.categoryHint) {
             const hintCategoryId = resolveCategoryIdFromHint(
@@ -1500,17 +1500,30 @@ function ReceiptPageInner() {
       // matcheó ninguna categoría real. La tx queda uncategorized; el
       // dashboard la mete en el bucket "Otros".
 
-      // Cuando el OCR detectó hora real en el receipt, preservamos el
-      // ISO completo para que el row aparezca ordenado por la hora
-      // efectiva en /movements y /dashboard (antes caían a noon-Lima
-      // siempre y se desordenaban contra movimientos manuales). Si
-      // el user editó la fecha, occurredAtIso se invalidó (ver el
-      // onChange del input date) y caemos a noon como fallback estable
-      // — el form solo permite editar YYYY-MM-DD, no hora.
-      const occurredIso =
-        occurredAtIso && occurredAtIso.slice(0, 10) === occurredAt
-          ? occurredAtIso
-          : `${occurredAt}T12:00:00-05:00`;
+      // FECHA del form (puede ser del OCR o editada por el user) +
+      // HORA ACTUAL del sistema. Construimos un Date local con
+      // year/month/day del input + horas/min/segs de ahora. toISOString
+      // serializa a UTC manteniendo el instante. Asi:
+      //   - Si subis un ticket de ayer ahora, queda "ayer a la hora
+      //     actual" → ordena justo arriba de tus movimientos manuales
+      //     de ayer si los registraste mas temprano.
+      //   - Si subis un ticket de hoy, queda en el orden cronologico
+      //     real con tus otros movimientos del dia.
+      // El user explicitamente NO quiere la hora del OCR — fue fuente
+      // de confusion (subis fotos dias despues y quedaba con la hora
+      // de la compra original, no del momento de registro).
+      const now = new Date();
+      const [yearStr, monthStr, dayStr] = occurredAt.split("-");
+      const localOccurred = new Date(
+        Number(yearStr),
+        Number(monthStr) - 1,
+        Number(dayStr),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds(),
+        now.getMilliseconds(),
+      );
+      const occurredIso = localOccurred.toISOString();
 
       await createTransaction({
         amount: numericAmount,
@@ -1608,7 +1621,6 @@ function ReceiptPageInner() {
     merchant,
     merchantId,
     occurredAt,
-    occurredAtIso,
     pendingReceiptLocalId,
     receiptId,
     router,
@@ -1629,9 +1641,6 @@ function ReceiptPageInner() {
     setDirty(false);
     setDiscardArmed(false);
     setStatus("idle");
-    // Reset estado del OCR para que la siguiente foto arranque limpia
-    // (evita que la hora del receipt anterior contamine la nueva).
-    setOccurredAtIso(null);
     // Fase 3: discard a queued receipt → drop it from the queue too.
     // The user explicitly chose not to register this expense; resurfacing
     // it on next /receipt mount would be hostile.
@@ -1945,13 +1954,6 @@ function ReceiptPageInner() {
                   const next =
                     e.target.value || new Date().toISOString().slice(0, 10);
                   setOccurredAt(next);
-                  // Si el user cambió la fecha respecto al ISO original
-                  // del OCR, descartamos el ISO (vamos a noon-Lima en
-                  // handleAccept). Si no cambió (re-eligió la misma
-                  // fecha), preservamos la hora.
-                  if (occurredAtIso && next !== occurredAtIso.slice(0, 10)) {
-                    setOccurredAtIso(null);
-                  }
                   markDirty();
                 }}
                 className="h-11 border-0 bg-transparent px-0 text-base font-semibold shadow-none focus-visible:ring-0"
