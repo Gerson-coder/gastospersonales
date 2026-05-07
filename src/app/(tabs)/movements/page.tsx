@@ -106,6 +106,7 @@ import {
   unarchiveTransaction,
   TX_UPSERTED_EVENT,
   type ListCursor,
+  type TransactionKind,
   type TransactionView,
 } from "@/lib/data/transactions";
 import type { Currency } from "@/lib/supabase/types";
@@ -115,6 +116,25 @@ import type { Currency } from "@/lib/supabase/types";
 // no driften. El bar exporta el type publico; aca lo aliaseamos para
 // no andar refactoreando todas las refs locales.
 type Filter = MovementsFilter;
+
+/**
+ * Convierte el chip de filter a los params server-side de
+ * `listTransactionsByCurrency`. Antes el filter chip se aplicaba en
+ * cliente sobre el set ya cargado: si el ultimo gasto en categoria X
+ * era de hace 4 meses, el user veia "sin resultados" hasta hacer
+ * "Cargar mas" varias veces. Ahora el server usa los indices y devuelve
+ * solo lo que matchea — primer fetch ya trae las filas correctas.
+ */
+function buildServerFilter(f: Filter): {
+  kind?: TransactionKind;
+  transferOnly?: boolean;
+  excludeTransfers?: boolean;
+} {
+  if (f === "gastos") return { kind: "expense", excludeTransfers: true };
+  if (f === "ingresos") return { kind: "income", excludeTransfers: true };
+  if (f === "transferencias") return { transferOnly: true };
+  return {};
+}
 
 // Local categorization that maps a category NAME (from the joined
 // `categories.name` column) to a stable Kane category bucket so we can keep
@@ -627,6 +647,12 @@ function MovementsContent() {
   // Initial fetch on mount and on currency change. `cancelled` flag guards
   // against state updates after unmount or after a newer fetch superseded
   // this one (currency flipped mid-flight).
+  //
+  // Server-side filters (auditoria perf 2026-05-07): periodo + categoria +
+  // cuenta + filter chip se aplican en el query. Antes solo periodo iba
+  // al server; el resto se filtraba en cliente sobre los 20 rows ya
+  // cargados, lo que causaba "sin resultados" falsos cuando el match estaba
+  // mas atras en la timeline.
   React.useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -637,15 +663,14 @@ function MovementsContent() {
         // joined-payload size by 60% and the user only sees the top of
         // the list anyway. `loadMore()` keeps 50 to make scrolling cheap
         // once the page is interactive.
-        //
-        // El rango temporal aplicado server-side viene de periodRange.
-        // null en cualquiera de los dos lados desactiva ese borde de la
-        // query (Todo = sin bordes).
         const result = await listTransactionsByCurrency({
           currency,
           limit: 20,
           fromISO: periodRange.fromISO ?? undefined,
           toISO: periodRange.toISO ?? undefined,
+          categoryId: categoryId ?? null,
+          accountId: accountId ?? null,
+          ...buildServerFilter(filter),
         });
         if (cancelled) return;
         setRows(result.rows);
@@ -661,7 +686,15 @@ function MovementsContent() {
     return () => {
       cancelled = true;
     };
-  }, [currency, periodRange.fromISO, periodRange.toISO, reloadKey]);
+  }, [
+    currency,
+    periodRange.fromISO,
+    periodRange.toISO,
+    filter,
+    categoryId,
+    accountId,
+    reloadKey,
+  ]);
 
   // Live-update bridge — /movements does NOT subscribe a Supabase
   // realtime channel (por diseño: realtime vive solo en /dashboard
@@ -695,6 +728,9 @@ function MovementsContent() {
           limit: 20,
           fromISO: periodRange.fromISO ?? undefined,
           toISO: periodRange.toISO ?? undefined,
+          categoryId: categoryId ?? null,
+          accountId: accountId ?? null,
+          ...buildServerFilter(filter),
         });
         if (cancelled) return;
         setRows((prev) => {
@@ -725,7 +761,14 @@ function MovementsContent() {
       globalThis.removeEventListener(TX_UPSERTED_EVENT, handler);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [currency, periodRange.fromISO, periodRange.toISO]);
+  }, [
+    currency,
+    periodRange.fromISO,
+    periodRange.toISO,
+    filter,
+    categoryId,
+    accountId,
+  ]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -737,6 +780,9 @@ function MovementsContent() {
         limit: 50,
         fromISO: periodRange.fromISO ?? undefined,
         toISO: periodRange.toISO ?? undefined,
+        categoryId: categoryId ?? null,
+        accountId: accountId ?? null,
+        ...buildServerFilter(filter),
       });
       setRows((prev) => [...prev, ...result.rows]);
       setNextCursor(result.nextCursor);
@@ -840,46 +886,22 @@ function MovementsContent() {
     await archiveTx(tx);
   }
 
-  // Filter chain — orden de aplicación pensado para minimizar el costo:
-  //   1. Tipo (kind / transferencia) — barato, descarta la mitad o más.
-  //   2. Categoría — exact match en uuid.
-  //   3. Cuenta — exact match en uuid.
-  //   4. Transferencias chip — solo `transferGroupId !== null`.
-  //   5. Búsqueda de texto — la más cara, va al final.
+  // Filtro client-side — solo busqueda de texto. El resto (filter chip,
+  // categoryId, accountId, periodo) ya se aplico server-side, asi que
+  // `rows` ya viene escopado. Esto evita el bug previo donde el chip
+  // filtraba sobre los 20 rows iniciales y el user veia "sin resultados"
+  // hasta cargar mas paginas.
   const filtered = React.useMemo(() => {
-    let list: TransactionView[] = rows;
-
-    if (filter === "transferencias") {
-      list = list.filter((t) => t.transferGroupId !== null);
-    } else if (filter === "gastos") {
-      // Excluimos transferencias del bucket "gastos" — antes se mezclaban
-      // y el user veía la pierna expense de cada transferencia como un
-      // gasto normal, lo que distorsionaba el KPI de gastos.
-      list = list.filter((t) => t.kind === "expense" && t.transferGroupId === null);
-    } else if (filter === "ingresos") {
-      list = list.filter((t) => t.kind === "income" && t.transferGroupId === null);
-    }
-
-    if (categoryId !== null) {
-      list = list.filter((t) => t.categoryId === categoryId);
-    }
-    if (accountId !== null) {
-      list = list.filter((t) => t.accountId === accountId);
-    }
-
     const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter((t) => {
-        if (t.merchantName && t.merchantName.toLowerCase().includes(q)) return true;
-        if (t.categoryName && t.categoryName.toLowerCase().includes(q)) return true;
-        const amountStr = t.amount.toFixed(2);
-        if (amountStr.includes(q)) return true;
-        return false;
-      });
-    }
-
-    return list;
-  }, [rows, filter, categoryId, accountId, query]);
+    if (!q) return rows;
+    return rows.filter((t) => {
+      if (t.merchantName && t.merchantName.toLowerCase().includes(q)) return true;
+      if (t.categoryName && t.categoryName.toLowerCase().includes(q)) return true;
+      const amountStr = t.amount.toFixed(2);
+      if (amountStr.includes(q)) return true;
+      return false;
+    });
+  }, [rows, query]);
 
   // KPIs sobre la lista filtrada — ingresos, gastos, balance. Las
   // transferencias se excluyen del cálculo: cada par suma 0 al neto y
@@ -1323,7 +1345,20 @@ function DayGroupSection({
 
       <Card className="overflow-hidden rounded-2xl border-border p-0 md:shadow-sm">
         {group.items.map((t, i) => (
-          <div key={t.id} className={i ? "border-t border-border" : ""}>
+          <div
+            key={t.id}
+            // content-visibility:auto pide al browser que no haga layout
+            // ni paint de la fila si esta fuera del viewport. Es la
+            // alternativa nativa a virtualizar con react-virtual /
+            // react-virtuoso — sin nuevas deps, supported en Chrome /
+            // Edge / Safari recientes. contain-intrinsic-size reserva
+            // el alto aproximado para que el scroll no salte cuando
+            // entran/salen filas del viewport.
+            className={cn(
+              i ? "border-t border-border" : "",
+              "[content-visibility:auto] [contain-intrinsic-size:0_64px]",
+            )}
+          >
             <TransactionRow
               t={t}
               onLongPress={() => onLongPress(t)}
