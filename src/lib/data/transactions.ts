@@ -751,12 +751,18 @@ export async function getAccountBalances(
     });
 
     if (error) {
-      // RPC ausente => migracion 00033 todavia no aplicada. Caemos al
-      // fetch directo + sum cliente para mantener el saldo guard funcional.
-      if (error.code === "42883" || error.code === "PGRST202") {
-        return await getAccountBalancesClientFold(currency);
-      }
-      throw new Error(error.message || "No pudimos calcular el saldo.");
+      // CUALQUIER error del RPC -> fallback al fold cliente. Antes solo
+      // catcheabamos 42883/PGRST202 (function not found), pero en
+      // produccion otros codigos tambien tiraban silent-empty balances
+      // (permission denied tras grant cambios, schema cache stale,
+      // PGRST116 transient en cold start, etc.). Resultado: dashboard
+      // muestra S/ 0.00 en todas las cuentas y el user pierde toda
+      // visibilidad de su saldo. Mejor pagar los ~50ms extra del fold
+      // cliente que dejar el saldo en negro. El fold tambien aplica
+      // RLS via supabase.from(transactions), asi que mantiene la misma
+      // garantia de seguridad que el RPC con security invoker.
+      console.error("[getAccountBalances] RPC error, falling back to client fold:", error);
+      return await getAccountBalancesClientFold(currency);
     }
 
     const balances: Record<string, number> = {};
