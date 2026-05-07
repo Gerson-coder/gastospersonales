@@ -908,13 +908,16 @@ function ReceiptPageInner() {
   const [unprocessableReason, setUnprocessableReason] = React.useState<
     "invalid_image" | "model_failure"
   >("model_failure");
-  // Transaction kind is HARDCODED to "expense" for the receipt flow. If
-  // the user wants to register an income, /capture is the manual path —
-  // /receipt is exclusively for expense tickets so we avoid the OCR
-  // mis-classifying a "Yape recibido" share-screenshot as income and
-  // silently inflating the user's balance. The OCR result's `kind` is
-  // intentionally ignored.
-  const transactionKind: TransactionKind = "expense";
+  // Transaction kind: default "expense" (defensive — la mayoria de
+  // tickets son gastos y NO queremos auto-clasificar un "Yape recibido"
+  // como ingreso e inflar el saldo silenciosamente). El OCR result.kind
+  // sigue ignorado por la misma razon — los extractores no son lo
+  // suficientemente confiables para separar "te enviaron" de "enviaste".
+  //
+  // Pero el user PUEDE flipear el toggle a "income" cuando le yapearon
+  // algo (ej: hermano me devolvio 50 soles). Caso real reportado.
+  const [transactionKind, setTransactionKind] =
+    React.useState<TransactionKind>("expense");
 
   // When the OCR firmly classifies the receipt source (yape / plin / bbva
   // / bcp) AND the user has a matching account, we pre-select it as a
@@ -1046,6 +1049,11 @@ function ReceiptPageInner() {
       setCurrency(d.amount.currency);
       setOccurredAt(d.occurredAt.slice(0, 10));
       setOccurredAtIso(d.occurredAt);
+      // Reset kind a "expense" en cada foto nueva — default conservador.
+      // El user puede flipear a "income" con el toggle si la foto es de
+      // un Yape recibido. No leemos d.kind del OCR (no confiable para
+      // separar enviado vs recibido en P2P transfers).
+      setTransactionKind("expense");
 
       const matchKey = d.destinationApp ?? d.source;
       if (d.confidence >= 0.6 && matchKey !== "unknown") {
@@ -1074,10 +1082,14 @@ function ReceiptPageInner() {
         setMissingAccountSourceLabel(null);
       }
 
+      // Hardcoded "expense" porque acabamos de resetear el kind arriba
+      // — el state todavia no refleja el cambio en este mismo tick.
+      // Las categorias de income son distintas; si el user flipea el
+      // toggle despues, limpiamos categoryId en el handler.
       const hintCategoryId = resolveCategoryIdFromHint(
         d.categoryHint,
         cats,
-        transactionKind,
+        "expense",
       );
       if (hintCategoryId) {
         setCategoryId(hintCategoryId);
@@ -1093,7 +1105,7 @@ function ReceiptPageInner() {
       setDirty(false);
       setStatus("review");
     },
-    [transactionKind, setCurrency],
+    [setCurrency],
   );
 
   /**
@@ -1856,11 +1868,63 @@ function ReceiptPageInner() {
               </p>
             </FieldRow>
 
-            {/* Tipo: el flujo /receipt SOLO registra gastos. Si el
-                usuario quiere registrar un ingreso, debe ir a /capture
-                manualmente. La UI no muestra toggle: era una fuente de
-                errores cuando el OCR malclasificaba un "Yape recibido"
-                compartido por screenshot. */}
+            {/* Tipo (Gasto / Ingreso) — toggle visible. Default expense
+                porque la mayoria de tickets son gastos y no queremos
+                inflar saldos silenciosamente. El user flipea a Ingreso
+                cuando le yapearon algo (ej: hermano me devolvio 50
+                soles). Mismo lenguaje visual que /capture: pill verde
+                para income, rojo para expense. */}
+            <FieldRow label="Tipo" score={0}>
+              <div
+                role="radiogroup"
+                aria-label="Tipo de movimiento"
+                className="inline-flex h-10 w-full max-w-[280px] items-center gap-0.5 rounded-full bg-muted p-0.5"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={transactionKind === "expense"}
+                  onClick={() => {
+                    if (transactionKind === "expense") return;
+                    setTransactionKind("expense");
+                    // Limpiar categoria — las de income son distintas
+                    // (Trabajo, etc) y no queremos arrastrar una de
+                    // expense a un ingreso.
+                    setCategoryId(null);
+                    markDirty();
+                  }}
+                  className={cn(
+                    "inline-flex h-9 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    transactionKind === "expense"
+                      ? "bg-red-500/15 text-red-700 shadow-[var(--shadow-xs)] dark:bg-red-500/25 dark:text-red-200"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  Gasto
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={transactionKind === "income"}
+                  onClick={() => {
+                    if (transactionKind === "income") return;
+                    setTransactionKind("income");
+                    setCategoryId(null);
+                    markDirty();
+                  }}
+                  className={cn(
+                    "inline-flex h-9 flex-1 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    transactionKind === "income"
+                      ? "bg-emerald-500/15 text-emerald-700 shadow-[var(--shadow-xs)] dark:bg-emerald-500/25 dark:text-emerald-200"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  Ingreso
+                </button>
+              </div>
+            </FieldRow>
 
             {/* Fecha */}
             <FieldRow
