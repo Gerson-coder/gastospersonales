@@ -29,6 +29,7 @@ import { Heart, Loader2, LogOut, Send, UserMinus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ActionResultDrawer } from "@/components/kane/ActionResultDrawer";
 import {
   getAccountPartnerInfo,
   leavePartnership,
@@ -84,6 +85,14 @@ export function SharedAccountPanel({
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [confirmKick, setConfirmKick] = React.useState(false);
   const [confirmLeave, setConfirmLeave] = React.useState(false);
+  // Success modal post-revoke / post-leave. Reemplaza el toast.success
+  // verde efimero por un drawer con CTA "Listo" — el user pidio mas
+  // peso visual + acuse explicito, y al cerrar dispara onChange para
+  // que el parent refresque la lista y cierre el form de editar.
+  const [successOpen, setSuccessOpen] = React.useState(false);
+  const [successKind, setSuccessKind] = React.useState<
+    "revoked" | "left" | null
+  >(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -118,10 +127,14 @@ export function SharedAccountPanel({
     setSubmitting(true);
     try {
       await revokePartnership(accountId);
-      toast.success("Tu pareja ya no tiene acceso a esta cuenta.");
       setConfirmKick(false);
       setPartnerInfo(null);
-      onChange?.();
+      // Drawer success en lugar de toast — el user toca "Listo" y
+      // ahi recien disparamos onChange para que el parent cierre el
+      // form y refresque. Asi no hay parpadeo entre "destructivo OK"
+      // y "fuiste devuelto al listado".
+      setSuccessKind("revoked");
+      setSuccessOpen(true);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "No pudimos retirar a tu pareja.",
@@ -135,10 +148,10 @@ export function SharedAccountPanel({
     setSubmitting(true);
     try {
       await leavePartnership(accountId);
-      toast.success("Saliste de la cuenta compartida.");
       setConfirmLeave(false);
       setPartnerInfo(null);
-      onChange?.();
+      setSuccessKind("left");
+      setSuccessOpen(true);
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -148,6 +161,14 @@ export function SharedAccountPanel({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Cierra el drawer success y dispara onChange para que el parent
+  // (form de editar cuenta en /accounts) cierre el sheet y refresque
+  // la lista. Asi el user vuelve al listado actualizado de un solo tap.
+  function handleSuccessClose() {
+    setSuccessOpen(false);
+    onChange?.();
   }
 
   // ─── Render ─────────────────────────────────────────────────────
@@ -236,6 +257,28 @@ export function SharedAccountPanel({
           accountLabel={accountLabel}
         />
       ) : null}
+
+      {/* Success modal post revoke / leave — reemplaza el toast verde
+          efimero. Cuando el user toca "Listo" disparamos onChange que
+          en /accounts cierra el form de editar y refresca el listado. */}
+      <ActionResultDrawer
+        open={successOpen}
+        onOpenChange={(open) => {
+          if (!open) handleSuccessClose();
+        }}
+        tone="success"
+        title={
+          successKind === "left"
+            ? "Saliste de la cuenta compartida"
+            : "Listo, tu pareja ya no tiene acceso"
+        }
+        description={
+          successKind === "left"
+            ? "Dejarás de ver los movimientos de esta cuenta. Las transacciones que registraste quedan en la cuenta del dueño."
+            : "Quitaste a tu pareja de esta cuenta. Las transacciones que registró se quedan en la cuenta."
+        }
+        closeLabel="Volver a cuentas"
+      />
     </section>
   );
 }

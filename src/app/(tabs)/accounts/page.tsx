@@ -1364,7 +1364,16 @@ function AccountFormSheet({
                 accountLabel={account.label}
                 ownerUserId={account.userId}
                 sharedWithPartner={account.sharedWithPartner}
-                onChange={reload}
+                // onChange se dispara despues de revoke / leave / aceptar
+                // invitacion. Ademas de refrescar la lista, cerramos el
+                // sheet del form para que el user vuelva al listado de
+                // /accounts limpio. Asi el flow completo de "quitar
+                // pareja" termina en la pantalla de cuentas, no en un
+                // form abierto sobre una cuenta que cambio de estado.
+                onChange={() => {
+                  void reload();
+                  onOpenChange(false);
+                }}
               />
             ) : null}
 
