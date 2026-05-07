@@ -2265,8 +2265,36 @@ export default function DashboardPage() {
                               : "text-foreground hover:bg-muted",
                           )}
                         >
-                          <span className="truncate text-[14px] font-semibold">
-                            {accountDisplayLabel(account)}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[14px] font-semibold">
+                              {accountDisplayLabel(account)}
+                            </span>
+                            {account.sharedWithPartner ? (
+                              <span
+                                aria-label="Cuenta compartida"
+                                className={cn(
+                                  "inline-flex h-[18px] flex-shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset",
+                                  // En el row seleccionado el bg es
+                                  // foreground oscuro, asi que ajustamos
+                                  // el badge para que no se mezcle.
+                                  selected
+                                    ? "bg-emerald-400/25 text-emerald-100 ring-emerald-300/40"
+                                    : "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40",
+                                )}
+                              >
+                                <Heart
+                                  size={10}
+                                  aria-hidden="true"
+                                  strokeWidth={2.6}
+                                  className={cn(
+                                    selected
+                                      ? "fill-emerald-100 text-emerald-100"
+                                      : "fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400",
+                                  )}
+                                />
+                                Compartida
+                              </span>
+                            ) : null}
                           </span>
                           <span
                             className={cn(

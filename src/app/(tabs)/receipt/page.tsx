@@ -32,6 +32,7 @@ import {
   Check,
   ChevronRight,
   CreditCard,
+  Heart,
   Image as ImageIcon,
   Landmark,
   Loader2,
@@ -2299,6 +2300,20 @@ function ReceiptPageInner() {
                           >
                             <Sparkles size={9} aria-hidden="true" />
                             Sugerida
+                          </span>
+                        ) : null}
+                        {a.sharedWithPartner ? (
+                          <span
+                            aria-label="Cuenta compartida"
+                            className="inline-flex h-[18px] flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40"
+                          >
+                            <Heart
+                              size={10}
+                              aria-hidden="true"
+                              strokeWidth={2.6}
+                              className="fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400"
+                            />
+                            Compartida
                           </span>
                         ) : null}
                       </span>

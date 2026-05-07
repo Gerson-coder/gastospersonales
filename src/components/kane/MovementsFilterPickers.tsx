@@ -18,7 +18,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Landmark } from "lucide-react";
+import { Check, Heart, Landmark } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -269,6 +269,11 @@ export function AccountFilterPicker({
                             />
                           </span>
                         }
+                        badge={
+                          a.sharedWithPartner ? (
+                            <SharedBadge />
+                          ) : null
+                        }
                       />
                     </li>
                   );
@@ -292,6 +297,10 @@ type FilterRowProps = {
   /** Sustituye el dot — usado por la lista de cuentas para mostrar
    *  el AccountBrandIcon. */
   avatar?: React.ReactNode;
+  /** Pill informativo a la derecha del primary text — usado por la
+   *  lista de cuentas para mostrar el badge "Compartida" cuando es
+   *  una cuenta con partner. Se renderiza solo cuando viene definido. */
+  badge?: React.ReactNode;
 };
 
 function FilterRow({
@@ -301,6 +310,7 @@ function FilterRow({
   secondary,
   colorDot,
   avatar,
+  badge,
 }: FilterRowProps) {
   return (
     <button
@@ -327,8 +337,11 @@ function FilterRow({
               <span aria-hidden className="h-3 w-3 flex-shrink-0" />
             )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] font-semibold text-foreground">
-          {primary}
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13.5px] font-semibold text-foreground">
+            {primary}
+          </span>
+          {badge}
         </span>
         {secondary ? (
           <span className="block truncate text-[11.5px] text-muted-foreground">
@@ -340,5 +353,28 @@ function FilterRow({
         <Check size={16} aria-hidden className="text-foreground shrink-0" />
       ) : null}
     </button>
+  );
+}
+
+/**
+ * Pill discreta para marcar cuentas compartidas dentro de los pickers.
+ * Mismo lenguaje visual que /accounts y /capture: emerald sutil con
+ * Heart filled. Tamano calibrado para coexistir al lado de un label
+ * truncable sin empujar otros elementos.
+ */
+function SharedBadge() {
+  return (
+    <span
+      aria-label="Cuenta compartida"
+      className="inline-flex h-[18px] flex-shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-400 dark:ring-emerald-500/40"
+    >
+      <Heart
+        size={10}
+        aria-hidden="true"
+        strokeWidth={2.6}
+        className="fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400"
+      />
+      Compartida
+    </span>
   );
 }
