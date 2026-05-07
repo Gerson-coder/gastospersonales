@@ -62,6 +62,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CategoryFormSheet } from "@/components/kane/CategoryFormSheet";
+import { PushNotificationsToggle } from "@/components/kane/PushNotificationsToggle";
 import { SavingOverlay } from "@/components/kane/SavingOverlay";
 import {
   archiveAllUserCategories,
@@ -486,6 +487,11 @@ export default function SettingsPage() {
             </Card>
           </SettingsSection>
         </div>
+
+        {/* Avisos — Web Push (presupuestos al 80% y al pasarlos) */}
+        <SettingsSection title="Avisos" headingId="settings-notifications">
+          <PushNotificationsToggle />
+        </SettingsSection>
 
         {/* Tus datos — export safety net, full width */}
         <SettingsSection title="Tus datos" headingId="settings-data">

@@ -64,3 +64,78 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// ─── Web Push handlers ───────────────────────────────────────────────────
+//
+// Listeners separados de Serwist (que solo maneja cache). Reciben los push
+// del backend (via /api/push/test o el cron de presupuestos), parsean el
+// payload JSON {title, body, url, tag, ...} y muestran la notificacion
+// nativa del OS. notificationclick abre / enfoca la app en la URL del
+// payload.
+//
+// El payload llega como event.data — lo intentamos parsear como JSON; si
+// no parsea, fallback a texto crudo. Asi nunca se tira el push entero por
+// un payload mal formado.
+
+interface PushPayload {
+  title?: string;
+  body?: string;
+  url?: string;
+  tag?: string;
+  icon?: string;
+  badge?: string;
+  data?: Record<string, unknown>;
+}
+
+self.addEventListener("push", (event) => {
+  let payload: PushPayload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json() as PushPayload;
+    } catch {
+      payload = { title: "Kane", body: event.data.text() };
+    }
+  }
+  const title = payload.title ?? "Kane";
+  const options: NotificationOptions = {
+    body: payload.body ?? "",
+    icon: payload.icon ?? "/icons/icon-192.png?v=6",
+    badge: payload.badge ?? "/icons/icon-192.png?v=6",
+    tag: payload.tag,
+    data: { url: payload.url ?? "/dashboard", ...payload.data },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data as { url?: string } | null;
+  const targetUrl = data?.url ?? "/dashboard";
+  event.waitUntil(
+    (async () => {
+      // Si el user ya tiene una pestana / instancia de la PWA abierta,
+      // la enfocamos y navegamos a la URL — evita abrir 2 ventanas.
+      const allClients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of allClients) {
+        if ("focus" in client) {
+          await client.focus();
+          if ("navigate" in client) {
+            try {
+              await client.navigate(targetUrl);
+            } catch {
+              // navigate puede fallar en cross-origin; ignoramos.
+            }
+          }
+          return;
+        }
+      }
+      // Si no hay instancia abierta, abrimos una nueva.
+      if (self.clients.openWindow) {
+        await self.clients.openWindow(targetUrl);
+      }
+    })(),
+  );
+});
