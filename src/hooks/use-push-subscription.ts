@@ -149,11 +149,18 @@ export function usePushSubscription(): Result {
 
       const reg = await navigator.serviceWorker.ready;
       const existing = await reg.pushManager.getSubscription();
+      // Pasamos el `.buffer` (ArrayBuffer concreto) en lugar del Uint8Array
+      // porque TS 5.7+ es estricto en la diferencia entre
+      // ArrayBuffer / SharedArrayBuffer dentro de BufferSource. ArrayBuffer
+      // es directamente asignable a `applicationServerKey` sin generic
+      // dispute.
+      const applicationServerKey: ArrayBuffer =
+        urlBase64ToUint8Array(vapidKey).buffer;
       const sub =
         existing ??
         (await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey,
         }));
 
       const json = sub.toJSON();
